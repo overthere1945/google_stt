@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">google_stt</string>
 
-    <string name="title">Google On-Device STT (ML Kit GenAI)</string>
+    <string name="title">Google On-Device STT (ML Kit GenAI / Android Platform)</string>
 
     <string name="btn_input">Input (음성 폴더 선택)</string>
     <string name="btn_output">Output (결과 폴더 선택)</string>
@@ -12,9 +12,11 @@
     <string name="lang_korean">한국어 (ko-KR)</string>
     <string name="lang_auto">auto (기기 언어)</string>
 
-    <string name="model_title">Model (사용할 모델 선택)</string>
-    <string name="model_base">Base (대부분 기기, API 31+)</string>
-    <string name="model_advanced">Advanced (GenAI, Pixel 10만)</string>
+    <string name="model_title">Model (사용할 모델/경로 선택)</string>
+    <string name="model_base">Base (ML Kit Basic, API 31+)</string>
+    <string name="model_advanced">Advanced (ML Kit GenAI)</string>
+    <!-- change(add)-hyungchul-20260812-1709 -->
+    <string name="model_android_ondevice">Android Platform On-device (API 33+ 파일 입력)</string>
 
     <string name="progress_title">전체 진행률</string>
     <string name="progress_zero">0.0%</string>
@@ -34,7 +36,7 @@
     <string name="msg_error">오류: %1$s</string>
 
     <string name="log_found">음성 파일 %1$d개를 찾았습니다.</string>
-    <string name="log_model">선택한 모델: %1$s</string>
+    <string name="log_model">선택한 모델/경로: %1$s</string>
     <string name="log_done">[완료] %1$s / %2$s</string>
     <string name="log_fail">[실패] %1$s / %2$s : %3$s</string>
     <string name="log_decode_fail">[디코딩 실패] %1$s : %2$s</string>
