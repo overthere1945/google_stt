@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <!-- 진행 로그: 어두운 콘솔 배경 + 밝은 글자(라이트/다크 테마 모두에서 잘 보이도록) -->
+    <color name="log_background">#FF1E1E1E</color>
+    <color name="log_text">#FFE0E0E0</color>
+</resources>
