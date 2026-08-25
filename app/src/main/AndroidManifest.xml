@@ -1,22 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   app/src/main/AndroidManifest.xml
-  ★ 수정: android:theme 을 프로젝트 테마(@style/Theme.Google_stt)로 되돌렸다.
-    (전에 드린 파일은 @style/Theme.AppCompat... 을 직접 가리켜 themes.xml 과 어긋났다.)
+  change(add)-hyungchul-20260820: ACCESS_NETWORK_STATE 추가.
+    → result.csv 의 net_type 컬럼(온디바이스 실행 판정 근거)을 채우기 위해 필요하다.
+      이 권한은 "네트워크 상태 조회"만 하며 통신을 하지 않는다(INTERNET 권한은 일부러 넣지 않는다).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
       SpeechRecognizer 클래스는 공식 문서상 RECORD_AUDIO 권한을 요구한다.
       (EXTRA_AUDIO_SOURCE 로 파일을 넣는 경우에도 동일하게 요구된다.)
-      ML Kit 의 AudioSource.fromPfd() 자체는 권한이 필요 없지만, 같은 앱에서 두 경로를 쓰므로 선언한다.
     -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- change(add)-hyungchul-20260820 : 계측용 네트워크 상태 조회 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!--
       ★ 필수: Android 11(API 30)+ 의 패키지 가시성 제한 때문에
       이 <queries> 가 없으면 SpeechRecognizer 가 RecognitionService 를 찾지 못해
       ERROR_CLIENT / 서비스 바인딩 실패가 발생할 수 있다.
+      (계측용 recognition_services 목록 조회에도 이 선언이 필요하다)
     -->
     <queries>
         <intent>

@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  app/src/main/res/layout/activity_main.xml
+  change(add)-hyungchul-20260820: Feed(오디오 공급 속도) 스피너 추가.
+    지연(latency) 측정에서 공급 속도가 최대 교란 요인이라 UI에서 고르고 CSV에 함께 기록한다.
+-->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -87,6 +92,27 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingBottom="12dp" />
+
+            <!-- change(add)-hyungchul-20260820 : Feed(오디오 공급 속도) -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/feed_title"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary" />
+
+            <Spinner
+                android:id="@+id/feedSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/feed_hint"
+                android:textSize="12sp"
+                android:paddingBottom="12dp"
+                android:textColor="?android:attr/textColorSecondary" />
 
             <!-- Start -->
             <Button

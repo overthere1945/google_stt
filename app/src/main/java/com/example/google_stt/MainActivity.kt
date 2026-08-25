@@ -6,12 +6,20 @@
  *     (1) ML Kit GenAI Speech Recognition — MODE_BASIC   → 폴더 base
  *     (2) ML Kit GenAI Speech Recognition — MODE_ADVANCED→ 폴더 advanced (Pixel 10 계열만)
  *     (3) Android Platform SpeechRecognizer.createOnDeviceSpeechRecognizer() → 폴더 android_ondevice
- * - 결과를 output/google/<모드>/<입력 하위 폴더>/<파일명>.txt 로 저장하고
- *   output/google/<모드>/result.csv (utf-8-sig, status = OK/NO_MATCH/ERROR) 도 함께 남긴다.
+ * - 결과 저장:
+ *     output/google/<모드>/<입력 하위 폴더>/<파일명>.txt
+ *     output/google/<모드>/result.csv    (파일별 지연/자원 계측, utf-8-sig)
+ *     output/google/<모드>/run_meta.csv  (실행 1회 환경 요약, utf-8-sig)
+ *
+ * change(add)-hyungchul-20260820 — 성능/자원 계측 추가
+ *   · 지연을 4단계로 분해해 측정한다: ready / first_result / feed / tail / wall
+ *   · ★ tail(공급 EOF → 최종 결과)이 "엔진의 순수 처리 지연"이다.
+ *     오디오를 실시간 속도로 흘려보내면 wall 은 거의 음원 길이와 같아져 엔진 비교에 쓸 수 없다.
+ *     그래서 Feed 속도(REALTIME/FAST/MAX)를 UI에서 고를 수 있게 하고 CSV에 함께 남긴다.
+ *   · 온디바이스 여부 판정 근거(네트워크 상태/비행기모드/앱 UID 트래픽)를 파일마다 기록한다.
+ *   · CPU 시간, PSS 메모리, 배터리 소모(µAh), 배터리 온도, thermal 상태를 함께 기록한다.
  *
  * ※ 이 3개 경로 중 어느 것도 Google Cloud 인증(서비스 계정 JSON, API Key, OAuth 토큰)을 사용하지 않는다.
- *   모두 단말 내부에서 동작하며 네트워크 자격증명이 필요 없다.
- *   "Cloud Speech-to-Text On-Device"(파트너 전용 임베디드 SDK)는 여기에 포함되어 있지 않다.
  */
 package com.example.google_stt
 
@@ -86,6 +94,37 @@ class MainActivity : AppCompatActivity() {
         ModelConfig("android_ondevice", SttEngine.ANDROID_PLATFORM_ON_DEVICE),
     )
 
+    // change(add)-hyungchul-20260820
+    /**
+     * 오디오 공급 속도 설정.
+     * - REALTIME: 100 ms 분량을 100 ms 마다 → 실제 마이크와 같은 속도. ML Kit 공식 요건.
+     *             이 모드에서는 wall ≈ 음원 길이가 되므로 엔진 비교는 tail_ms 로 해야 한다.
+     * - FAST    : 15 ms 간격. 배치 처리량 측정용(expo-speech-recognition 의 on-device 기본값).
+     * - MAX     : 지연 없이 파이프가 받아주는 최대 속도. 엔진이 감당 못하면 결과가 잘릴 수 있다.
+     */
+    private data class FeedConfig(val name: String, val delayMs: Long)
+
+    // change-hyungchul-20260824
+    // 실측 결과 15 ms 는 전량 성공(REALTIME 과 전사 텍스트 8/8 완전 일치),
+    // 0 ms 는 전량 ERROR_TYPE_AUDIO_BUFFER_OVERFLOW 였다.
+    // → 엔진의 최대 처리 속도는 그 사이에 있다. 이진 탐색이 가능하도록 지연값을 세분화한다.
+    //   "전량 OK + 전사 텍스트가 REALTIME 기준본과 동일" 을 만족하는 가장 낮은 지연값이
+    //   이 엔진의 진짜 RTF( = delay / 100 )가 된다.
+    private val feeds = listOf(
+        FeedConfig("REALTIME", 100L),
+        FeedConfig("D30", 30L),
+        FeedConfig("D15", 15L),
+        FeedConfig("D10", 10L),
+        FeedConfig("D8", 8L),
+        FeedConfig("D6", 6L),
+        FeedConfig("D5", 5L),
+        FeedConfig("D4", 4L),
+        FeedConfig("D3", 3L),
+        FeedConfig("D2", 2L),
+        FeedConfig("D1", 1L),
+        FeedConfig("MAX", 0L),
+    )
+
     private var inputTreeUri: Uri? = null
     private var outputTreeUri: Uri? = null
 
@@ -93,6 +132,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var outputPathView: TextView
     private lateinit var langSpinner: Spinner
     private lateinit var modelSpinner: Spinner
+    private lateinit var feedSpinner: Spinner
     private lateinit var startButton: Button
     private lateinit var logView: TextView
     private lateinit var progressBar: ProgressBar
@@ -143,6 +183,7 @@ class MainActivity : AppCompatActivity() {
         outputPathView = findViewById(R.id.outputPath)
         langSpinner = findViewById(R.id.langSpinner)
         modelSpinner = findViewById(R.id.modelSpinner)
+        feedSpinner = findViewById(R.id.feedSpinner)   // change(add)-hyungchul-20260820
         startButton = findViewById(R.id.startButton)
         logView = findViewById(R.id.logView)
         progressBar = findViewById(R.id.progressBar)
@@ -168,6 +209,21 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.model_advanced),
                 getString(R.string.model_android_ondevice),
             ),
+        )
+
+        // change-hyungchul-20260824
+        // 항목을 feeds 목록에서 자동 생성한다(지연값을 늘려도 strings.xml 을 고칠 필요가 없다).
+        feedSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            feeds.map { fc ->
+                if (fc.delayMs <= 0L) {
+                    "${fc.name} — 지연 없음 (최대 속도)"
+                } else {
+                    val speed = String.format(Locale.US, "%.1f", 100.0 / fc.delayMs)
+                    "${fc.name} — ${fc.delayMs} ms/chunk (실시간 ×$speed)"
+                }
+            },
         )
 
         findViewById<Button>(R.id.inputButton).setOnClickListener { inputPicker.launch(null) }
@@ -199,6 +255,9 @@ class MainActivity : AppCompatActivity() {
         val modelConfig = models[modelIndex]
         val modelFolder = modelConfig.folder
 
+        // change(add)-hyungchul-20260820
+        val feed = feeds[feedSpinner.selectedItemPosition.coerceIn(0, feeds.size - 1)]
+
         running = true
         startButton.isEnabled = false
         logView.text = ""
@@ -208,7 +267,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             var ok = 0
             var fail = 0
-            val csv = StringBuilder("path,status,elapsed_sec,chars,text\n")
+            val csv = StringBuilder(SttTelemetry.CSV_HEADER)
             try {
                 val inputRoot = DocumentFile.fromTreeUri(this@MainActivity, inUri)
                 val outputRoot = DocumentFile.fromTreeUri(this@MainActivity, outUri)
@@ -226,20 +285,69 @@ class MainActivity : AppCompatActivity() {
                 }
                 appendLog(getString(R.string.log_found, items.size))
                 appendLog(getString(R.string.log_model, modelFolder))
+                appendLog("[feed] ${feed.name} (chunk delay ${feed.delayMs} ms)")
+                if (modelConfig.engine == SttEngine.ML_KIT && feed.delayMs < 100L) {
+                    appendLog(
+                        "[warn] ML Kit 공식 문서는 '실시간 속도' 공급을 요구한다. " +
+                                "FAST/MAX 는 결과가 잘릴 수 있으니 몇 건으로 검증 후 사용할 것.",
+                    )
+                }
 
-                // 실행 전 1회: 선택한 엔진의 가용성을 확인해 로그로 남긴다.
-                preflight(modelConfig, locale)
+                // 실행 전 1회 가용성 점검 — 어떤 엔진이 실제로 쓰이는지 로그와 run_meta 에 남긴다.
+                val preflightText = preflight(modelConfig, locale)
+
+                // change(add)-hyungchul-20260820 — 실행 환경 요약을 먼저 저장해 둔다.
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        val dir = ensureDir(outputRoot, listOf(algoName, modelFolder))
+                        val meta = SttTelemetry.runMetaCsv(
+                            applicationContext,
+                            linkedMapOf(
+                                "algo" to algoName,
+                                "mode" to modelFolder,
+                                "engine" to modelConfig.engine.name,
+                                "execution_declared" to executionLabel(modelConfig),
+                                "lang" to locale.toLanguageTag(),
+                                "feed_mode" to feed.name,
+                                "feed_delay_ms" to feed.delayMs.toString(),
+                                "file_count" to items.size.toString(),
+                                "preflight" to preflightText,
+                            ),
+                        )
+                        writeBytes(
+                            dir, "run_meta.csv",
+                            SttTelemetry.BOM + meta.toByteArray(Charsets.UTF_8), "text/csv",
+                        )
+                    }
+                }
 
                 val totalUnits = items.size
                 var completedUnits = 0
 
-                for (item in items) {
+                for ((index, item) in items.withIndex()) {
                     val relName = displayRel(item)
-                    val startedAt = System.nanoTime()
 
-                    val pcm = try {
+                    // ── 파일 1건의 계측 행 준비 ──
+                    val row = SttRow(
+                        path = relName,
+                        file = item.nameNoExt,
+                        engine = modelConfig.engine.name,
+                        mode = modelFolder,
+                        execution = executionLabel(modelConfig),
+                        lang = locale.toLanguageTag(),
+                        feedMode = feed.name,
+                        feedDelayMs = feed.delayMs,
+                        srcBytes = item.sizeBytes,
+                        netType = SttTelemetry.networkType(applicationContext),
+                        airplane = SttTelemetry.airplaneMode(applicationContext),
+                        startedAt = SttTelemetry.isoNow(),
+                    )
+                    val snap = SttResourceSnapshot.take(applicationContext)
+
+                    // ── 1) 디코딩 ──
+                    val decoded = try {
                         withContext(Dispatchers.IO) {
-                            AudioDecoder.decodeTo16kMonoPcm(applicationContext, item.uri)
+                            AudioDecoder.decodeDetailed(applicationContext, item.uri)
                         }
                     } catch (e: Exception) {
                         val msg = describe(e)
@@ -247,7 +355,10 @@ class MainActivity : AppCompatActivity() {
                         withContext(Dispatchers.IO) {
                             saveResult(outputRoot, modelFolder, item, "[ERROR] 디코딩 실패: $msg")
                         }
-                        csv.append(csvRow(relName, "ERROR", startedAt, "디코딩 실패: $msg"))
+                        row.status = "ERROR"
+                        row.error = "decode: $msg"
+                        snap.fillDelta(applicationContext, row)
+                        csv.append(row.toCsvLine())
                         fail++
                         completedUnits++
                         updateProgress(completedUnits.toDouble() / totalUnits)
@@ -255,63 +366,96 @@ class MainActivity : AppCompatActivity() {
                         continue
                     }
 
+                    row.decodeMs = decoded.decodeMs
+                    row.audioSec = decoded.durationSec
+                    row.srcMime = decoded.srcMime
+                    row.srcRate = decoded.srcRate
+                    row.srcCh = decoded.srcChannels
+
+                    // ── 2) STT ──
                     val baseUnits = completedUnits
                     try {
-                        val text = when (modelConfig.engine) {
+                        val outcome = when (modelConfig.engine) {
                             SttEngine.ML_KIT -> {
                                 val mode = modelConfig.mlKitMode
                                     ?: throw IOException("ML Kit 모드 설정이 없습니다.")
-                                transcribeMlKit(pcm, locale, mode) { fed ->
+                                transcribeMlKit(decoded.pcm, locale, mode, feed) { fed ->
                                     updateProgress((baseUnits + fed) / totalUnits.toDouble())
                                 }
                             }
 
                             SttEngine.ANDROID_PLATFORM_ON_DEVICE -> {
-                                transcribeAndroidOnDevice(pcm, locale) { fed ->
+                                transcribeAndroidOnDevice(decoded.pcm, locale, feed) { fed ->
                                     updateProgress((baseUnits + fed) / totalUnits.toDouble())
                                 }
                             }
                         }
 
+                        row.readyMs = outcome.readyMs
+                        row.firstResultMs = outcome.firstResultMs
+                        row.feedMs = outcome.feedMs
+                        row.tailMs = outcome.tailMs
+                        row.sttWallMs = outcome.sttWallMs
+                        row.segments = outcome.segments
+                        row.mlkitStatus = outcome.mlkitStatus
+                        row.checkStatusMs = outcome.checkStatusMs
+                        row.downloadMs = outcome.downloadMs
+                        row.text = outcome.text
+                        row.chars = outcome.text.length
+                        row.words = SttTelemetry.wordCount(outcome.text)
+                        row.status = if (outcome.text.isBlank()) "NO_MATCH" else "OK"
+
                         withContext(Dispatchers.IO) {
-                            saveResult(outputRoot, modelFolder, item, text)
-                        }
-                        if (text.isBlank()) {
-                            csv.append(csvRow(relName, "NO_MATCH", startedAt, ""))
-                        } else {
-                            csv.append(csvRow(relName, "OK", startedAt, text))
+                            saveResult(outputRoot, modelFolder, item, outcome.text)
                         }
                         ok++
-                        appendLog(getString(R.string.log_done, modelFolder, relName))
+                        appendLog(
+                            getString(R.string.log_done, modelFolder, relName) +
+                                    "  (audio ${"%.1f".format(Locale.US, decoded.durationSec)}s / " +
+                                    "tail ${outcome.tailMs}ms / wall ${outcome.sttWallMs}ms)",
+                        )
                     } catch (e: Exception) {
                         val msg = describe(e)
                         Log.e(logTag, "transcribe failed: $modelFolder/$relName", e)
                         withContext(Dispatchers.IO) {
                             saveResult(outputRoot, modelFolder, item, "[ERROR] $msg")
                         }
-                        csv.append(csvRow(relName, "ERROR", startedAt, msg))
+                        row.status = "ERROR"
+                        row.error = msg
                         fail++
                         appendLog(getString(R.string.log_fail, modelFolder, relName, msg))
                     }
+
+                    snap.fillDelta(applicationContext, row)
+                    csv.append(row.toCsvLine())
+
                     completedUnits++
                     updateProgress(completedUnits.toDouble() / totalUnits)
+
+                    // change(add)-hyungchul-20260820
+                    // 중간 저장: 배치가 도중에 죽어도 그때까지의 계측이 남도록 10건마다 flush 한다.
+                    if ((index + 1) % CSV_FLUSH_EVERY == 0) {
+                        withContext(Dispatchers.IO) {
+                            runCatching { writeCsv(outputRoot, modelFolder, csv.toString()) }
+                        }
+                    }
                 }
 
-                withContext(Dispatchers.IO) {
-                    val dir = ensureDir(outputRoot, listOf(algoName, modelFolder))
-                    // utf-8-sig (BOM) — 기존 파이썬 파이프라인 규약과 동일하게 맞춘다.
-                    writeBytes(
-                        dir,
-                        "result.csv",
-                        BOM + csv.toString().toByteArray(Charsets.UTF_8),
-                        "text/csv",
-                    )
-                }
+                withContext(Dispatchers.IO) { writeCsv(outputRoot, modelFolder, csv.toString()) }
 
                 updateProgress(1.0)
                 toast(getString(R.string.msg_stt_done, ok, fail))
             } catch (e: Exception) {
                 Log.e(logTag, "run failed", e)
+                // 예외로 빠져나가도 지금까지 모은 계측은 남긴다.
+                runCatching {
+                    val outputRoot = DocumentFile.fromTreeUri(this@MainActivity, outUri)
+                    if (outputRoot != null) {
+                        withContext(Dispatchers.IO) {
+                            writeCsv(outputRoot, modelFolder, csv.toString())
+                        }
+                    }
+                }
                 toast(getString(R.string.msg_error, describe(e)))
             } finally {
                 running = false
@@ -320,8 +464,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 배치 시작 전 1회 가용성 점검 — 어떤 엔진이 실제로 쓰이는지 로그로 확인한다. */
-    private suspend fun preflight(config: ModelConfig, locale: Locale) {
+    private fun writeCsv(outputRoot: DocumentFile, modelFolder: String, body: String) {
+        val dir = ensureDir(outputRoot, listOf(algoName, modelFolder))
+        writeBytes(
+            dir, "result.csv",
+            SttTelemetry.BOM + body.toByteArray(Charsets.UTF_8), "text/csv",
+        )
+    }
+
+    /**
+     * 목적: 이 경로가 API 계약상 어디서 실행되는지 문자열로 만든다.
+     * 비고: 세 경로 모두 문서상 온디바이스다. 실제 증명은 CSV 의 net_type/airplane 컬럼으로 한다.
+     */
+    private fun executionLabel(config: ModelConfig): String = when (config.engine) {
+        SttEngine.ML_KIT ->
+            if (config.mlKitMode == SpeechRecognizerOptions.Mode.MODE_ADVANCED) {
+                "ON_DEVICE(MLKit GenAI)"
+            } else {
+                "ON_DEVICE(MLKit basic=platform SpeechRecognizer)"
+            }
+
+        SttEngine.ANDROID_PLATFORM_ON_DEVICE -> "ON_DEVICE(platform on-device service)"
+    }
+
+    /** 배치 시작 전 1회 가용성 점검. 로그에 남기고 run_meta.csv 용 문자열도 돌려준다. */
+    private suspend fun preflight(config: ModelConfig, locale: Locale): String {
+        val sb = StringBuilder()
         when (config.engine) {
             SttEngine.ML_KIT -> {
                 for (m in listOf(
@@ -336,50 +504,94 @@ class MainActivity : AppCompatActivity() {
                             },
                         ).use { it.checkStatus() }
                     }
-                    val name = if (m == SpeechRecognizerOptions.Mode.MODE_BASIC) "BASIC" else "ADVANCED"
+                    val name =
+                        if (m == SpeechRecognizerOptions.Mode.MODE_BASIC) "BASIC" else "ADVANCED"
                     val text = st.fold({ statusName(it) }, { describe(it) })
-                    appendLog("[preflight] ML Kit $name (${locale.toLanguageTag()}) = $text")
+                    val line = "ML Kit $name (${locale.toLanguageTag()}) = $text"
+                    appendLog("[preflight] $line")
+                    sb.append(line).append(" ; ")
                 }
             }
 
             SttEngine.ANDROID_PLATFORM_ON_DEVICE -> {
                 val avail = AndroidSpeechRecognizer.isOnDeviceRecognitionAvailable(this)
-                appendLog("[preflight] isOnDeviceRecognitionAvailable = $avail")
+                val line1 = "isOnDeviceRecognitionAvailable=$avail"
+                appendLog("[preflight] $line1")
+                sb.append(line1).append(" ; ")
                 if (avail && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    appendLog("[preflight] " + checkAndroidOnDeviceSupport(locale))
+                    val line2 = checkAndroidOnDeviceSupport(locale)
+                    appendLog("[preflight] $line2")
+                    sb.append(line2)
                 }
             }
         }
+        val svc = SttTelemetry.recognitionServices(applicationContext)
+        appendLog("[preflight] RecognitionService: $svc")
+        appendLog(
+            "[preflight] net=${SttTelemetry.networkType(applicationContext)} " +
+                    "airplane=${SttTelemetry.airplaneMode(applicationContext)} " +
+                    "thermal=${SttTelemetry.thermalStatus(applicationContext)}",
+        )
+        return sb.toString()
     }
+
+    // ─────────────────────────── STT 결과 + 계측 ───────────────────────────
+    /**
+     * 목적: 전사 결과와 지연 계측치를 함께 나른다.
+     * - readyMs        : 세션 시작 → 엔진 준비 완료(onReadyForSpeech). 플랫폼 경로만 측정 가능.
+     * - firstResultMs  : 세션 시작 → 첫 응답. 체감 응답성(TTFT).
+     * - feedMs         : 오디오 공급에 걸린 시간(공급 속도 설정에 좌우됨).
+     * - tailMs         : ★ 공급 EOF → 최종 결과. 공급 속도와 무관한 "엔진 처리 지연".
+     * - sttWallMs      : 세션 시작 → 최종 결과(전체).
+     */
+    private data class SttOutcome(
+        val text: String,
+        val readyMs: Long = -1,
+        val firstResultMs: Long = -1,
+        val feedMs: Long = -1,
+        val tailMs: Long = -1,
+        val sttWallMs: Long = -1,
+        val segments: Int = 0,
+        val mlkitStatus: String = "",
+        val checkStatusMs: Long = -1,
+        val downloadMs: Long = -1,
+    )
 
     // ─────────────────────── (1)(2) ML Kit GenAI Speech Recognition ───────────────────────
     /**
-     * 목적: ML Kit GenAI Speech Recognition 으로 PCM 1건을 전사한다.
-     * 입력: pcm(16k/mono/PCM16), locale, mode(MODE_BASIC 또는 MODE_ADVANCED), onFed(진행률 0~1)
-     * 출력: 최종 인식 문자열
+     * 목적: ML Kit GenAI Speech Recognition 으로 PCM 1건을 전사하고 지연을 계측한다.
+     * 입력: pcm(16k/mono/PCM16), locale, mode(MODE_BASIC/MODE_ADVANCED), feed(공급 속도), onFed(진행률)
+     * 출력: SttOutcome
      * 예외: 모델이 AVAILABLE 이 아니거나 인식 오류 시 IOException
      */
     private suspend fun transcribeMlKit(
         pcm: ByteArray,
         locale: Locale,
         mode: Int,
+        feed: FeedConfig,
         onFed: (Double) -> Unit,
-    ): String {
+    ): SttOutcome {
         val options: SpeechRecognizerOptions = speechRecognizerOptions {
             this.locale = locale
             preferredMode = mode
         }
 
         return SpeechRecognition.getClient(options).use { recognizer ->
+            val tCheck = System.nanoTime()
             var status = recognizer.checkStatus()
+            val checkStatusMs = (System.nanoTime() - tCheck) / 1_000_000
             Log.i(logTag, "checkStatus=${statusName(status)} (mode=$mode, locale=$locale)")
+
+            var downloadMs = -1L
             if (status == FeatureStatus.DOWNLOADABLE || status == FeatureStatus.DOWNLOADING) {
+                val tDl = System.nanoTime()
                 recognizer.download().collect { ds ->
                     Log.i(logTag, "download status: $ds")
                     if (ds is DownloadStatus.DownloadFailed) {
                         throw IOException("모델 다운로드 실패: ${ds.e.message ?: ds.e}")
                     }
                 }
+                downloadMs = (System.nanoTime() - tDl) / 1_000_000
                 status = recognizer.checkStatus()
                 Log.i(logTag, "after download, checkStatus=${statusName(status)}")
             }
@@ -395,23 +607,30 @@ class MainActivity : AppCompatActivity() {
             val readSide = pipe[0]
             val writeSide = pipe[1]
 
-            // 공식 문서 요건: PFD 에는 실시간 속도(16,000 samples ≒ 32 KB / 초)로 공급해야 한다.
-            val feeder = PcmFeeder(writeSide, pcm, CHUNK_BYTES, MLKIT_CHUNK_DELAY_MS, onFed)
+            val feeder = PcmFeeder(writeSide, pcm, CHUNK_BYTES, feed.delayMs, onFed)
 
             val sb = StringBuilder()
             var errorMessage: String? = null
+            var firstResponseNs = 0L
+            var finalCount = 0
+
+            var sessionStartNs = 0L
+            var endNs = 0L
 
             try {
                 val request = speechRecognizerRequest { audioSource = AudioSource.fromPfd(readSide) }
                 val approxSec = pcm.size / BYTES_PER_SEC + 1
                 val timeout = (approxSec.toLong() * 2 + 180).seconds
 
+                sessionStartNs = System.nanoTime()
                 withTimeout(timeout) {
                     coroutineScope {
                         val collectJob = launch {
                             recognizer.startRecognition(request).collect { resp ->
+                                if (firstResponseNs == 0L) firstResponseNs = System.nanoTime()
                                 when (resp) {
                                     is SpeechRecognizerResponse.FinalTextResponse -> {
+                                        finalCount++
                                         val t = resp.text.trim()
                                         if (t.isNotEmpty()) {
                                             if (sb.isNotEmpty()) sb.append(' ')
@@ -424,7 +643,7 @@ class MainActivity : AppCompatActivity() {
                                         Log.e(logTag, "recognition ErrorResponse", resp.e)
                                     }
 
-                                    else -> Unit // Partial / Completed 는 무시
+                                    else -> Unit // Partial / Completed 는 텍스트에 넣지 않는다
                                 }
                             }
                         }
@@ -433,35 +652,50 @@ class MainActivity : AppCompatActivity() {
                         feeder.finished.await()
                         runCatching { recognizer.stopRecognition() }
                         collectJob.join()
+                        endNs = System.nanoTime()
                     }
                 }
             } finally {
                 feeder.abort()
-                // ★ 원본 버그 수정: readSide 를 닫지 않으면 파일마다 FD 가 새어 배치 도중 EMFILE 로 실패한다.
+                // readSide 를 닫지 않으면 파일마다 FD 가 새어 배치 도중 EMFILE 로 실패한다.
                 runCatching { readSide.close() }
             }
 
             val result = sb.toString().trim()
             val err = errorMessage
             if (result.isEmpty() && err != null) throw IOException(err)
-            result
+
+            if (endNs == 0L) endNs = System.nanoTime()
+            val eofNs = feeder.finishedAtNs.takeIf { it != 0L } ?: endNs
+
+            SttOutcome(
+                text = result,
+                readyMs = -1, // ML Kit 은 준비 완료 콜백이 없다
+                firstResultMs = ms(sessionStartNs, firstResponseNs),
+                feedMs = ms(feeder.startedAtNs, feeder.finishedAtNs),
+                tailMs = ms(eofNs, endNs),
+                sttWallMs = ms(sessionStartNs, endNs),
+                segments = finalCount,
+                mlkitStatus = statusName(status),
+                checkStatusMs = checkStatusMs,
+                downloadMs = downloadMs,
+            )
         }
     }
 
     // ─────────────── (3) Android Platform On-device SpeechRecognizer ───────────────
     /**
-     * 목적: Android Framework 의 createOnDeviceSpeechRecognizer() 로 PCM 1건을 전사한다.
-     * 입력: pcm(16k/mono/PCM16), locale, onFed(진행률 0~1)
-     * 출력: 최종 인식 문자열(NO_MATCH 이면 빈 문자열)
+     * 목적: Android Framework 의 createOnDeviceSpeechRecognizer() 로 PCM 1건을 전사하고 지연을 계측한다.
+     * 입력: pcm(16k/mono/PCM16), locale, feed(공급 속도), onFed(진행률)
+     * 출력: SttOutcome (NO_MATCH 이면 text 가 빈 문자열)
      * 예외: API 33 미만, on-device RecognitionService 부재, 그 외 인식 오류 시 IOException
-     * 비고: EXTRA_AUDIO_SOURCE(파일/파이프 입력)는 API 33(Android 13)부터,
-     *       createOnDeviceSpeechRecognizer / isOnDeviceRecognitionAvailable 은 API 31부터다.
      */
     private suspend fun transcribeAndroidOnDevice(
         pcm: ByteArray,
         locale: Locale,
+        feed: FeedConfig,
         onFed: (Double) -> Unit,
-    ): String {
+    ): SttOutcome {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             throw IOException(
                 "Android Platform On-device 의 파일 입력은 API 33(Android 13) 이상이 필요하다. " +
@@ -477,10 +711,12 @@ class MainActivity : AppCompatActivity() {
         val writeSide = pipe[1]
 
         val recognizer = AndroidSpeechRecognizer.createOnDeviceSpeechRecognizer(this)
-        val feeder = PcmFeeder(writeSide, pcm, CHUNK_BYTES, ANDROID_CHUNK_DELAY_MS, onFed)
+        val feeder = PcmFeeder(writeSide, pcm, CHUNK_BYTES, feed.delayMs, onFed)
 
         val sb = StringBuilder()
-        var segmentSeen = false
+        var segmentCount = 0
+        var readyNs = 0L
+        var firstResultNs = 0L
         val completed = CompletableDeferred<String>()
 
         fun appendBest(results: Bundle?) {
@@ -497,6 +733,7 @@ class MainActivity : AppCompatActivity() {
 
         recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
+                if (readyNs == 0L) readyNs = System.nanoTime()
                 Log.i(logTag, "Android on-device: ready (locale=$locale)")
             }
 
@@ -504,12 +741,16 @@ class MainActivity : AppCompatActivity() {
             override fun onRmsChanged(rmsdB: Float) = Unit
             override fun onBufferReceived(buffer: ByteArray?) = Unit
             override fun onEndOfSpeech() = Unit
-            override fun onPartialResults(partialResults: Bundle?) = Unit
             override fun onEvent(eventType: Int, params: Bundle?) = Unit
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                // 텍스트에는 넣지 않고, 첫 응답 시각만 기록한다(TTFT 계측용).
+                if (firstResultNs == 0L) firstResultNs = System.nanoTime()
+            }
 
             override fun onError(error: Int) {
                 if (completed.isCompleted) return
-                // ERROR_NO_MATCH / ERROR_SPEECH_TIMEOUT 은 "인식 결과 없음"이므로 실패가 아니라 빈 결과로 처리한다.
+                // ERROR_NO_MATCH / ERROR_SPEECH_TIMEOUT 은 "인식 결과 없음"이므로 빈 결과로 처리한다.
                 if (error == AndroidSpeechRecognizer.ERROR_NO_MATCH ||
                     error == AndroidSpeechRecognizer.ERROR_SPEECH_TIMEOUT
                 ) {
@@ -522,12 +763,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onResults(results: Bundle?) {
-                if (!segmentSeen) appendBest(results)
+                if (firstResultNs == 0L) firstResultNs = System.nanoTime()
+                if (segmentCount == 0) appendBest(results)
                 if (!completed.isCompleted) completed.complete(sb.toString().trim())
             }
 
             override fun onSegmentResults(segmentResults: Bundle) {
-                segmentSeen = true
+                if (firstResultNs == 0L) firstResultNs = System.nanoTime()
+                segmentCount++
                 appendBest(segmentResults)
             }
 
@@ -540,14 +783,14 @@ class MainActivity : AppCompatActivity() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, REQUEST_PARTIAL_RESULTS)
             // 파일(파이프) 입력 — 오디오가 닫힐 때(EOF) 세션이 종료된다.
             putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, readSide)
             putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
             putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
             putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, AudioDecoder.TARGET_RATE)
             putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_AUDIO_SOURCE)
-            // ★ 평가용 추가: 기본값 true 인 비속어 마스킹(****)을 끄고, 문장부호 포맷팅을 켠다.
+            // 평가용: 기본값 true 인 비속어 마스킹(****)을 끄고, 문장부호 포맷팅을 켠다.
             putExtra(RecognizerIntent.EXTRA_MASK_OFFENSIVE_WORDS, false)
             putExtra(
                 RecognizerIntent.EXTRA_ENABLE_FORMATTING,
@@ -558,11 +801,24 @@ class MainActivity : AppCompatActivity() {
         val approxSec = pcm.size / BYTES_PER_SEC + 1
         val timeout = (approxSec.toLong() * 2 + 180).seconds
 
+        val sessionStartNs = System.nanoTime()
         return try {
             // startListening / destroy 는 반드시 메인 스레드에서 호출해야 한다(lifecycleScope 기본값 = Main).
             recognizer.startListening(intent)
             feeder.start()
-            withTimeout(timeout) { completed.await() }
+            val text = withTimeout(timeout) { completed.await() }
+            val endNs = System.nanoTime()
+            val eofNs = feeder.finishedAtNs.takeIf { it != 0L } ?: endNs
+
+            SttOutcome(
+                text = text,
+                readyMs = ms(sessionStartNs, readyNs),
+                firstResultMs = ms(sessionStartNs, firstResultNs),
+                feedMs = ms(feeder.startedAtNs, feeder.finishedAtNs),
+                tailMs = ms(eofNs, endNs),
+                sttWallMs = ms(sessionStartNs, endNs),
+                segments = segmentCount,
+            )
         } finally {
             feeder.abort()
             runCatching { readSide.close() }
@@ -614,7 +870,8 @@ class MainActivity : AppCompatActivity() {
     /**
      * 목적: PCM 을 파이프에 일정 속도로 흘려보낸다. 공급이 끝나면 write 쪽이 닫혀 EOF → 세션 종료.
      * 비고: 코루틴 대신 전용 데몬 스레드를 쓴다. 인식기가 먼저 죽어 파이프가 막히면
-     *       블로킹 write 는 코루틴 취소로 풀리지 않아 배치 전체가 멈추기 때문이다(원본 코드의 잠재적 데드락).
+     *       블로킹 write 는 코루틴 취소로 풀리지 않아 배치 전체가 멈추기 때문이다.
+     * change(add)-hyungchul-20260820: 공급 시작/종료 시각을 남겨 tail latency 계산에 쓴다.
      */
     private class PcmFeeder(
         private val writeSide: ParcelFileDescriptor,
@@ -629,12 +886,21 @@ class MainActivity : AppCompatActivity() {
         @Volatile
         private var started = false
 
+        @Volatile
+        var startedAtNs: Long = 0L
+            private set
+
+        @Volatile
+        var finishedAtNs: Long = 0L
+            private set
+
         val finished = CompletableDeferred<Unit>()
 
         private val thread = Thread({
             try {
                 feed()
             } finally {
+                finishedAtNs = System.nanoTime()
                 onFed(1.0)
                 finished.complete(Unit)
             }
@@ -642,6 +908,7 @@ class MainActivity : AppCompatActivity() {
 
         fun start() {
             started = true
+            startedAtNs = System.nanoTime()
             thread.start()
         }
 
@@ -687,6 +954,7 @@ class MainActivity : AppCompatActivity() {
         val uri: Uri,
         val relPath: List<String>,
         val nameNoExt: String,
+        val sizeBytes: Long,   // change(add)-hyungchul-20260820: 원본 파일 크기(CSV src_bytes)
     )
 
     private fun collectAudio(dir: DocumentFile, prefix: List<String>, acc: MutableList<AudioItem>) {
@@ -699,7 +967,7 @@ class MainActivity : AppCompatActivity() {
                 val ext = if (dot >= 0) name.substring(dot + 1).lowercase(Locale.US) else ""
                 if (ext in audioExtensions) {
                     val base = if (dot >= 0) name.substring(0, dot) else name
-                    acc.add(AudioItem(child.uri, prefix, base))
+                    acc.add(AudioItem(child.uri, prefix, base, child.length()))
                 }
             }
         }
@@ -740,13 +1008,11 @@ class MainActivity : AppCompatActivity() {
             ?: throw IOException("파일 쓰기 실패: $fileName")
     }
 
-    private fun csvRow(path: String, status: String, startedAtNs: Long, text: String): String {
-        val elapsed = (System.nanoTime() - startedAtNs) / 1_000_000_000.0
-        fun q(s: String) = "\"" + s.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\""
-        return "${q(path)},$status,${String.format(Locale.US, "%.2f", elapsed)},${text.length},${q(text)}\n"
-    }
-
     // ─────────────────────────── 유틸 ───────────────────────────
+    /** 두 nanoTime 사이를 ms 로. 끝값이 0(미측정)이면 -1 을 돌려 CSV 에서 구분되게 한다. */
+    private fun ms(fromNs: Long, toNs: Long): Long =
+        if (fromNs <= 0L || toNs <= 0L || toNs < fromNs) -1L else (toNs - fromNs) / 1_000_000
+
     private fun updateProgress(fraction: Double) {
         val clamped = fraction.coerceIn(0.0, 1.0)
         runOnUiThread {
@@ -756,10 +1022,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun statusName(status: Int): String = when (status) {
-        FeatureStatus.AVAILABLE -> "AVAILABLE(사용 가능)"
-        FeatureStatus.DOWNLOADABLE -> "DOWNLOADABLE(다운로드 필요)"
-        FeatureStatus.DOWNLOADING -> "DOWNLOADING(다운로드 중)"
-        FeatureStatus.UNAVAILABLE -> "UNAVAILABLE(이 기기에서 미지원)"
+        FeatureStatus.AVAILABLE -> "AVAILABLE"
+        FeatureStatus.DOWNLOADABLE -> "DOWNLOADABLE"
+        FeatureStatus.DOWNLOADING -> "DOWNLOADING"
+        FeatureStatus.UNAVAILABLE -> "UNAVAILABLE"
         else -> "UNKNOWN($status)"
     }
 
@@ -815,24 +1081,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        /** utf-8-sig BOM */
-        private val BOM = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
-
         /** 16 kHz × 2바이트 = 32,000 바이트/초 */
         private const val BYTES_PER_SEC = 32_000
 
         /** 100 ms 분량 = 3,200 바이트 */
         private const val CHUNK_BYTES = 3_200
 
-        /** ML Kit 은 공식 문서가 "실시간 속도" 공급을 요구하므로 100 ms 를 유지한다. */
-        private const val MLKIT_CHUNK_DELAY_MS = 100L
+        /** 중간 저장 주기(파일 수) */
+        private const val CSV_FLUSH_EVERY = 10
 
         /**
-         * Android Platform 경로도 기본은 실시간(100 ms).
-         * 배치 속도를 올리고 싶으면 15~30 ms 로 낮춰볼 수 있다
-         * (expo-speech-recognition 은 on-device 경로에서 15 ms 를 쓴다).
-         * 낮춘 뒤에는 반드시 결과가 잘리지 않는지 몇 개 파일로 검증할 것.
+         * 플랫폼 경로에서 partial 결과를 받을지 여부.
+         * true 로 두면 first_result_ms(TTFT)를 제대로 잴 수 있다. partial 텍스트는 결과에 넣지 않는다.
+         * 이전 실행과 결과를 엄격히 동일하게 맞춰야 한다면 false 로 되돌린다.
          */
-        private const val ANDROID_CHUNK_DELAY_MS = 100L
+        private const val REQUEST_PARTIAL_RESULTS = true
     }
 }

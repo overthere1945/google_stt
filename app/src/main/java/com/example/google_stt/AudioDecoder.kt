@@ -41,12 +41,33 @@ object AudioDecoder {
     private data class Pcm(val bytes: ByteArray, val rate: Int, val channels: Int)
 
     /**
-     * 목적: 오디오 파일 URI 를 16 kHz / mono / 16-bit PCM 바이트 배열로 변환한다.
+     * change(add)-hyungchul-20260820
+     * 목적: 계측(CSV)용으로 원본 오디오 메타데이터와 디코딩 소요시간까지 함께 돌려준다.
+     * 필드:
+     * - pcm         : 16 kHz / mono / PCM16 little-endian (STT 입력)
+     * - srcMime     : 원본 코덱 mime (audio/mpeg, audio/mp4a-latm, audio/raw …)
+     * - srcRate     : 원본 샘플레이트(Hz)
+     * - srcChannels : 원본 채널 수
+     * - durationSec : 변환 후 음원 길이(초) = pcm.size / 32000
+     * - decodeMs    : 디코딩+리샘플링에 걸린 시간(ms)
+     */
+    data class DecodeResult(
+        val pcm: ByteArray,
+        val srcMime: String,
+        val srcRate: Int,
+        val srcChannels: Int,
+        val durationSec: Double,
+        val decodeMs: Long,
+    )
+
+    /**
+     * 목적: 오디오 파일 URI 를 16 kHz / mono / 16-bit PCM 으로 변환하고 메타데이터를 함께 반환한다.
      * 입력: context(ContentResolver 용), uri(SAF DocumentFile 의 uri)
-     * 출력: 헤더 없는 raw PCM16 little-endian ByteArray
+     * 출력: DecodeResult
      * 예외: 오디오 트랙이 없거나 디코더 생성에 실패하면 IllegalArgumentException / MediaCodec 예외
      */
-    fun decodeTo16kMonoPcm(context: Context, uri: Uri): ByteArray {
+    fun decodeDetailed(context: Context, uri: Uri): DecodeResult {
+        val t0 = System.nanoTime()
         val extractor = MediaExtractor()
         context.contentResolver.openFileDescriptor(uri, "r").use { pfd ->
             requireNotNull(pfd) { "파일을 열 수 없습니다: $uri" }
@@ -65,11 +86,28 @@ object AudioDecoder {
                 else decodeWithCodec(extractor, format, mime)
 
             val mono = downmixToMono(decoded.bytes, decoded.channels)
-            return resampleTo16k(mono, decoded.rate)
+            val out = resampleTo16k(mono, decoded.rate)
+            return DecodeResult(
+                pcm = out,
+                srcMime = mime,
+                srcRate = decoded.rate,
+                srcChannels = decoded.channels,
+                // 16 kHz × 2바이트 = 32,000 바이트/초
+                durationSec = out.size / 32000.0,
+                decodeMs = (System.nanoTime() - t0) / 1_000_000,
+            )
         } finally {
             extractor.release()
         }
     }
+
+    /**
+     * 목적: 기존 호출부 호환용 래퍼. PCM 만 필요할 때 쓴다.
+     * 입력: context, uri
+     * 출력: 헤더 없는 raw PCM16 little-endian ByteArray
+     */
+    fun decodeTo16kMonoPcm(context: Context, uri: Uri): ByteArray =
+        decodeDetailed(context, uri).pcm
 
     private fun selectAudioTrack(extractor: MediaExtractor): Int {
         for (i in 0 until extractor.trackCount) {

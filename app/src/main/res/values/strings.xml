@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   app/src/main/res/values/strings.xml
-  ★ 기존 activity_main.xml(ConstraintLayout 버전)이 참조하는 키 + MainActivity.kt 가 쓰는 키를 모두 포함한다.
-    (전에 드린 strings.xml 에는 레이아웃용 키가 빠져 있어서 AAPT 링크 에러가 이어서 났을 것이다.)
+  change(add)-hyungchul-20260820: Feed(오디오 공급 속도) 스피너용 문자열 추가.
 -->
 <resources>
     <string name="app_name">Google On-device STT</string>
@@ -19,6 +18,10 @@
     <string name="progress_title">전체 진행률</string>
     <string name="progress_zero">0.0%</string>
     <string name="log_title">진행 로그</string>
+
+    <!-- change-hyungchul-20260824 : Feed 속도(항목은 MainActivity 의 feeds 목록에서 자동 생성) -->
+    <string name="feed_title">Feed (오디오 공급 속도)</string>
+    <string name="feed_hint">이 엔진은 스트리밍 전용이라 stt_wall_ms 가 공급 속도에 묶인다(REALTIME→RTF≈1.0, 15ms→RTF≈0.15). 지연 없음(MAX)은 ERROR_TYPE_AUDIO_BUFFER_OVERFLOW 로 실패한다. 전량 OK 이면서 전사 텍스트가 REALTIME 과 동일한 가장 낮은 지연값이 이 엔진의 진짜 RTF 다. 10→8→6→5→4→3→2 ms 순으로 낮춰가며 확인할 것.</string>
 
     <!-- ── MainActivity.kt 가 참조하는 키 ── -->
     <string name="input_label">입력: %1$s</string>
