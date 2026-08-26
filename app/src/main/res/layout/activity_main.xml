@@ -2,6 +2,8 @@
 <!--
   app/src/main/res/layout/activity_main.xml
   change(add)-hyungchul-20260820: Feed(오디오 공급 속도) 스피너 추가.
+  change(add)-hyungchul-20260825-1430: Silero VAD On/Off + Profile + Custom 파라미터 UI 추가.
+    Feed 스피너와 Start 버튼 사이에만 삽입했고, 기존 위젯의 순서/속성은 하나도 바꾸지 않았다.
     지연(latency) 측정에서 공급 속도가 최대 교란 요인이라 UI에서 고르고 CSV에 함께 기록한다.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -113,6 +115,130 @@
                 android:textSize="12sp"
                 android:paddingBottom="12dp"
                 android:textColor="?android:attr/textColorSecondary" />
+
+            <!-- add-hyungchul-20260825-1430 : Silero VAD (STT 앞단 선택적 전처리) -->
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/vadSwitch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/vad_switch"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:checked="false"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp" />
+
+            <LinearLayout
+                android:id="@+id/vadOptionsGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vad_profile_title"
+                    android:textStyle="bold"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <Spinner
+                    android:id="@+id/vadProfileSpinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="8dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vad_threshold_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/vadThresholdEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="numberDecimal"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="0.50"
+                    android:hint="0.50" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vad_min_speech_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/vadMinSpeechEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="100"
+                    android:hint="100" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vad_min_silence_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/vadMinSilenceEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="300"
+                    android:hint="300" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vad_speech_pad_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/vadSpeechPadEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="200"
+                    android:hint="200" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vad_max_speech_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/vadMaxSpeechEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="numberDecimal"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="0"
+                    android:hint="0" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/vad_hint"
+                    android:textSize="12sp"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:paddingTop="4dp" />
+
+            </LinearLayout>
 
             <!-- Start -->
             <Button

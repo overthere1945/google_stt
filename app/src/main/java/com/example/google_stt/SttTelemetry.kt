@@ -18,6 +18,15 @@
  *     3) app_rx/tx_delta : 이 앱 UID 통신량 증가분 (0 이면 앱은 네트워크를 쓰지 않았다)
  *        dev_rx/tx_delta : 기기 전체 통신량 증가분 (다른 앱 트래픽이 섞이므로 참고용)
  *
+ * change(add)-hyungchul-20260825-1430 — Silero VAD 계측 추가
+ *   · VAD 설정(threshold/neg_threshold/min speech/min silence/padding/max speech)과
+ *     처리시간, 원본·출력 길이, 제거 길이/비율, segment 수를 파일마다 기록한다.
+ *   · ★ VAD 컬럼은 기존 컬럼 뒤에 append 한다. 기존 44개 컬럼의 index 가 바뀌지 않으므로
+ *     기존 파이썬 후처리 스크립트를 고치지 않아도 된다.
+ *   · total_ms = decode + vad_process + stt_wall 로 정의를 확장했다(VAD OFF 면 vad_process=0 이라 기존과 동일).
+ *   · rtf 정의는 그대로 두고(= stt_wall / 원본 음원 길이), VAD ON/OFF 비교용으로
+ *     rtf_stt_input(= stt_wall / STT 에 실제로 넣은 길이)과 total_rtf 를 새로 추가했다.
+ *
  * 파일 구조상 주의: Row / ResourceSnapshot 은 최상위 클래스로 둔다.
  *   (object 안의 중첩 클래스에서는 바깥 object 멤버를 수식 없이 부를 수 없기 때문)
  */
@@ -61,6 +70,29 @@ data class SttRow(
     var srcCh: Int = -1,
     var srcBytes: Long = -1,
 
+    // add-hyungchul-20260825-1430 : Silero VAD
+    /** 1 = VAD ON, 0 = OFF(기존 baseline) */
+    var vadEnabled: Int = 0,
+    var vadModel: String = "",
+    var vadProfile: String = "",
+    var vadThreshold: Double = -1.0,
+    var vadNegThreshold: Double = -1.0,
+    var vadMinSpeechMs: Int = -1,
+    var vadMinSilenceMs: Int = -1,
+    var vadSpeechPadMs: Int = -1,
+    /** -1 = Unlimited */
+    var vadMaxSpeechSec: Double = -1.0,
+    /** VAD 추론 + PCM 재구성에 걸린 시간. OFF 면 0. */
+    var vadProcessMs: Long = 0,
+    var vadOriginalSec: Double = -1.0,
+    /** ★ STT 에 실제로 공급한 PCM 길이. OFF 면 vadOriginalSec 과 같다. */
+    var vadOutputSec: Double = -1.0,
+    /** padding 적용 전 순수 검출 speech 길이. OFF 면 -1(미측정). */
+    var vadDetectedSpeechSec: Double = -1.0,
+    var vadRemovedSec: Double = -1.0,
+    var vadRemovedRatio: Double = -1.0,
+    var vadSegmentCount: Int = 0,
+
     var decodeMs: Long = -1,
     var feedMode: String = "",
     var feedDelayMs: Long = -1,
@@ -97,9 +129,20 @@ data class SttRow(
     var error: String = "",
     var text: String = "",
 ) {
-    /** total_ms = 디코딩 + STT 전체 */
-    private fun totalMs(): Long =
-        if (decodeMs >= 0 && sttWallMs >= 0) decodeMs + sttWallMs else -1
+    /**
+     * total_ms = 디코딩 + VAD + STT 전체.
+     * change-hyungchul-20260825-1430: VAD 처리시간을 합산한다(VAD OFF 면 0 이라 기존 값과 동일하다).
+     * NO_SPEECH_BY_VAD 는 STT 를 의도적으로 호출하지 않으므로 decode + VAD 까지만 합산한다.
+     */
+    private fun totalMs(): Long {
+        if (decodeMs < 0) return -1
+        val pre = decodeMs + vadProcessMs.coerceAtLeast(0)
+        return when {
+            sttWallMs >= 0 -> pre + sttWallMs
+            status == "NO_SPEECH_BY_VAD" -> pre
+            else -> -1
+        }
+    }
 
     /** rtf = STT 전체 시간 / 음원 길이. 1.0 미만이면 실시간보다 빠르다. */
     private fun rtf(): Double =
@@ -108,6 +151,21 @@ data class SttRow(
     /** tail_rtf = 공급 종료 후 남은 처리시간 / 음원 길이. 공급속도에 영향받지 않는 핵심 지표. */
     private fun tailRtf(): Double =
         if (audioSec > 0 && tailMs >= 0) tailMs / 1000.0 / audioSec else -1.0
+
+    /**
+     * add-hyungchul-20260825-1430
+     * rtf_stt_input = STT 전체 시간 / "STT 에 실제로 넣은 오디오 길이".
+     * VAD OFF 면 rtf 와 같고, VAD ON 이면 무음 제거 후 길이가 분모라 엔진 속도를 그대로 비교할 수 있다.
+     * (rtf 는 분모가 원본 길이라 VAD ON 에서 작아지므로 엔진 비교에 그대로 쓰면 안 된다)
+     */
+    private fun rtfSttInput(): Double =
+        if (vadOutputSec > 0 && sttWallMs >= 0) sttWallMs / 1000.0 / vadOutputSec else -1.0
+
+    /** add-hyungchul-20260825-1430: total_rtf = (decode + VAD + STT) / 원본 음원 길이. PL 보고용 end-to-end 지표. */
+    private fun totalRtf(): Double {
+        val t = totalMs()
+        return if (audioSec > 0 && t >= 0) t / 1000.0 / audioSec else -1.0
+    }
 
     fun toCsvLine(): String = listOf(
         SttTelemetry.q(path), SttTelemetry.q(file), status, engine, mode, execution, lang,
@@ -125,6 +183,16 @@ data class SttRow(
         cpuMsDelta.toString(), pssKb.toString(), battUahDelta.toString(),
         battPct.toString(), SttTelemetry.f1(battTempC), thermal,
         startedAt, SttTelemetry.q(error), SttTelemetry.q(text),
+
+        // add-hyungchul-20260825-1430 : VAD 컬럼은 반드시 맨 뒤에 붙인다(기존 index 보존).
+        vadEnabled.toString(), SttTelemetry.q(vadModel), SttTelemetry.q(vadProfile),
+        SttTelemetry.f3(vadThreshold), SttTelemetry.f3(vadNegThreshold),
+        vadMinSpeechMs.toString(), vadMinSilenceMs.toString(), vadSpeechPadMs.toString(),
+        SttTelemetry.f2(vadMaxSpeechSec), vadProcessMs.toString(),
+        SttTelemetry.f3(vadOriginalSec), SttTelemetry.f3(vadOutputSec),
+        SttTelemetry.f3(vadDetectedSpeechSec), SttTelemetry.f3(vadRemovedSec),
+        SttTelemetry.f2(vadRemovedRatio), vadSegmentCount.toString(),
+        SttTelemetry.f3(rtfSttInput()), SttTelemetry.f3(totalRtf()),
     ).joinToString(",") + "\n"
 }
 
@@ -215,6 +283,13 @@ object SttTelemetry {
         "cpu_ms_delta", "pss_kb", "batt_uah_delta", "batt_pct", "batt_temp_c", "thermal",
         // 기타
         "started_at", "error", "text",
+
+        // add-hyungchul-20260825-1430 : Silero VAD (기존 44개 컬럼 뒤에 append)
+        "vad_enabled", "vad_model", "vad_profile", "vad_threshold", "vad_neg_threshold",
+        "vad_min_speech_ms", "vad_min_silence_ms", "vad_speech_pad_ms", "vad_max_speech_sec",
+        "vad_process_ms", "vad_original_sec", "vad_output_sec", "vad_detected_speech_sec",
+        "vad_removed_sec", "vad_removed_ratio", "vad_segment_count",
+        "rtf_stt_input", "total_rtf",
     ).joinToString(",") + "\n"
 
     /**
