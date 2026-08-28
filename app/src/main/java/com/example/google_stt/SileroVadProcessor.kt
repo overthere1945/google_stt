@@ -19,7 +19,7 @@
  * - src/silero_vad/model.py → opset 15 파일명은 silero_vad_16k_op15.onnx (16 kHz 전용)
  *
  * ※ 모델 파일은 라이선스(MIT) 원본을 그대로 받아 app/src/main/assets/ 에 넣어야 한다.
- *    받는 방법은 app/src/main/assets/README_SILERO_MODEL.md 와 tools/download_silero_vad_model.sh 참고.
+ *    받는 방법은 app/src/main/assets/README_SILERO_MODEL.md 와 tools/download_models.sh 참고.
  *
  * add-hyungchul-20260825-1430
  */
@@ -233,7 +233,7 @@ class SileroVadProcessor(context: Context) : AutoCloseable {
             context.assets.open(MODEL_ASSET).use { it.readBytes() }
         } catch (e: IOException) {
             throw FileNotFoundException(
-                "assets/$MODEL_ASSET 이 없습니다. tools/download_silero_vad_model.sh 를 실행하거나 " +
+                "assets/$MODEL_ASSET 이 없습니다. tools/download_models.sh 를 실행하거나 " +
                     "Silero 공식 모델을 app/src/main/assets/$MODEL_ASSET 에 넣어주세요. (원인: ${e.message})",
             )
         }

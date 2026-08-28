@@ -3,6 +3,7 @@
   app/src/main/res/layout/activity_main.xml
   change(add)-hyungchul-20260820: Feed(오디오 공급 속도) 스피너 추가.
   change(add)-hyungchul-20260825-1430: Silero VAD On/Off + Profile + Custom 파라미터 UI 추가.
+  change(add)-hyungchul-20260826-1100: Noise Reduction 알고리즘 선택 + 옵션 UI 추가.
     Feed 스피너와 Start 버튼 사이에만 삽입했고, 기존 위젯의 순서/속성은 하나도 바꾸지 않았다.
     지연(latency) 측정에서 공급 속도가 최대 교란 요인이라 UI에서 고르고 CSV에 함께 기록한다.
 -->
@@ -234,6 +235,148 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/vad_hint"
+                    android:textSize="12sp"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:paddingTop="4dp" />
+
+            </LinearLayout>
+
+            <!-- add-hyungchul-20260826-1100 : Noise Reduction (STT 앞단, VAD 보다 먼저 적용) -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ns_title"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:paddingTop="8dp" />
+
+            <Spinner
+                android:id="@+id/nsAlgoSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <LinearLayout
+                android:id="@+id/nsOptionsGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ns_variant_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <Spinner
+                    android:id="@+id/nsVariantSpinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="8dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ns_atten_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/nsAttenLimitEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="numberDecimal"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="12"
+                    android:hint="12" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ns_threads_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/nsThreadsEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="1"
+                    android:hint="1" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ns_mingain_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/nsMinGainEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="numberSigned|numberDecimal"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="-20"
+                    android:hint="-20" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ns_alpha_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/nsAlphaEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="numberDecimal"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="0.98"
+                    android:hint="0.98" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ns_beta_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/nsBetaEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="numberDecimal"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="0.02"
+                    android:hint="0.02" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ns_quantile_title"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <EditText
+                    android:id="@+id/nsQuantileEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:maxLines="1"
+                    android:importantForAutofill="no"
+                    android:text="10"
+                    android:hint="10" />
+
+                <TextView
+                    android:id="@+id/nsHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ns_hint"
                     android:textSize="12sp"
                     android:textColor="?android:attr/textColorSecondary"
                     android:paddingTop="4dp" />

@@ -29,6 +29,20 @@
  *   · ASR Safe / Balanced / Aggressive 는 Silero 공식 preset 이 아니라 본 프로젝트 평가용 초기값이다.
  *   · VAD 가 WER/CER 을 개선한다고 미리 단정하지 않는다. baseline 과 같은 음원으로 돌려서 수치로 확인해야 한다.
  *
+ * change(add)-hyungchul-20260826-1100 — 노이즈 저감(Noise Reduction)을 VAD 앞단에 추가
+ *   · 파이프라인: 디코딩 → [노이즈 저감] → [Silero VAD] → STT
+ *     (사용자 조사 문서 5장의 권장 순서와 같다. 잡음을 먼저 없애야 VAD 판정도 정확해진다)
+ *   · 알고리즘은 UI 스피너로 런타임에 고른다. 각 알고리즘의 옵션도 화면에서 조절한다.
+ *   · VAD 는 Silero 로 통일했다. 이유:
+ *       (1) 실행 가능한 노이즈 저감 알고리즘(GTCRN/DPDFNet/NSNet2/전통 DSP) 중
+ *           쓸 만한 자체 VAD 를 가진 것이 하나도 없다.
+ *       (2) 자체 VAD 가 있는 WebRTC APM 은 애초에 이 앱에서 실행할 수 없다.
+ *       (3) 알고리즘마다 VAD 가 다르면 WER/CER 차이가 노이즈 저감 때문인지 VAD 때문인지
+ *           구분할 수 없게 된다. 변수를 하나만 바꾸기 위해 VAD 를 고정한다.
+ *   · 결과 저장 경로가 조합으로 갈린다(baseline 을 절대 덮어쓰지 않는다).
+ *       output/google/<모드>/[ns_<알고리즘>/][vad_<프로필>/]...
+ *   · result.csv 에 단계별 소요 시간(prepare/stft/infer/istft/post)을 모두 남긴다.
+ *
  * ※ 이 3개 경로 중 어느 것도 Google Cloud 인증(서비스 계정 JSON, API Key, OAuth 토큰)을 사용하지 않는다.
  */
 package com.example.google_stt
@@ -70,6 +84,12 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
+import com.example.google_stt.denoise.NoiseAlgorithm            // add-hyungchul-20260826-1100
+import com.example.google_stt.denoise.NoiseAlgorithmKind        // add-hyungchul-20260826-1100
+import com.example.google_stt.denoise.NoiseReduceConfig         // add-hyungchul-20260826-1100
+import com.example.google_stt.denoise.NoiseReducer              // add-hyungchul-20260826-1100
+import com.example.google_stt.denoise.NoiseReducerFactory       // add-hyungchul-20260826-1100
+import com.example.google_stt.denoise.OnnxNoiseReducerBase      // add-hyungchul-20260826-1100
 import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.common.audio.AudioSource
@@ -180,6 +200,21 @@ class MainActivity : AppCompatActivity() {
     /** preset 을 코드로 채워 넣는 동안 TextWatcher 가 Custom 으로 되돌리지 않게 막는 재진입 가드 */
     private var applyingVadPreset = false
 
+    // add-hyungchul-20260826-1100 : Noise Reduction UI
+    private lateinit var nsAlgoSpinner: Spinner
+    private lateinit var nsOptionsGroup: LinearLayout
+    private lateinit var nsVariantSpinner: Spinner
+    private lateinit var nsAttenLimitEdit: EditText
+    private lateinit var nsThreadsEdit: EditText
+    private lateinit var nsMinGainEdit: EditText
+    private lateinit var nsAlphaEdit: EditText
+    private lateinit var nsBetaEdit: EditText
+    private lateinit var nsQuantileEdit: EditText
+    private lateinit var nsHint: TextView
+
+    /** 알고리즘 preset 을 코드로 채우는 동안의 재진입 가드 */
+    private var applyingNsPreset = false
+
     private lateinit var startButton: Button
     private lateinit var logView: TextView
     private lateinit var progressBar: ProgressBar
@@ -242,6 +277,18 @@ class MainActivity : AppCompatActivity() {
         vadSpeechPadEdit = findViewById(R.id.vadSpeechPadEdit)
         vadMaxSpeechEdit = findViewById(R.id.vadMaxSpeechEdit)
 
+        // add-hyungchul-20260826-1100
+        nsAlgoSpinner = findViewById(R.id.nsAlgoSpinner)
+        nsOptionsGroup = findViewById(R.id.nsOptionsGroup)
+        nsVariantSpinner = findViewById(R.id.nsVariantSpinner)
+        nsAttenLimitEdit = findViewById(R.id.nsAttenLimitEdit)
+        nsThreadsEdit = findViewById(R.id.nsThreadsEdit)
+        nsMinGainEdit = findViewById(R.id.nsMinGainEdit)
+        nsAlphaEdit = findViewById(R.id.nsAlphaEdit)
+        nsBetaEdit = findViewById(R.id.nsBetaEdit)
+        nsQuantileEdit = findViewById(R.id.nsQuantileEdit)
+        nsHint = findViewById(R.id.nsHint)
+
         startButton = findViewById(R.id.startButton)
         logView = findViewById(R.id.logView)
         progressBar = findViewById(R.id.progressBar)
@@ -284,7 +331,8 @@ class MainActivity : AppCompatActivity() {
             },
         )
 
-        setupVadUi()   // add-hyungchul-20260825-1430
+        setupVadUi()     // add-hyungchul-20260825-1430
+        setupNoiseUi()   // add-hyungchul-20260826-1100
 
         findViewById<Button>(R.id.inputButton).setOnClickListener { inputPicker.launch(null) }
         findViewById<Button>(R.id.outputButton).setOnClickListener { outputPicker.launch(null) }
@@ -301,7 +349,8 @@ class MainActivity : AppCompatActivity() {
      *       값을 직접 고치면 Profile 이 Custom 으로 자동 전환된다.
      */
     private fun setupVadUi() {
-        val profiles = VadProfile.values()                              // 표시 순서 = enum 선언 순서
+        // change-hyungchul-20260828-1000: values() 는 호출마다 배열을 새로 만든다. entries 는 불변 List 라 권장값이다.
+        val profiles = VadProfile.entries                               // 표시 순서 = enum 선언 순서
         vadProfileSpinner.adapter = ArrayAdapter(                        // Profile 목록을 스피너에 채운다
             this,
             android.R.layout.simple_spinner_dropdown_item,
@@ -411,7 +460,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        val profiles = VadProfile.values()
+        val profiles = VadProfile.entries   // change-hyungchul-20260828-1000
         val profile = profiles[vadProfileSpinner.selectedItemPosition.coerceIn(0, profiles.lastIndex)]
 
         fun requiredFloat(edit: EditText, name: String): Float =
@@ -494,7 +543,7 @@ class MainActivity : AppCompatActivity() {
         }.getOrDefault(false)
         if (!exists) {
             val msg = "assets/${SileroVadProcessor.MODEL_ASSET} 이 없습니다. " +
-                    "tools/download_silero_vad_model.sh 를 실행한 뒤 다시 빌드하세요."
+                    "tools/download_models.sh 를 실행한 뒤 다시 빌드하세요."
             appendLog("[vad][경고] $msg")
             toast(msg)
         }
@@ -506,6 +555,182 @@ class MainActivity : AppCompatActivity() {
         "threshold=${c.threshold}, neg=${c.negThreshold}, minSpeech=${c.minSpeechDurationMs}ms, " +
                 "minSilence=${c.minSilenceDurationMs}ms, pad=${c.speechPadMs}ms, " +
                 "maxSpeech=${c.maxSpeechDurationSec?.toString() ?: "Unlimited"}"
+
+    // ──────────── add-hyungchul-20260826-1100 : Noise Reduction UI ────────────
+    /**
+     * 목적: 노이즈 저감 알고리즘 스피너와 옵션 입력창을 초기화한다.
+     * 입력: 없음 / 출력: 없음 / 리턴: 없음
+     * 동작:
+     *  - 알고리즘을 바꾸면 그 알고리즘의 권장값으로 옵션을 다시 채우고,
+     *    쓰지 않는 옵션은 비활성화한다(무슨 값을 넣어도 결과가 안 바뀌는 칸을 만지지 않도록).
+     *  - ONNX 계열을 고르면 assets 에 모델이 있는지 즉시 확인해 알려 준다.
+     *  - 파일 입력에 적용 불가한 항목을 고르면 사유를 바로 로그에 띄운다.
+     */
+    private fun setupNoiseUi() {
+        val algos = NoiseAlgorithm.entries   // change-hyungchul-20260828-1000
+        nsAlgoSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            algos.map { it.displayName },
+        )
+        nsVariantSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            DPDFNET_VARIANT_LABELS,
+        )
+
+        applyingNsPreset = true
+        nsAlgoSpinner.setSelection(algos.indexOf(NoiseAlgorithm.NONE))   // 기본은 기존 baseline
+        applyNoisePreset(NoiseAlgorithm.NONE)
+        applyingNsPreset = false
+
+        nsAlgoSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (applyingNsPreset) return
+                val algo = algos[position.coerceIn(0, algos.lastIndex)]
+                applyNoisePreset(algo)
+                when {
+                    !algo.runnable -> {
+                        appendLog("[ns][사용 불가] ${algo.displayName}")
+                        appendLog("  → ${algo.unsupportedReason}")
+                        toast("이 알고리즘은 파일 입력에 적용할 수 없습니다. 로그를 확인하세요.")
+                    }
+
+                    algo.kind == NoiseAlgorithmKind.ONNX -> warnIfNoiseModelMissing(algo)
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+    }
+
+    /**
+     * 목적: 알고리즘을 고르면 권장 초기값을 채우고, 쓰지 않는 옵션은 비활성화한다.
+     * 입력: algo
+     * 출력: 없음 (입력창 값/활성 상태와 안내 문구를 바꾼다)
+     * 리턴: 없음
+     */
+    private fun applyNoisePreset(algo: NoiseAlgorithm) {
+        val cfg = NoiseReduceConfig.defaults(algo)
+        applyingNsPreset = true
+        try {
+            nsAttenLimitEdit.setText(String.format(Locale.US, "%.0f", cfg.attenuationLimitDb))
+            nsThreadsEdit.setText(cfg.numThreads.toString())
+            nsMinGainEdit.setText(String.format(Locale.US, "%.0f", cfg.minGainDb))
+            nsAlphaEdit.setText(
+                if (algo == NoiseAlgorithm.SPECTRAL_SUB) {
+                    String.format(Locale.US, "%.2f", cfg.overSubtraction)
+                } else {
+                    String.format(Locale.US, "%.2f", cfg.ddAlpha)
+                },
+            )
+            nsBetaEdit.setText(String.format(Locale.US, "%.3f", cfg.spectralFloor))
+            nsQuantileEdit.setText(cfg.noiseQuantilePct.toString())
+            nsVariantSpinner.setSelection(
+                DPDFNET_VARIANTS.indexOf(cfg.dpdfnetVariant).coerceAtLeast(0),
+            )
+        } finally {
+            applyingNsPreset = false
+        }
+
+        // 알고리즘별로 실제 쓰이는 옵션만 켠다.
+        val onnx = algo.kind == NoiseAlgorithmKind.ONNX
+        val dsp = algo.kind == NoiseAlgorithmKind.DSP
+        val active = onnx || dsp
+        setGroupEnabled(nsOptionsGroup, active)
+        nsVariantSpinner.isEnabled = algo == NoiseAlgorithm.DPDFNET
+        nsThreadsEdit.isEnabled = onnx
+        nsAttenLimitEdit.isEnabled = active
+        nsMinGainEdit.isEnabled = dsp || algo == NoiseAlgorithm.NSNET2
+        nsAlphaEdit.isEnabled = dsp
+        nsBetaEdit.isEnabled = algo == NoiseAlgorithm.SPECTRAL_SUB
+        nsQuantileEdit.isEnabled = dsp
+
+        nsHint.text = when (algo.kind) {
+            NoiseAlgorithmKind.NONE ->
+                "전처리를 하지 않는다. PCM 을 1 byte 도 바꾸지 않고 그대로 STT 에 넣는다(기존 baseline)."
+
+            NoiseAlgorithmKind.UNSUPPORTED ->
+                "이 알고리즘은 이 앱의 파일 입력 방식에 적용할 수 없다.\n${algo.unsupportedReason}"
+
+            NoiseAlgorithmKind.ONNX ->
+                "assets/${algo.modelAsset} 가 필요하다. Attenuation Limit 은 '최대 몇 dB 까지만 줄일지'를 " +
+                    "정해 과도한 제거로 WER 이 나빠지는 것을 막는 안전장치다(0 = 무제한)."
+
+            NoiseAlgorithmKind.DSP ->
+                "모델 파일이 필요 없다. 잡음 스펙트럼은 파일 전체에서 가장 조용한 하위 N% 프레임으로 추정한다. " +
+                    "비정상 소음(카페·음악)에는 딥러닝 계열보다 약하지만, 다운로드 없이 바로 비교할 수 있다."
+        }
+    }
+
+    /**
+     * 목적: ONNX 계열을 고른 즉시 assets 에 모델이 있는지 확인해 알린다.
+     * 입력: algo
+     * 리턴: 파일이 있으면 true
+     * 비고: 여기서 막지는 않는다. 실제 차단은 NoiseReducerFactory 생성 시점의 예외로 처리한다.
+     */
+    private fun warnIfNoiseModelMissing(algo: NoiseAlgorithm): Boolean {
+        val asset = algo.modelAsset ?: return true
+        val exists = runCatching { assets.list("")?.contains(asset) == true }.getOrDefault(false)
+        if (!exists) {
+            val msg = "assets/$asset 이 없습니다. tools/download_models.sh 를 실행한 뒤 다시 빌드하세요."
+            appendLog("[ns][경고] $msg")
+            toast(msg)
+        }
+        return exists
+    }
+
+    /**
+     * 목적: START 를 누른 순간의 노이즈 저감 설정을 읽어 검증한다.
+     * 입력: 없음 / 출력: 없음
+     * 리턴: NoiseReduceConfig
+     * 예외: 값이 잘못됐거나 적용 불가 알고리즘이면 IllegalArgumentException
+     */
+    private fun readNoiseConfig(): NoiseReduceConfig {
+        val algos = NoiseAlgorithm.entries   // change-hyungchul-20260828-1000
+        val algo = algos[nsAlgoSpinner.selectedItemPosition.coerceIn(0, algos.lastIndex)]
+        if (algo == NoiseAlgorithm.NONE) return NoiseReduceConfig(NoiseAlgorithm.NONE)
+        if (!algo.runnable) {
+            throw IllegalArgumentException(
+                "${algo.displayName}\n${algo.unsupportedReason}",
+            )
+        }
+
+        fun num(edit: EditText, name: String): Double =
+            edit.text.toString().trim().toDoubleOrNull()
+                ?: throw IllegalArgumentException("$name 값을 확인하세요.")
+
+        val variantIndex = nsVariantSpinner.selectedItemPosition.coerceIn(0, DPDFNET_VARIANTS.lastIndex)
+        return NoiseReduceConfig(
+            algorithm = algo,
+            attenuationLimitDb = num(nsAttenLimitEdit, "Attenuation Limit"),
+            numThreads = num(nsThreadsEdit, "Threads").toInt(),
+            dpdfnetVariant = DPDFNET_VARIANTS[variantIndex],
+            minGainDb = num(nsMinGainEdit, "Min Gain"),
+            ddAlpha = if (algo == NoiseAlgorithm.SPECTRAL_SUB) 0.98 else num(nsAlphaEdit, "alpha"),
+            overSubtraction = if (algo == NoiseAlgorithm.SPECTRAL_SUB) num(nsAlphaEdit, "alpha") else 4.0,
+            spectralFloor = num(nsBetaEdit, "beta"),
+            noiseQuantilePct = num(nsQuantileEdit, "Noise Quantile").toInt(),
+        )
+    }
+
+    /**
+     * 목적: result.csv 의 노이즈 저감 설정 공통 컬럼을 채운다(파일마다 같은 값).
+     * 입력: row, cfg, reducer(라벨을 얻기 위해, 없으면 null)
+     * 출력: 없음 (row 를 직접 수정)
+     * 리턴: 없음
+     */
+    private fun fillNoiseConfig(row: SttRow, cfg: NoiseReduceConfig, reducer: NoiseReducer?) {
+        if (cfg.algorithm == NoiseAlgorithm.NONE) {
+            row.nsEnabled = 0
+            row.nsAlgorithm = "NONE"
+            return
+        }
+        row.nsEnabled = 1
+        row.nsAlgorithm = cfg.algorithm.name
+        row.nsLabel = reducer?.label ?: (cfg.algorithm.modelAsset ?: "")
+        row.nsConfig = cfg.summary()
+    }
 
     // ─────────────────────────── 실행 ───────────────────────────
     private fun startTranscription() {
@@ -542,6 +767,21 @@ class MainActivity : AppCompatActivity() {
             toast("VAD 설정 오류: ${describe(e)}"); return
         }
 
+        // add-hyungchul-20260826-1100
+        val noiseConfig = try {
+            readNoiseConfig()
+        } catch (e: Exception) {
+            appendLog("[ns][설정 오류] ${describe(e)}")
+            toast("노이즈 저감 설정 오류: ${describe(e)}"); return
+        }
+
+        // 결과 폴더 조합: output/google/<모드>/[ns_xxx/][vad_yyy/]...
+        // baseline(둘 다 미사용)이면 빈 목록이라 기존 경로를 그대로 쓴다.
+        val variantSegments = buildList {
+            noiseConfig.outputFolder()?.let { add(it) }
+            vadSelection.outputFolder?.let { add(it) }
+        }
+
         running = true
         startButton.isEnabled = false
         logView.text = ""
@@ -553,6 +793,7 @@ class MainActivity : AppCompatActivity() {
             var fail = 0
             val csv = StringBuilder(SttTelemetry.CSV_HEADER)
             var vadProcessor: SileroVadProcessor? = null   // add-hyungchul-20260825-1430
+            var noiseReducer: NoiseReducer? = null         // add-hyungchul-20260826-1100
             try {
                 val inputRoot = DocumentFile.fromTreeUri(this@MainActivity, inUri)
                 val outputRoot = DocumentFile.fromTreeUri(this@MainActivity, outUri)
@@ -579,6 +820,14 @@ class MainActivity : AppCompatActivity() {
                         "[vad] OFF — AudioDecoder 가 만든 PCM 을 그대로 STT 에 넣는다(기존 baseline)."
                     },
                 )
+                // add-hyungchul-20260826-1100
+                appendLog(
+                    if (noiseConfig.algorithm == NoiseAlgorithm.NONE) {
+                        "[ns] 사용 안 함 — 디코딩한 PCM 을 그대로 다음 단계로 넘긴다(기존 baseline)."
+                    } else {
+                        "[ns] ${noiseConfig.algorithm.displayName} / ${noiseConfig.summary()}"
+                    },
+                )
                 if (modelConfig.engine == SttEngine.ML_KIT && feed.delayMs < 100L) {
                     appendLog(
                         "[warn] ML Kit 공식 문서는 '실시간 속도' 공급을 요구한다. " +
@@ -588,6 +837,23 @@ class MainActivity : AppCompatActivity() {
 
                 // 실행 전 1회 가용성 점검 — 어떤 엔진이 실제로 쓰이는지 로그와 run_meta 에 남긴다.
                 val preflightText = preflight(modelConfig, locale)
+
+                // add-hyungchul-20260826-1100
+                // 노이즈 저감기도 배치 전체에서 1회만 만든다(모델 로딩 시간이 파일별 계측에 섞이지 않게).
+                if (noiseConfig.algorithm != NoiseAlgorithm.NONE) {
+                    val reducer = withContext(Dispatchers.Default) {
+                        NoiseReducerFactory.create(applicationContext, noiseConfig)
+                    }
+                    noiseReducer = reducer
+                    if (reducer is OnnxNoiseReducerBase) {
+                        appendLog(
+                            "[ns] model=${reducer.label}, ORT=${reducer.runtimeVersion}, " +
+                                "sha256=${reducer.modelSha256.take(16)}...",
+                        )
+                    } else {
+                        appendLog("[ns] impl=${reducer.label} (모델 파일 없이 동작)")
+                    }
+                }
 
                 // add-hyungchul-20260825-1430
                 // ONNX 세션은 배치 전체에서 1회만 만든다(파일마다 만들면 로딩 시간이 계측에 섞인다).
@@ -608,7 +874,7 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) {
                     runCatching {
                         // change-hyungchul-20260825-1430: VAD ON 이면 vad_<profile> 하위에 따로 남긴다.
-                        val dir = ensureRunDir(outputRoot, modelFolder, vadSelection.outputFolder)
+                        val dir = ensureRunDir(outputRoot, modelFolder, variantSegments)
                         // add-hyungchul-20260825-1430
                         // VAD OFF 면 설정 컬럼을 빈 칸으로 남긴다(0 과 "미사용"을 구분하기 위함).
                         val cfg = vadSelection.config
@@ -622,6 +888,11 @@ class MainActivity : AppCompatActivity() {
                         val vadSpeechPadText = if (on) cfg.speechPadMs.toString() else ""
                         val vadMaxSpeechText =
                             if (on) (cfg.maxSpeechDurationSec?.toString() ?: "Unlimited") else ""
+                        // add-hyungchul-20260826-1100
+                        val nsOn = noiseConfig.algorithm != NoiseAlgorithm.NONE
+                        val nsReducer = noiseReducer
+                        val nsModelSha =
+                            if (nsReducer is OnnxNoiseReducerBase) nsReducer.modelSha256 else ""
                         val meta = SttTelemetry.runMetaCsv(
                             applicationContext,
                             linkedMapOf(
@@ -646,7 +917,15 @@ class MainActivity : AppCompatActivity() {
                                 "vad_max_speech_sec" to vadMaxSpeechText,
                                 "onnxruntime_version" to (vadProcessor?.runtimeVersion ?: ""),
                                 "silero_model_sha256" to (vadProcessor?.modelSha256 ?: ""),
-                                "output_variant" to (vadSelection.outputFolder ?: "baseline"),
+                                // add-hyungchul-20260826-1100
+                                "ns_enabled" to nsOn.toString(),
+                                "ns_algorithm" to if (nsOn) noiseConfig.algorithm.name else "NONE",
+                                "ns_label" to (nsReducer?.label ?: ""),
+                                "ns_config" to if (nsOn) noiseConfig.summary() else "",
+                                "ns_model_sha256" to nsModelSha,
+                                "pipeline_order" to "decode -> noise_reduction -> vad -> stt",
+                                "output_variant" to
+                                    (if (variantSegments.isEmpty()) "baseline" else variantSegments.joinToString("/")),
                             ),
                         )
                         writeBytes(
@@ -677,7 +956,8 @@ class MainActivity : AppCompatActivity() {
                         airplane = SttTelemetry.airplaneMode(applicationContext),
                         startedAt = SttTelemetry.isoNow(),
                     )
-                    fillVadConfig(row, vadSelection)   // add-hyungchul-20260825-1430
+                    fillVadConfig(row, vadSelection)                       // add-hyungchul-20260825-1430
+                    fillNoiseConfig(row, noiseConfig, noiseReducer)         // add-hyungchul-20260826-1100
                     val snap = SttResourceSnapshot.take(applicationContext)
 
                     // ── 1) 디코딩 ──
@@ -690,7 +970,7 @@ class MainActivity : AppCompatActivity() {
                         Log.e(logTag, "decode failed: $relName", e)
                         withContext(Dispatchers.IO) {
                             saveResult(
-                                outputRoot, modelFolder, vadSelection.outputFolder, item,
+                                outputRoot, modelFolder, variantSegments, item,
                                 "[ERROR] 디코딩 실패: $msg",
                             )
                         }
@@ -712,15 +992,76 @@ class MainActivity : AppCompatActivity() {
                     row.srcCh = decoded.srcChannels
                     row.vadOriginalSec = decoded.durationSec   // add-hyungchul-20260825-1430
 
-                    // ── add-hyungchul-20260825-1430 : 2) Silero VAD (선택) ──
-                    // sttPcm 이 실제로 STT 에 들어가는 PCM 이다. OFF 면 decoded.pcm 과 완전히 같은 객체다.
-                    var sttPcm = decoded.pcm
+                    // ── add-hyungchul-20260826-1100 : 2) Noise Reduction (선택) ──
+                    // stagePcm 은 노이즈 저감까지 끝난 PCM 이다. 미사용이면 decoded.pcm 과 같은 객체다.
+                    // 길이는 바뀌지 않으므로 audio_sec 은 그대로 유효하다.
+                    var stagePcm = decoded.pcm
+                    if (noiseConfig.algorithm != NoiseAlgorithm.NONE) {
+                        try {
+                            val reducer = noiseReducer
+                                ?: throw IllegalStateException("노이즈 저감기가 초기화되지 않았습니다.")
+                            val ns = withContext(Dispatchers.Default) {
+                                reducer.process(decoded.pcm, noiseConfig)
+                            }
+                            stagePcm = ns.pcm
+                            row.nsFrames = ns.frames
+                            row.nsPrepareMs = ns.prepareMs
+                            row.nsStftMs = ns.stftMs
+                            row.nsInferMs = ns.inferMs
+                            row.nsIstftMs = ns.istftMs
+                            row.nsPostMs = ns.postMs
+                            row.nsTotalMs = ns.totalMs
+                            row.nsInferPerFrameUs = ns.inferPerFrameUs
+                            row.nsInRmsDb = ns.inRmsDb
+                            row.nsOutRmsDb = ns.outRmsDb
+                            row.nsReductionDb = ns.reductionDb
+                            row.nsPeak = ns.peak
+                            row.nsNote = ns.note
+
+                            appendLog(
+                                "[ns] $relName : ${"%.1f".format(Locale.US, ns.inRmsDb)}dB → " +
+                                        "${"%.1f".format(Locale.US, ns.outRmsDb)}dB " +
+                                        "(감쇠 ${"%.1f".format(Locale.US, ns.reductionDb)}dB, " +
+                                        "frames=${ns.frames}, ${ns.totalMs}ms " +
+                                        "[stft ${ns.stftMs} / infer ${ns.inferMs} / istft ${ns.istftMs}])",
+                            )
+                            if (ns.peak > 0.999) {
+                                appendLog("[ns][경고] 출력이 클리핑되었다(peak=${"%.3f".format(Locale.US, ns.peak)}).")
+                            }
+                        } catch (e: Exception) {
+                            // ★ VAD 와 같은 원칙: 실패해도 조용히 원음으로 되돌리지 않는다.
+                            //   되돌리면 CSV 에는 ns_enabled=1 인데 실제로는 처리 안 된 행이 섞여 비교가 깨진다.
+                            val msg = describe(e)
+                            Log.e(logTag, "noise reduction failed: $relName", e)
+                            row.status = "ERROR"
+                            row.error = "NS: $msg"
+                            withContext(Dispatchers.IO) {
+                                saveResult(
+                                    outputRoot, modelFolder, variantSegments, item,
+                                    "[ERROR] 노이즈 저감 실패: $msg",
+                                )
+                            }
+                            snap.fillDelta(applicationContext, row)
+                            csv.append(row.toCsvLine())
+                            fail++
+                            completedUnits++
+                            updateProgress(completedUnits.toDouble() / totalUnits)
+                            appendLog("[노이즈 저감 실패] $relName — $msg")
+                            continue
+                        }
+                    }
+
+                    // ── add-hyungchul-20260825-1430 : 3) Silero VAD (선택) ──
+                    // sttPcm 이 실제로 STT 에 들어가는 PCM 이다. OFF 면 stagePcm 과 완전히 같은 객체다.
+                    // ★ VAD 는 "노이즈 저감을 끝낸" 신호를 본다. 잡음을 먼저 없애야 음성 구간 판정이 정확해진다
+                    //   (사용자 조사 문서 5장의 권장 순서와 동일).
+                    var sttPcm = stagePcm
                     if (vadSelection.enabled) {
                         try {
                             val processor = vadProcessor
                                 ?: throw IllegalStateException("Silero VAD processor 가 초기화되지 않았습니다.")
                             val vadResult = withContext(Dispatchers.Default) {
-                                processor.process(decoded.pcm, vadSelection.config)
+                                processor.process(stagePcm, vadSelection.config)
                             }
                             sttPcm = vadResult.pcm
                             row.vadProcessMs = vadResult.processMs
@@ -747,7 +1088,7 @@ class MainActivity : AppCompatActivity() {
                                 row.words = 0
                                 withContext(Dispatchers.IO) {
                                     saveResult(
-                                        outputRoot, modelFolder, vadSelection.outputFolder, item, "",
+                                        outputRoot, modelFolder, variantSegments, item, "",
                                     )
                                 }
                                 snap.fillDelta(applicationContext, row)
@@ -761,7 +1102,7 @@ class MainActivity : AppCompatActivity() {
                                         runCatching {
                                             writeCsv(
                                                 outputRoot, modelFolder,
-                                                vadSelection.outputFolder, csv.toString(),
+                                                variantSegments, csv.toString(),
                                             )
                                         }
                                     }
@@ -777,7 +1118,7 @@ class MainActivity : AppCompatActivity() {
                             row.error = "VAD: $msg"
                             withContext(Dispatchers.IO) {
                                 saveResult(
-                                    outputRoot, modelFolder, vadSelection.outputFolder, item,
+                                    outputRoot, modelFolder, variantSegments, item,
                                     "[ERROR] VAD 실패: $msg",
                                 )
                             }
@@ -790,7 +1131,7 @@ class MainActivity : AppCompatActivity() {
                             continue
                         }
                     } else {
-                        // VAD OFF baseline: STT 입력 PCM 을 단 1 byte 도 바꾸지 않는다.
+                        // VAD OFF: 앞 단계(노이즈 저감까지)의 PCM 을 단 1 byte 도 더 바꾸지 않는다.
                         row.vadProcessMs = 0
                         row.vadOutputSec = decoded.durationSec
                         row.vadDetectedSpeechSec = -1.0   // 미측정(-1)과 0.0 을 구분한다
@@ -799,7 +1140,7 @@ class MainActivity : AppCompatActivity() {
                         row.vadSegmentCount = 0
                     }
 
-                    // ── 3) STT ──
+                    // ── 4) STT ──
                     val baseUnits = completedUnits
                     try {
                         val outcome = when (modelConfig.engine) {
@@ -834,7 +1175,7 @@ class MainActivity : AppCompatActivity() {
 
                         withContext(Dispatchers.IO) {
                             saveResult(
-                                outputRoot, modelFolder, vadSelection.outputFolder, item, outcome.text,
+                                outputRoot, modelFolder, variantSegments, item, outcome.text,
                             )
                         }
                         ok++
@@ -849,7 +1190,7 @@ class MainActivity : AppCompatActivity() {
                         Log.e(logTag, "transcribe failed: $modelFolder/$relName", e)
                         withContext(Dispatchers.IO) {
                             saveResult(
-                                outputRoot, modelFolder, vadSelection.outputFolder, item, "[ERROR] $msg",
+                                outputRoot, modelFolder, variantSegments, item, "[ERROR] $msg",
                             )
                         }
                         row.status = "ERROR"
@@ -870,7 +1211,7 @@ class MainActivity : AppCompatActivity() {
                         withContext(Dispatchers.IO) {
                             runCatching {
                                 writeCsv(
-                                    outputRoot, modelFolder, vadSelection.outputFolder, csv.toString(),
+                                    outputRoot, modelFolder, variantSegments, csv.toString(),
                                 )
                             }
                         }
@@ -878,7 +1219,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 withContext(Dispatchers.IO) {
-                    writeCsv(outputRoot, modelFolder, vadSelection.outputFolder, csv.toString())
+                    writeCsv(outputRoot, modelFolder, variantSegments, csv.toString())
                 }
 
                 updateProgress(1.0)
@@ -893,13 +1234,14 @@ class MainActivity : AppCompatActivity() {
                     val outputRoot = DocumentFile.fromTreeUri(this@MainActivity, outUri)
                     if (outputRoot != null) {
                         withContext(Dispatchers.IO) {
-                            writeCsv(outputRoot, modelFolder, vadSelection.outputFolder, csv.toString())
+                            writeCsv(outputRoot, modelFolder, variantSegments, csv.toString())
                         }
                     }
                 }
                 toast(getString(R.string.msg_error, describe(e)))
             } finally {
                 runCatching { vadProcessor?.close() }   // add-hyungchul-20260825-1430
+                runCatching { noiseReducer?.close() }   // add-hyungchul-20260826-1100
                 running = false
                 startButton.isEnabled = true
             }
@@ -908,29 +1250,32 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * add-hyungchul-20260825-1430
+     * change-hyungchul-20260826-1100: vadFolder(String?) → variant(List<String>) 로 일반화.
+     *   노이즈 저감 폴더가 하나 더 끼어들어야 해서, 앞으로 단계가 늘어나도 시그니처를 안 바꾸도록
+     *   "추가 경로 조각 목록"을 그대로 받는다.
      * 목적: 이번 실행의 결과 폴더를 만든다.
      * 입력: outputRoot(출력 트리), modelFolder(base/advanced/android_ondevice),
-     *       vadFolder — null 이면 VAD OFF 이며 기존 경로를 그대로 쓴다.
-     * 리턴: output/google/<모드>[/vad_<profile>] DocumentFile
+     *       variant — 비어 있으면 기존 경로를 그대로 쓴다. 예: ["ns_gtcrn_lim12", "vad_asr_safe"]
+     * 리턴: output/google/<모드>[/ns_xxx][/vad_yyy] DocumentFile
      */
     private fun ensureRunDir(
         outputRoot: DocumentFile,
         modelFolder: String,
-        vadFolder: String?,
+        variant: List<String>,
     ): DocumentFile {
         val segments = mutableListOf(algoName, modelFolder)
-        if (vadFolder != null) segments.add(vadFolder)
+        segments.addAll(variant)
         return ensureDir(outputRoot, segments)
     }
 
-    // change-hyungchul-20260825-1430: vadFolder 인자 추가(null 이면 기존 동작과 동일)
+    // change-hyungchul-20260826-1100: variant 목록을 받는다(빈 목록이면 기존 동작과 동일)
     private fun writeCsv(
         outputRoot: DocumentFile,
         modelFolder: String,
-        vadFolder: String?,
+        variant: List<String>,
         body: String,
     ) {
-        val dir = ensureRunDir(outputRoot, modelFolder, vadFolder)
+        val dir = ensureRunDir(outputRoot, modelFolder, variant)
         writeBytes(
             dir, "result.csv",
             SttTelemetry.BOM + body.toByteArray(Charsets.UTF_8), "text/csv",
@@ -1079,6 +1424,9 @@ class MainActivity : AppCompatActivity() {
             var firstResponseNs = 0L
             var finalCount = 0
 
+            // ※ IDE 가 "Initializer is redundant" 로 표시할 수 있으나 오탐이다.
+            //   try 블록 안에서만 대입되므로 초기값이 없으면 Kotlin 의 확정 대입(definite assignment)
+            //   검사를 통과하지 못해 컴파일 자체가 안 된다. 지우면 안 된다.
             var sessionStartNs = 0L
             var endNs = 0L
 
@@ -1397,7 +1745,8 @@ class MainActivity : AppCompatActivity() {
                     try {
                         os.write(pcm, offset, end - offset)
                         os.flush()
-                    } catch (e: IOException) {
+                    } catch (_: IOException) {
+                        // change-hyungchul-20260828-1000: 예외 객체를 쓰지 않으므로 _ 로 둔다.
                         return // 인식기가 먼저 닫힘(EPIPE)
                     }
                     offset = end
@@ -1405,7 +1754,8 @@ class MainActivity : AppCompatActivity() {
                     if (chunkDelayMs > 0) {
                         try {
                             Thread.sleep(chunkDelayMs)
-                        } catch (e: InterruptedException) {
+                        } catch (_: InterruptedException) {
+                            // change-hyungchul-20260828-1000: 예외 객체를 쓰지 않으므로 _ 로 둔다.
                             return
                         }
                     }
@@ -1439,16 +1789,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────── 출력 저장 ───────────────────────────
-    // change-hyungchul-20260825-1430: vadFolder 인자 추가(null 이면 기존 경로와 완전히 동일)
+    // change-hyungchul-20260826-1100: variant 목록을 받는다(빈 목록이면 기존 경로와 완전히 동일)
     private fun saveResult(
         outputRoot: DocumentFile,
         modeFolder: String,
-        vadFolder: String?,
+        variant: List<String>,
         item: AudioItem,
         text: String,
     ) {
         val segments = mutableListOf(algoName, modeFolder)
-        if (vadFolder != null) segments.add(vadFolder)
+        segments.addAll(variant)
         segments.addAll(item.relPath)
         val dir = ensureDir(outputRoot, segments)
         writeBytes(dir, item.nameNoExt + ".txt", text.toByteArray(Charsets.UTF_8))
@@ -1565,5 +1915,17 @@ class MainActivity : AppCompatActivity() {
          * 이전 실행과 결과를 엄격히 동일하게 맞춰야 한다면 false 로 되돌린다.
          */
         private const val REQUEST_PARTIAL_RESULTS = true
+
+        // add-hyungchul-20260826-1100
+        /** DPDFNet 변형 모델 키. assets 파일명은 baseline→dpdfnet_baseline.onnx, 2→dpdfnet2.onnx 이다. */
+        private val DPDFNET_VARIANTS = listOf("baseline", "2", "4", "8")
+
+        /** 스피너에 보여줄 이름(파일 크기를 같이 적어 고르기 쉽게 한다). */
+        private val DPDFNET_VARIANT_LABELS = listOf(
+            "dpdfnet_baseline.onnx  (8.4 MB, 가장 빠름)",
+            "dpdfnet2.onnx  (10.2 MB)",
+            "dpdfnet4.onnx  (11.7 MB)",
+            "dpdfnet8.onnx  (14.6 MB, 가장 무거움)",
+        )
     }
 }

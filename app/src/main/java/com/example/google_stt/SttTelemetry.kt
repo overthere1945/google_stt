@@ -18,6 +18,13 @@
  *     3) app_rx/tx_delta : 이 앱 UID 통신량 증가분 (0 이면 앱은 네트워크를 쓰지 않았다)
  *        dev_rx/tx_delta : 기기 전체 통신량 증가분 (다른 앱 트래픽이 섞이므로 참고용)
  *
+ * change(add)-hyungchul-20260826-1100 — 노이즈 저감(Noise Reduction) 계측 추가
+ *   · 알고리즘/설정과 함께 단계별 소요 시간(prepare / stft / infer / istft / post)을 기록한다.
+ *   · ★ 알고리즘 간 속도 비교의 핵심은 ns_infer_per_frame_us 다.
+ *     파일 길이와 hop 이 달라도 "프레임 하나 처리에 몇 마이크로초 쓰는가"는 그대로 비교된다.
+ *   · 입력/출력 RMS 와 감쇠량(dB)도 남겨 "얼마나 깎았는가"를 수치로 본다.
+ *   · VAD 컬럼과 마찬가지로 기존 컬럼 뒤에 append 하므로 앞 62개 index 는 그대로다.
+ *
  * change(add)-hyungchul-20260825-1430 — Silero VAD 계측 추가
  *   · VAD 설정(threshold/neg_threshold/min speech/min silence/padding/max speech)과
  *     처리시간, 원본·출력 길이, 제거 길이/비율, segment 수를 파일마다 기록한다.
@@ -93,6 +100,41 @@ data class SttRow(
     var vadRemovedRatio: Double = -1.0,
     var vadSegmentCount: Int = 0,
 
+    // add-hyungchul-20260826-1100 : Noise Reduction
+    /** 1 = 노이즈 저감 사용, 0 = 미사용 */
+    var nsEnabled: Int = 0,
+    /** NoiseAlgorithm enum 이름 */
+    var nsAlgorithm: String = "",
+    /** 모델 파일명 또는 구현 라벨 */
+    var nsLabel: String = "",
+    /** 실행 설정 요약 */
+    var nsConfig: String = "",
+    /** 처리한 STFT 프레임 수 */
+    var nsFrames: Int = 0,
+    /** PCM 변환·패딩·사전 준비 */
+    var nsPrepareMs: Long = 0,
+    /** STFT(분석) 누적 — 사전 패스 포함 */
+    var nsStftMs: Long = 0,
+    /** ★ 모델 추론 또는 DSP 이득 계산 누적. 알고리즘의 진짜 비용이다. */
+    var nsInferMs: Long = 0,
+    /** iSTFT(합성·overlap-add) 누적 */
+    var nsIstftMs: Long = 0,
+    /** 감쇠 제한 적용 + PCM 변환 */
+    var nsPostMs: Long = 0,
+    /** 위 전부를 합한 벽시계 시간 */
+    var nsTotalMs: Long = 0,
+    /** ★ 프레임 1개 처리에 든 추론 시간(us). 알고리즘 간 속도 비교의 정규화 지표. */
+    var nsInferPerFrameUs: Double = -1.0,
+    /** 입력 RMS(dBFS). 음수 값이 정상이라 미측정은 -999 로 표시한다. */
+    var nsInRmsDb: Double = -999.0,
+    var nsOutRmsDb: Double = -999.0,
+    /** 입력 - 출력 (dB). 클수록 많이 깎았다는 뜻. */
+    var nsReductionDb: Double = -999.0,
+    /** 출력 최대 진폭. 1.0 을 넘으면 클리핑이 일어났다. */
+    var nsPeak: Double = -1.0,
+    /** 알고리즘이 남긴 부가 정보 */
+    var nsNote: String = "",
+
     var decodeMs: Long = -1,
     var feedMode: String = "",
     var feedDelayMs: Long = -1,
@@ -136,7 +178,8 @@ data class SttRow(
      */
     private fun totalMs(): Long {
         if (decodeMs < 0) return -1
-        val pre = decodeMs + vadProcessMs.coerceAtLeast(0)
+        // change-hyungchul-20260826-1100: 노이즈 저감 시간도 전처리에 합산한다(미사용이면 0).
+        val pre = decodeMs + nsTotalMs.coerceAtLeast(0) + vadProcessMs.coerceAtLeast(0)
         return when {
             sttWallMs >= 0 -> pre + sttWallMs
             status == "NO_SPEECH_BY_VAD" -> pre
@@ -193,6 +236,15 @@ data class SttRow(
         SttTelemetry.f3(vadDetectedSpeechSec), SttTelemetry.f3(vadRemovedSec),
         SttTelemetry.f2(vadRemovedRatio), vadSegmentCount.toString(),
         SttTelemetry.f3(rtfSttInput()), SttTelemetry.f3(totalRtf()),
+
+        // add-hyungchul-20260826-1100 : Noise Reduction 컬럼도 맨 뒤에 붙인다(기존 index 보존).
+        nsEnabled.toString(), SttTelemetry.q(nsAlgorithm), SttTelemetry.q(nsLabel),
+        SttTelemetry.q(nsConfig), nsFrames.toString(),
+        nsPrepareMs.toString(), nsStftMs.toString(), nsInferMs.toString(),
+        nsIstftMs.toString(), nsPostMs.toString(), nsTotalMs.toString(),
+        SttTelemetry.f1(nsInferPerFrameUs),
+        SttTelemetry.fdb(nsInRmsDb), SttTelemetry.fdb(nsOutRmsDb), SttTelemetry.fdb(nsReductionDb),
+        SttTelemetry.f3(nsPeak), SttTelemetry.q(nsNote),
     ).joinToString(",") + "\n"
 }
 
@@ -290,6 +342,12 @@ object SttTelemetry {
         "vad_process_ms", "vad_original_sec", "vad_output_sec", "vad_detected_speech_sec",
         "vad_removed_sec", "vad_removed_ratio", "vad_segment_count",
         "rtf_stt_input", "total_rtf",
+
+        // add-hyungchul-20260826-1100 : Noise Reduction (기존 62개 컬럼 뒤에 append)
+        "ns_enabled", "ns_algorithm", "ns_label", "ns_config", "ns_frames",
+        "ns_prepare_ms", "ns_stft_ms", "ns_infer_ms", "ns_istft_ms", "ns_post_ms", "ns_total_ms",
+        "ns_infer_per_frame_us",
+        "ns_in_rms_db", "ns_out_rms_db", "ns_reduction_db", "ns_peak", "ns_note",
     ).joinToString(",") + "\n"
 
     /**
@@ -453,6 +511,13 @@ object SttTelemetry {
     fun f1(v: Double): String = if (v < 0) "" else String.format(Locale.US, "%.1f", v)
     fun f2(v: Double): String = if (v < 0) "" else String.format(Locale.US, "%.2f", v)
     fun f3(v: Double): String = if (v < 0) "" else String.format(Locale.US, "%.3f", v)
+
+    /**
+     * add-hyungchul-20260826-1100
+     * dB 값 전용 포맷. dBFS 는 -27.9 처럼 음수가 정상이라 f1/f2 의 "음수면 빈칸" 규칙을 쓸 수 없다.
+     * 미측정 표시로 -999 를 쓰고, 그 이하만 빈칸으로 만든다.
+     */
+    fun fdb(v: Double): String = if (v <= -900.0) "" else String.format(Locale.US, "%.2f", v)
 
     /** utf-8-sig(BOM) — 기존 파이썬 파이프라인 규약과 동일 */
     val BOM: ByteArray = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
