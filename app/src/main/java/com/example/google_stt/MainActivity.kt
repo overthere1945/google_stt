@@ -64,6 +64,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.net.Uri
+import android.provider.Settings                 // add-hyungchul-20260916-1800
 import android.os.Build
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
@@ -1052,10 +1053,14 @@ class MainActivity : AppCompatActivity() {
                             "인식 엔진이 먹통인 상태라 지금 돌리면 파일마다 타임아웃까지 기다리다 끝난다.",
                     )
                     appendLog(
-                        "[warmup] 조치: 설정 → 애플리케이션 → '기기 개인 정보 보호 서비스'(com.google.android.as) " +
-                            "강제 종료 후 다시 실행하거나, 휴대폰을 재부팅한 뒤 다시 START 를 누를 것.",
+                        "[warmup] 조치: 설정 → 애플리케이션 → '음성 검색'/'Google 음성 서비스'(com.google.android.tts) " +
+                            "강제 종료 후 다시 실행할 것. 효과가 없으면 재부팅한 뒤 다시 START 를 누를 것.",
                     )
                     toast("인식 엔진이 응답하지 않아 배치를 시작하지 않았습니다.")
+                    // add-hyungchul-20260916-1800
+                    // 강제 중지 버튼이 있는 화면으로 바로 보내 준다(직접 죽일 수는 없다).
+                    appendLog("[warmup] '강제 중지' 버튼이 있는 앱 정보 화면을 띄운다.")
+                    openSpeechServiceSettings()
                     return@launch
                 }
 
@@ -1179,7 +1184,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 appendLog(
                     "[quota] 예상 세션 수 약 ${projectedSessions}개 / 실측 한도 약 " +
-                        "${QUOTA_BUDGET_SESSIONS}개 (AICore 앱당 추론 할당량).",
+                        "${QUOTA_BUDGET_SESSIONS}개 (com.google.android.tts 의 SODA 세션 한도).",
                 )
                 if (projectedSessions > QUOTA_BUDGET_SESSIONS) {
                     appendLog(
@@ -1459,13 +1464,15 @@ class MainActivity : AppCompatActivity() {
                         // change-hyungchul-20260914-2350
                         // 조각이 1개면 예전과 완전히 같은 경로다. 2개 이상이면 세션을 나눠 돌리고 합친다.
                         // change-hyungchul-20260915-2200 : 할당량 재시도를 한 겹 씌운다.
-                        val sessionAtStart = sttSessionCount + 1
+                        // change-hyungchul-20260916-1000
+                        //   세션 번호는 호출 "전에" 기록한다. 전에는 호출이 끝난 뒤에 넣어서
+                        //   정작 원인을 알고 싶은 실패 행의 stt_session_index 가 -1 로 남았다.
+                        row.sttSessionIndex = sttSessionCount + 1
                         val outcome = transcribeWithQuotaRetry(
                             sttChunks, modelConfig, locale, feed, relName,
                         ) { fed ->
                             updateProgress((baseUnits + fed) / totalUnits.toDouble())
                         }
-                        row.sttSessionIndex = sessionAtStart
 
                         row.readyMs = outcome.readyMs
                         row.firstResultMs = outcome.firstResultMs
@@ -1561,26 +1568,30 @@ class MainActivity : AppCompatActivity() {
                         fail++
                         appendLog(getString(R.string.log_fail, modelFolder, relName, msg))
 
-                        // add-hyungchul-20260914-2350 : 연속 타임아웃이면 엔진이 먹통이다
-                        if (e is TimeoutCancellationException) consecutiveTimeouts++
-                        else consecutiveTimeouts = 0
-                        if (consecutiveTimeouts >= CONSECUTIVE_TIMEOUT_ABORT) {
+                        // change-hyungchul-20260916-1000
+                        //   타임아웃뿐 아니라 "checkStatus 무응답" 도 엔진 사망으로 센다(위 isEngineDead 주석 참조).
+                        if (isEngineDead(e)) consecutiveTimeouts++ else consecutiveTimeouts = 0
+                        //   세션 한도를 이미 넘긴 뒤의 실패는 회복된 전례가 없다(3회 실행 전부 동일).
+                        //   그때는 한 건만 실패해도 즉시 끝낸다. 남은 파일을 시도해 봐야 전부 실패한다.
+                        val pastBudget = sttSessionCount > QUOTA_BUDGET_SESSIONS
+                        if (isEngineDead(e) &&
+                            (pastBudget || consecutiveTimeouts >= CONSECUTIVE_TIMEOUT_ABORT)
+                        ) {
                             abortedByWedge = true
                             snap.fillDelta(applicationContext, row)
                             csv.append(row.toCsvLine())
                             completedUnits++
                             updateProgress(completedUnits.toDouble() / totalUnits)
                             appendLog(
-                                "[중단] 연속 ${consecutiveTimeouts}건이 ${QUOTA_COOLDOWN_MS / 1000}초 " +
-                                    "휴식 후 재시도까지 실패했다(세션 ${sttSessionCount}개 사용). " +
+                                "[중단] 엔진이 죽었다(세션 ${sttSessionCount}개 사용, 연속 실패 ${consecutiveTimeouts}건). " +
                                     "남은 ${items.size - index - 1}건을 포기하고 배치를 끝낸다. " +
                                     "여기까지의 결과는 result.csv 에 그대로 저장된다.",
                             )
                             appendLog(
-                                "[중단] 이 증상은 AICore 앱당 추론 할당량(실측 약 ${QUOTA_BUDGET_SESSIONS}세션)에 " +
-                                    "걸린 것으로 보인다. 조치: '기기 개인 정보 보호 서비스'" +
-                                    "(com.google.android.as) 강제 종료 후 다시 실행하거나, " +
-                                    "입력 폴더를 ${QUOTA_BUDGET_SESSIONS}세션 이하로 나눠 돌릴 것.",
+                                "[중단] 실측상 세션 약 ${QUOTA_BUDGET_SESSIONS}개를 쓰고 나면 엔진이 응답을 멈추며, " +
+                                    "기다려도 스스로 회복되지 않는다(3분 휴식 후 재시도도 실패했다). " +
+                                    "조치: '음성 검색'/'Google 음성 서비스'(com.google.android.tts) 를 강제 종료한 뒤 " +
+                                    "다시 실행할 것. 한 번에 ${QUOTA_BUDGET_SESSIONS}세션 이하로 나눠 돌리면 이 문제를 피할 수 있다.",
                             )
                             break
                         }
@@ -1833,7 +1844,7 @@ class MainActivity : AppCompatActivity() {
         sttSessionCount++
         if (sttSessionCount == QUOTA_WARN_SESSIONS) {
             appendLog(
-                "[quota] 세션 ${sttSessionCount}개째다. AICore 앱당 할당량(실측 약 " +
+                "[quota] 세션 ${sttSessionCount}개째다. SODA 세션 한도(실측 약 " +
                     "${QUOTA_BUDGET_SESSIONS}세션)이 가까워졌다. 곧 응답이 멈출 수 있다.",
             )
         }
@@ -1876,7 +1887,10 @@ class MainActivity : AppCompatActivity() {
                 return transcribeChunks(chunks, modelConfig, locale, feed, onFed)
             } catch (e: TimeoutCancellationException) {
                 attempt++
-                if (attempt > QUOTA_RETRY_MAX) throw e            // 더는 못 기다린다
+                // change-hyungchul-20260916-1000
+                //   한도를 이미 넘긴 뒤라면 쉬어도 소용이 없다(실측: 180초 휴식 + 재시도 전부 실패,
+                //   파일당 8.1분을 헛되이 썼다). 그때는 바로 던져서 상위에서 배치를 끝내게 한다.
+                if (attempt > QUOTA_RETRY_MAX || sttSessionCount > QUOTA_BUDGET_SESSIONS) throw e
                 appendLog(
                     "[quota] $relName 이 응답하지 않았다(세션 ${sttSessionCount}개째). " +
                         "AICore 할당량으로 보고 ${QUOTA_COOLDOWN_MS / 1000}초 쉬었다가 " +
@@ -2051,7 +2065,7 @@ class MainActivity : AppCompatActivity() {
             var status = withTimeoutOrNull(FEATURE_STATUS_TIMEOUT_MS) { recognizer.checkStatus() }
                 ?: throw IOException(
                     "checkStatus() 가 ${FEATURE_STATUS_TIMEOUT_MS / 1000}초 안에 응답하지 않았다. " +
-                        "인식 엔진(AICore / 기기 개인 정보 보호 서비스)이 먹통인 상태다.",
+                        "인식 엔진(com.google.android.tts 의 SODA)이 먹통인 상태다.",
                 )
             val checkStatusMs = (System.nanoTime() - tCheck) / 1_000_000
             Log.i(logTag, "checkStatus=${statusName(status)} (mode=$mode, locale=$locale)")
@@ -2629,6 +2643,27 @@ class MainActivity : AppCompatActivity() {
      * 비고: 실측된 문자열 예:
      *   "Speech recognition engine is closed due to internal error: ERROR_TYPE_NO_SPEECH_DETECTED"
      */
+    /**
+     * add-hyungchul-20260916-1000
+     * 목적: "엔진이 죽어서 난 실패" 인지 판정한다.
+     * 입력: e — 잡은 예외
+     * 출력: 없음
+     * 리턴: 엔진이 죽은 것으로 보이면 true
+     *
+     * ★ 이 판정이 필요한 이유 (2026-09-16 실측)
+     *   엔진이 한도를 넘으면 증상이 두 단계로 진행된다.
+     *     1단계 — startRecognition 이 아무것도 내보내지 않는다 → TimeoutCancellationException
+     *     2단계 — checkStatus() 조차 대답하지 않는다            → IOException("...응답하지 않았다")
+     *   기존 코드는 1단계(TimeoutCancellationException)만 세었다.
+     *   그래서 2단계로 넘어가는 순간 연속 카운터가 0으로 초기화되어 배치 중단이 걸리지 않았고,
+     *   죽은 엔진에 대고 남은 파일을 끝까지 다 시도했다(실측: 5건을 헛돌렸다).
+     */
+    private fun isEngineDead(e: Throwable): Boolean {
+        if (e is TimeoutCancellationException) return true          // 1단계
+        val m = e.message ?: return false
+        return m.contains("응답하지 않았다") || m.contains("무응답")  // 2단계
+    }
+
     private fun isNoSpeechError(message: String): Boolean =
         message.contains("NO_SPEECH_DETECTED", ignoreCase = true) ||
                 message.contains("ERROR_TYPE_NO_SPEECH", ignoreCase = true)
@@ -2676,6 +2711,32 @@ class MainActivity : AppCompatActivity() {
     private fun appendLog(line: String) {
         Log.i(logTag, line)
         runOnUiThread { logView.append(line + "\n") }
+    }
+
+    /**
+     * add-hyungchul-20260916-1800
+     * 목적: 'Google 음성 서비스'(com.google.android.tts) 앱 정보 화면을 띄운다.
+     * 입력: 없음 / 출력: 없음 (설정 화면으로 이동) / 리턴: 없음
+     *
+     * 배경: 엔진이 먹통이 되면 그 프로세스를 강제 종료하는 것 말고는 회복 방법이 없다.
+     *       (실측: 18분을 기다려도 같은 PID 에서는 끝내 회복되지 않았다)
+     *       그런데 그 화면까지 손으로 찾아가려면 설정 → 애플리케이션 → 전체 목록 → 검색이라
+     *       번거롭다. 그래서 '강제 중지' 버튼이 있는 화면으로 바로 보내 준다.
+     *       앱이 남의 프로세스를 직접 죽일 수는 없으므로 여기까지가 최선이다.
+     */
+    private fun openSpeechServiceSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$SPEECH_SERVICE_PACKAGE")   // 어느 앱을 볼지 지정
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)               // 액티비티 밖에서도 뜨게 한다
+        }
+        // 기기에 따라 이 화면이 없을 수 있으므로 실패해도 배치 흐름을 깨지 않는다.
+        val ok = runCatching { startActivity(intent) }.isSuccess
+        if (!ok) {
+            appendLog(
+                "[warmup] 설정 화면을 열지 못했다. 설정 → 애플리케이션에서 " +
+                    "'$SPEECH_SERVICE_PACKAGE' 를 찾아 강제 중지할 것.",
+            )
+        }
     }
 
     private fun toast(msg: String) {
@@ -2747,8 +2808,13 @@ class MainActivity : AppCompatActivity() {
          */
         private const val WARMUP_TIMEOUT_MS = 30_000L
 
-        /** 연속 몇 건이 타임아웃하면 배치를 끝낼지. 실측상 먹통은 한 번 걸리면 계속 걸린다. */
-        private const val CONSECUTIVE_TIMEOUT_ABORT = 3
+        /**
+         * 연속 몇 건이 실패하면 배치를 끝낼지.
+         * change-hyungchul-20260916-1000 : 3 → 2.
+         * 실행 3회 전부 "한 번 죽으면 끝까지 회복 없음" 이었다. 3건까지 기다릴 이유가 없다.
+         * 세션 한도를 이미 넘긴 뒤라면 이 값과 무관하게 1건에서 바로 끝낸다.
+         */
+        private const val CONSECUTIVE_TIMEOUT_ABORT = 2
 
         // add-hyungchul-20260915-1400
         /** checkStatus() 응답 제한(ms). 정상이면 수십 ms 안에 온다. */
@@ -2760,7 +2826,15 @@ class MainActivity : AppCompatActivity() {
         /** stopRecognition() 을 기다려 줄 시간(ms). */
         private const val STOP_RECOGNITION_TIMEOUT_MS = 5_000L
 
-        // add-hyungchul-20260915-2200 : AICore 앱당 추론 할당량 대응
+        // add-hyungchul-20260915-2200 : SODA 세션 한도 대응
+        // change-hyungchul-20260916-1800 : 2026-09-16 logcat 분석으로 엔진과 정지 지점을 확정했다.
+        //   엔진 = com.google.android.tts 안의 SODA (AICore 아님. "aicore streaming: false" 로 확인)
+        //   정지 지점 = SodaSpeechRecognizer.SodaDetectionHandler.blockingReconnect
+        //     정상:  Initialize Soda with language pack directory
+        //            → blockingReconnect → ConcurrentSodaManager#connect → Creating SODA → ...
+        //     먹통:  Initialize Soda with language pack directory 까지만 찍히고 그 다음이 전혀 없다.
+        //            엔진 스스로도 "Recognition not started, drop cancelRecognition" 이라고 남긴다.
+        //   회복 조건 = tts 프로세스 재시작뿐. 18분을 기다려도 같은 PID 에서는 회복되지 않았다.
         /**
          * 실측으로 확인한 세션 한도.
          * D20 실행과 REALTIME 실행 모두 "35세션 성공 → 36번째부터 먹통" 으로 동일했다.
@@ -2779,6 +2853,14 @@ class MainActivity : AppCompatActivity() {
 
         /** 파일 1건당 할당량 재시도 횟수. */
         private const val QUOTA_RETRY_MAX = 1
+
+        // add-hyungchul-20260916-1800
+        /**
+         * 실제 인식을 수행하는 서비스 패키지.
+         * logcat 으로 확인: ML Kit BASIC → com.google.android.tts 안의 SODA 로 내려간다.
+         * (com.google.android.as 나 com.google.android.aicore 가 아니다)
+         */
+        private const val SPEECH_SERVICE_PACKAGE = "com.google.android.tts"
 
         // add-hyungchul-20260826-1100
         /** DPDFNet 변형 모델 키. assets 파일명은 baseline→dpdfnet_baseline.onnx, 2→dpdfnet2.onnx 이다. */

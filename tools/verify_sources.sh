@@ -5,7 +5,7 @@
 #   Beyond Compare 로 손수 병합할 때 파일 끝부분이 누락되면
 #   "Unresolved reference" 가 엉뚱한 곳에서 나서 원인을 찾기 어렵다. 그걸 미리 잡는다.
 # 사용법: 프로젝트 루트에서  bash tools/verify_sources.sh
-# add-hyungchul-20260828-1000 / 기대값 갱신 change-hyungchul-20260915-2200
+# add-hyungchul-20260828-1000 / 기대값 갱신 change-hyungchul-20260916-1000
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
@@ -31,7 +31,7 @@ check() {
 
 echo "소스 무결성 확인"
 echo
-check "app/src/main/java/com/example/google_stt/MainActivity.kt" 2794 e08c769d1e265dc3b7515597d5b32bc306102f95c34ade4f63b979444dde772c
+check "app/src/main/java/com/example/google_stt/MainActivity.kt" 2876 48009b43d685ebc353c6a589a7b0f1ff61dc0e41a50bdf34d18950e4b93272dd
 check "app/src/main/java/com/example/google_stt/SttTelemetry.kt" 596 4e46950f514fc678e3ac37813c64386f697ce12434ec8e4e514284bba70f9b17
 check "app/src/main/java/com/example/google_stt/AudioDecoder.kt" 333 8f4c56731ee67cfc937ee758cfd6182c39d3fb7584eb43ec31ec0394124837ff
 check "app/src/main/java/com/example/google_stt/SileroVadProcessor.kt" 695 beda4983280be0adea539d266e8a7a69f67c31706215ca36c901ac5283e2a7bd
