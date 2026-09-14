@@ -18,6 +18,13 @@
  *     3) app_rx/tx_delta : 이 앱 UID 통신량 증가분 (0 이면 앱은 네트워크를 쓰지 않았다)
  *        dev_rx/tx_delta : 기기 전체 통신량 증가분 (다른 앱 트래픽이 섞이므로 참고용)
  *
+ * change(add)-hyungchul-20260914-1500 — 공급 정체(feed stall) 계측 추가
+ *   · feed_expected_ms : 현재 공급 속도로 흘려보낼 때 걸려야 하는 이론상 시간
+ *   · feed_stall_ratio : 실제 feed_ms / 이론값. 1.0 근처가 정상.
+ *     실측에서 7~10배까지 튄 행이 있었고, 그 행은 엔진이 파이프를 안 읽어 write 가 막힌 것이다.
+ *     이 비율이 크면 stt_wall_ms 와 rtf 는 엔진 속도가 아니라 대기 시간을 잰 값이라 버려야 한다.
+ *   · 기존 컬럼 뒤에 append 하므로 앞 79개 index 는 그대로다.
+ *
  * change(add)-hyungchul-20260826-1100 — 노이즈 저감(Noise Reduction) 계측 추가
  *   · 알고리즘/설정과 함께 단계별 소요 시간(prepare / stft / infer / istft / post)을 기록한다.
  *   · ★ 알고리즘 간 속도 비교의 핵심은 ns_infer_per_frame_us 다.
@@ -135,6 +142,12 @@ data class SttRow(
     /** 알고리즘이 남긴 부가 정보 */
     var nsNote: String = "",
 
+    // add-hyungchul-20260914-1500 : 공급 정체
+    /** 이론상 공급시간(ms). 지연 0(MAX)이면 -1. */
+    var feedExpectedMs: Long = -1,
+    /** feed_ms / feed_expected_ms. 1.0 근처가 정상, 크면 엔진이 파이프를 늦게 읽은 것이다. */
+    var feedStallRatio: Double = -1.0,
+
     var decodeMs: Long = -1,
     var feedMode: String = "",
     var feedDelayMs: Long = -1,
@@ -245,6 +258,9 @@ data class SttRow(
         SttTelemetry.f1(nsInferPerFrameUs),
         SttTelemetry.fdb(nsInRmsDb), SttTelemetry.fdb(nsOutRmsDb), SttTelemetry.fdb(nsReductionDb),
         SttTelemetry.f3(nsPeak), SttTelemetry.q(nsNote),
+
+        // add-hyungchul-20260914-1500
+        feedExpectedMs.toString(), SttTelemetry.f3(feedStallRatio),
     ).joinToString(",") + "\n"
 }
 
@@ -348,6 +364,9 @@ object SttTelemetry {
         "ns_prepare_ms", "ns_stft_ms", "ns_infer_ms", "ns_istft_ms", "ns_post_ms", "ns_total_ms",
         "ns_infer_per_frame_us",
         "ns_in_rms_db", "ns_out_rms_db", "ns_reduction_db", "ns_peak", "ns_note",
+
+        // add-hyungchul-20260914-1500
+        "feed_expected_ms", "feed_stall_ratio",
     ).joinToString(",") + "\n"
 
     /**

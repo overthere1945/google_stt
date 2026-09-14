@@ -43,6 +43,17 @@
  *       output/google/<모드>/[ns_<알고리즘>/][vad_<프로필>/]...
  *   · result.csv 에 단계별 소요 시간(prepare/stft/infer/istft/post)을 모두 남긴다.
  *
+ * change-hyungchul-20260914-1500 — 2026-09-14 실측(24개 x 3조건)에서 드러난 결함 4건 수정
+ *   (1) 배치가 취소/중단되면 비상 CSV 저장까지 같이 취소되어 계측이 통째로 사라졌다.
+ *       → NonCancellable 로 감싸고, catch 가 아니라 finally 에서 "마지막 방어선"으로 저장한다.
+ *   (2) ★ 인식기 close() 가 멈추면 배치 전체가 영원히 멈춘다.
+ *       엔진이 먹통이 되면 타임아웃은 제대로 나는데, 그 직후 close() 가 네이티브 정리 중 블록되어
+ *       타임아웃이 아무 의미가 없어진다. → close() 에 시간 제한을 두고 넘으면 배치를 계속 진행한다.
+ *   (3) ERROR_TYPE_NO_SPEECH_DETECTED 는 엔진의 "말이 없다" 판정이지 고장이 아닌데 ERROR 로 처리해
+ *       그 파일 행이 비교에서 빠졌다. → NO_MATCH 로 기록하고 엔진 메시지는 따로 남긴다.
+ *   (4) 엔진이 파이프를 안 읽어 공급이 막히면(실측 7~10배) stt_wall_ms/rtf 가 조용히 오염된다.
+ *       → 이론 공급시간 대비 비율을 feed_stall_ratio 컬럼과 로그로 드러낸다.
+ *
  * ※ 이 3개 경로 중 어느 것도 Google Cloud 인증(서비스 계정 JSON, API Key, OAuth 토큰)을 사용하지 않는다.
  */
 package com.example.google_stt
@@ -100,6 +111,7 @@ import com.google.mlkit.genai.speechrecognition.speechRecognizerOptions
 import com.google.mlkit.genai.speechrecognition.speechRecognizerRequest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable        // add-hyungchul-20260914-1500
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1173,6 +1185,27 @@ class MainActivity : AppCompatActivity() {
                         row.words = SttTelemetry.wordCount(outcome.text)
                         row.status = if (outcome.text.isBlank()) "NO_MATCH" else "OK"
 
+                        // add-hyungchul-20260914-1500
+                        // 엔진이 "말이 없다" 고 한 경우 그 메시지를 남긴다(status 는 NO_MATCH 유지).
+                        if (outcome.engineNote.isNotEmpty()) row.error = outcome.engineNote
+
+                        // add-hyungchul-20260914-1500 : 공급 정체 계측
+                        row.feedExpectedMs = expectedFeedMs(sttPcm.size, feed.delayMs)
+                        row.feedStallRatio =
+                            if (row.feedExpectedMs > 0 && row.feedMs >= 0) {
+                                row.feedMs.toDouble() / row.feedExpectedMs
+                            } else {
+                                -1.0
+                            }
+                        if (row.feedStallRatio > FEED_STALL_WARN_RATIO) {
+                            appendLog(
+                                "[warn] $relName 공급이 막혔다 — feed ${row.feedMs}ms " +
+                                    "(이론 ${row.feedExpectedMs}ms, " +
+                                    "${"%.1f".format(Locale.US, row.feedStallRatio)}배). " +
+                                    "엔진이 파이프를 늦게 읽은 것이므로 이 행의 stt_wall_ms/rtf 는 신뢰하지 말 것.",
+                            )
+                        }
+
                         withContext(Dispatchers.IO) {
                             saveResult(
                                 outputRoot, modelFolder, variantSegments, item, outcome.text,
@@ -1230,16 +1263,30 @@ class MainActivity : AppCompatActivity() {
                 // 토스트는 금방 사라진다. 실패 원인을 화면 로그에도 남겨 원인을 놓치지 않게 한다.
                 appendLog("[실패] 실행이 중단되었습니다 — ${describe(e)}")
                 // 예외로 빠져나가도 지금까지 모은 계측은 남긴다.
+                // change-hyungchul-20260914-1500: NonCancellable 추가.
+                //   코루틴이 이미 취소된 상태라면 그냥 withContext 는 즉시 예외를 던지고
+                //   runCatching 이 그걸 삼켜 "조용히 저장 실패" 가 된다(vLog/08 사고의 원인).
                 runCatching {
                     val outputRoot = DocumentFile.fromTreeUri(this@MainActivity, outUri)
                     if (outputRoot != null) {
-                        withContext(Dispatchers.IO) {
+                        withContext(NonCancellable + Dispatchers.IO) {
                             writeCsv(outputRoot, modelFolder, variantSegments, csv.toString())
                         }
                     }
                 }
                 toast(getString(R.string.msg_error, describe(e)))
             } finally {
+                // ★ add-hyungchul-20260914-1500 : 마지막 방어선
+                //   취소든 예외든 타임아웃이든, 어떤 경로로 빠져나가도 여기서 CSV 를 반드시 남긴다.
+                //   writeCsv 는 같은 파일을 덮어쓰므로 catch 에서 이미 저장했어도 문제없다.
+                runCatching {
+                    withContext(NonCancellable + Dispatchers.IO) {
+                        val root = DocumentFile.fromTreeUri(this@MainActivity, outUri)
+                        if (root != null) {
+                            writeCsv(root, modelFolder, variantSegments, csv.toString())
+                        }
+                    }
+                }
                 runCatching { vadProcessor?.close() }   // add-hyungchul-20260825-1430
                 runCatching { noiseReducer?.close() }   // add-hyungchul-20260826-1100
                 running = false
@@ -1365,6 +1412,8 @@ class MainActivity : AppCompatActivity() {
         val mlkitStatus: String = "",
         val checkStatusMs: Long = -1,
         val downloadMs: Long = -1,
+        /** add-hyungchul-20260914-1500: 엔진이 남긴 메시지(NO_SPEECH_DETECTED 등). 실패가 아닐 때만 채운다. */
+        val engineNote: String = "",
     )
 
     // ─────────────────────── (1)(2) ML Kit GenAI Speech Recognition ───────────────────────
@@ -1386,7 +1435,12 @@ class MainActivity : AppCompatActivity() {
             preferredMode = mode
         }
 
-        return SpeechRecognition.getClient(options).use { recognizer ->
+        // ★ change-hyungchul-20260914-1500 : use{} 를 try/finally 로 바꾼다.
+        //   use{} 는 블록을 벗어날 때 close() 를 부르는데, 엔진이 먹통이면 그 close() 가 블록된다.
+        //   그러면 withTimeout 이 제때 터져도 배치 전체가 여기서 영원히 멈춘다.
+        //   closeRecognizerBounded() 로 시간 제한을 두어 그런 경우에도 다음 파일로 넘어가게 한다.
+        val recognizer = SpeechRecognition.getClient(options)
+        return try {
             val tCheck = System.nanoTime()
             var status = recognizer.checkStatus()
             val checkStatusMs = (System.nanoTime() - tCheck) / 1_000_000
@@ -1476,7 +1530,18 @@ class MainActivity : AppCompatActivity() {
 
             val result = sb.toString().trim()
             val err = errorMessage
-            if (result.isEmpty() && err != null) throw IOException(err)
+            // change-hyungchul-20260914-1500
+            //   ERROR_TYPE_NO_SPEECH_DETECTED 는 엔진이 "말이 없다" 고 판정한 결과이지 고장이 아니다.
+            //   예외로 던지면 그 파일 행이 통째로 ERROR 가 되어 WER/CER 비교에서 빠져 버린다.
+            //   빈 결과(= status NO_MATCH)로 돌려주고, 엔진이 뭐라고 했는지는 engineNote 로 남긴다.
+            var engineNote = ""
+            if (result.isEmpty() && err != null) {
+                if (isNoSpeechError(err)) {
+                    engineNote = err
+                } else {
+                    throw IOException(err)
+                }
+            }
 
             if (endNs == 0L) endNs = System.nanoTime()
             val eofNs = feeder.finishedAtNs.takeIf { it != 0L } ?: endNs
@@ -1492,6 +1557,34 @@ class MainActivity : AppCompatActivity() {
                 mlkitStatus = statusName(status),
                 checkStatusMs = checkStatusMs,
                 downloadMs = downloadMs,
+                engineNote = engineNote,
+            )
+        } finally {
+            closeRecognizerBounded(recognizer)   // add-hyungchul-20260914-1500
+        }
+    }
+
+    /**
+     * add-hyungchul-20260914-1500
+     * 목적: 인식기를 닫되, close() 가 멈춰도 배치가 끝나지 않는 사태를 막는다.
+     * 입력: closeable — 닫을 인식기
+     * 출력: 없음 (제한 시간을 넘기면 화면 로그에 경고를 남긴다)
+     * 리턴: 없음
+     * 비고: close() 는 네이티브 정리를 하는 블로킹 호출이라 코루틴 취소로 끊을 수 없다.
+     *       제한 시간이 지나면 그 스레드는 IO 디스패처에 남겨 두고 배치만 계속 진행시킨다.
+     *       스레드 하나를 잠시 놓치는 손해보다 배치 전체가 멈추는 손해가 훨씬 크다.
+     */
+    private suspend fun closeRecognizerBounded(closeable: AutoCloseable) {
+        val finished = withContext(NonCancellable) {          // 취소 중에도 닫기는 시도한다
+            withTimeoutOrNull(RECOGNIZER_CLOSE_TIMEOUT_MS) {
+                withContext(Dispatchers.IO) { runCatching { closeable.close() } }
+                true
+            }
+        }
+        if (finished == null) {
+            appendLog(
+                "[warn] 인식기 close() 가 ${RECOGNIZER_CLOSE_TIMEOUT_MS / 1000}초 안에 끝나지 않았다. " +
+                    "정리는 백그라운드에 맡기고 다음 파일로 진행한다.",
             )
         }
     }
@@ -1866,6 +1959,35 @@ class MainActivity : AppCompatActivity() {
         else -> "UNKNOWN($error)"
     }
 
+    /**
+     * add-hyungchul-20260914-1500
+     * 목적: ML Kit 오류 메시지가 "말이 없다" 판정인지 가려낸다.
+     * 입력: message — 엔진이 준 오류 문자열
+     * 출력: 없음
+     * 리턴: 음성 미검출 판정이면 true
+     * 비고: 실측된 문자열 예:
+     *   "Speech recognition engine is closed due to internal error: ERROR_TYPE_NO_SPEECH_DETECTED"
+     */
+    private fun isNoSpeechError(message: String): Boolean =
+        message.contains("NO_SPEECH_DETECTED", ignoreCase = true) ||
+                message.contains("ERROR_TYPE_NO_SPEECH", ignoreCase = true)
+
+    /**
+     * add-hyungchul-20260914-1500
+     * 목적: 이 PCM 을 현재 공급 속도로 흘려보낼 때 걸려야 하는 "이론상" 시간을 계산한다.
+     * 입력: pcmBytes — STT 에 넣는 PCM 바이트 수, chunkDelayMs — chunk 사이 지연(ms)
+     * 출력: 없음
+     * 리턴: 이론 공급시간(ms). 지연 0(MAX)이거나 빈 PCM 이면 -1.
+     * 비고: 실제 feed_ms 가 이 값보다 크게 늘어났다면 엔진이 파이프를 안 읽어
+     *       write 가 막힌 것이다. 그 경우 stt_wall_ms 와 rtf 는 엔진 속도가 아니라
+     *       "엔진이 멈춰 있던 시간" 을 재게 되므로 그대로 쓰면 안 된다.
+     */
+    private fun expectedFeedMs(pcmBytes: Int, chunkDelayMs: Long): Long {
+        if (chunkDelayMs <= 0L || pcmBytes <= 0) return -1
+        val chunks = (pcmBytes + CHUNK_BYTES - 1) / CHUNK_BYTES   // 올림 나눗셈
+        return chunks * chunkDelayMs
+    }
+
     private fun describe(e: Throwable): String {
         val m = e.message
         return if (m.isNullOrBlank()) e.javaClass.simpleName else "${e.javaClass.simpleName}: $m"
@@ -1915,6 +2037,13 @@ class MainActivity : AppCompatActivity() {
          * 이전 실행과 결과를 엄격히 동일하게 맞춰야 한다면 false 로 되돌린다.
          */
         private const val REQUEST_PARTIAL_RESULTS = true
+
+        // add-hyungchul-20260914-1500
+        /** 인식기 close() 를 기다려 주는 최대 시간(ms). 넘으면 배치를 계속 진행한다. */
+        private const val RECOGNIZER_CLOSE_TIMEOUT_MS = 5_000L
+
+        /** 이론 공급시간의 몇 배를 넘으면 "공급 정체" 로 보고 경고할지. */
+        private const val FEED_STALL_WARN_RATIO = 2.0
 
         // add-hyungchul-20260826-1100
         /** DPDFNet 변형 모델 키. assets 파일명은 baseline→dpdfnet_baseline.onnx, 2→dpdfnet2.onnx 이다. */

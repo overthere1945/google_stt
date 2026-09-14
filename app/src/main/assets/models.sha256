@@ -1,0 +1,10 @@
+# 파일명: app/src/main/assets/models.sha256
+# 목적 및 기능:
+#   assets 에 넣어야 하는 ONNX 모델의 정상 해시 목록.
+#   모델 자체는 용량 때문에 git 에 넣지 않으므로, 이 파일이 "어떤 모델로 낸 수치인지" 를 증명한다.
+#   run_meta.csv 의 silero_model_sha256 / ns_model_sha256 과 대조하면 재현성이 보장된다.
+# 사용법: cd app/src/main/assets && sha256sum -c models.sha256
+# add-hyungchul-20260914-1700
+e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534  gtcrn_simple.onnx
+debaf0e8893479fca91b8b4c1eae8db195aa8980ccc9012f5809fde2b738151a  dpdfnet_baseline.onnx
+7ed98ddbad84ccac4cd0aeb3099049280713df825c610a8ed34543318f1b2c49  silero_vad_16k_op15.onnx

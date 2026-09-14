@@ -13,3 +13,14 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# add-hyungchul-20260914-1700
+# Kotlin 2.x 빌드 산출물
+.kotlin
+
+# ONNX 모델 — 저장소에 넣지 않는다(합계 약 10.6 MB, 이진 파일이라 history 가 영구히 무거워진다).
+# tools/download_models.sh 로 받고, 무결성은 app/src/main/assets/models.sha256 으로 확인한다.
+/app/src/main/assets/*.onnx
+
+# 빌드 에러 로그 등 일회성 산출물
+/error.txt
