@@ -5,7 +5,7 @@
 #   Beyond Compare 로 손수 병합할 때 파일 끝부분이 누락되면
 #   "Unresolved reference" 가 엉뚱한 곳에서 나서 원인을 찾기 어렵다. 그걸 미리 잡는다.
 # 사용법: 프로젝트 루트에서  bash tools/verify_sources.sh
-# add-hyungchul-20260828-1000 / 기대값 갱신 change-hyungchul-20260914-1500
+# add-hyungchul-20260828-1000 / 기대값 갱신 change-hyungchul-20260915-2200
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
@@ -31,17 +31,18 @@ check() {
 
 echo "소스 무결성 확인"
 echo
-check "app/src/main/java/com/example/google_stt/MainActivity.kt" 2060 7e7d01e216cf133efbcca05b03dacb349077762a302a17bf65c5d3748cfd5d8d
-check "app/src/main/java/com/example/google_stt/SttTelemetry.kt" 543 a929ee047cab8b9f99156430ed1c2de3fae05c17da4e104f63228408ff22828a
-check "app/src/main/java/com/example/google_stt/AudioDecoder.kt" 334 8f4c56731ee67cfc937ee758cfd6182c39d3fb7584eb43ec31ec0394124837ff
-check "app/src/main/java/com/example/google_stt/SileroVadProcessor.kt" 610 1ee02a6deed6720e66cfc6f4266291df9dea795f4e3f9abf8399e5605b1d3ce0
+check "app/src/main/java/com/example/google_stt/MainActivity.kt" 2794 e08c769d1e265dc3b7515597d5b32bc306102f95c34ade4f63b979444dde772c
+check "app/src/main/java/com/example/google_stt/SttTelemetry.kt" 596 4e46950f514fc678e3ac37813c64386f697ce12434ec8e4e514284bba70f9b17
+check "app/src/main/java/com/example/google_stt/AudioDecoder.kt" 333 8f4c56731ee67cfc937ee758cfd6182c39d3fb7584eb43ec31ec0394124837ff
+check "app/src/main/java/com/example/google_stt/SileroVadProcessor.kt" 695 beda4983280be0adea539d266e8a7a69f67c31706215ca36c901ac5283e2a7bd
+check "app/src/main/java/com/example/google_stt/SpeechEpd.kt" 348 4edcce8b48bfa1ccf0922eb64e5f712e13a29d952c8e41329512a08788916b2d
 check "app/src/main/java/com/example/google_stt/denoise/AudioDsp.kt" 363 6090554f1e229b85bf518e37f30b346f33a5ba6188816e969175bd9e5acbb3d8
 check "app/src/main/java/com/example/google_stt/denoise/NoiseReducer.kt" 459 b6d1e6f7707bd7344cd031c6a054fc8d705892c6c1ced0cdf29857eec72b068c
 check "app/src/main/java/com/example/google_stt/denoise/SpectralNoiseReducer.kt" 162 53a59736c73f8d16595da964d5503bf0c87f749a3ee85cf083f43cc9952889e5
 check "app/src/main/java/com/example/google_stt/denoise/OnnxNoiseReducer.kt" 415 ded8eeee5f8610f08ab35ec38b09bf4d4a53999f68a3d6e3d8d1205b260e6671
 check "app/src/main/java/com/example/google_stt/denoise/DspNoiseReducer.kt" 355 eb4025469f0af4bd3aacf81df9d13462bf575ad7468a155e36f377cf4b2eff0e
-check "app/src/main/res/layout/activity_main.xml" 453 de87c37b6a48d2dfcbdef7b8aef85787be8788d721d33de6778606755de7e006
-check "app/src/main/res/values/strings.xml" 75 6e286d26b541706e68a1091add216cc65330360d0322b685dba9b73ce45be5b7
+check "app/src/main/res/layout/activity_main.xml" 551 52e72fd02617bef3eeff44cd0b6f46979e70f41777ab02cf03c365cf6a26c183
+check "app/src/main/res/values/strings.xml" 83 8de646fff782d14607010087006528eb9c4b0f75ed05b141f0d98dd62ed4f419
 check "app/build.gradle.kts" 82 231721873da029cb27d0d94909fc8b36440636784e50b0135de481a57705b14a
 echo
 if [ "$FAIL" -ne 0 ]; then

@@ -34,7 +34,16 @@
     <string name="vad_min_silence_title">Min Silence (ms)</string>
     <string name="vad_speech_pad_title">Speech Padding (ms)</string>
     <string name="vad_max_speech_title">Max Speech (sec, 0 = Unlimited)</string>
-    <string name="vad_hint">ASR Safe / Balanced / Aggressive 는 Silero 공식 preset 이 아니라 WER/CER 비교를 위한 본 프로젝트 평가용 초기값이다. 기본 추천은 ASR Safe 이며, 값을 직접 고치면 Custom 으로 바뀐다. VAD ON 결과는 output/google/&lt;모드&gt;/vad_&lt;profile&gt;/ 아래에 따로 저장되어 baseline 을 덮어쓰지 않는다.</string>
+    <!-- add-hyungchul-20260914-2130 -->
+    <string name="vad_join_silence_title">구간 사이 무음 (ms, 0 = 삽입 안 함)</string>
+    <!-- add-hyungchul-20260914-2350 : Speech EPD -->
+    <string name="epd_title">Speech EPD (무음 지점 분할)</string>
+    <string name="epd_target_title">목표 조각 길이 (초)</string>
+    <string name="epd_max_title">최대 조각 길이 (초, 60 이하)</string>
+    <string name="epd_silence_title">긴 무음 (ms, B안에서만 사용)</string>
+    <string name="epd_hint">Google on-device 는 한 세션 오디오가 약 61초를 넘고 segments 가 1개로 잡히면 전사문의 앞부분을 통째로 버린다(실측 61.3초 정상 / 67.1초 잘림). 그래서 무음 지점에서 미리 잘라 둔다. 1순위로 Silero VAD 가 찾은 구간 사이 무음에서 자르고, 그런 지점이 없으면 32 ms 단위로 역방향 탐색해 가장 조용한 곳에서 자른다. A안은 조각마다 STT 세션을 따로 돌려 전사문을 이어 붙이고(결함을 확실히 피하지만 세션 수가 늘어난다), B안은 세션 1개로 두고 절단 지점의 무음만 길게 늘린다(문맥은 유지되지만 끊어준다는 보장은 없다). OFF 가 기존 baseline 이다.</string>
+    <!-- change-hyungchul-20260914-2130 : preset 출처를 PC GUI 로 바꿨으므로 설명도 같이 고친다. -->
+    <string name="vad_hint">Default / Safe 는 PC 쪽 "STT모델 비교 GUI" 의 Silero VAD 설정과 값이 같다. Default = 0.5 / 250 / 400 / 150 / 0 / 200, Safe = 0.3 / 150 / 600 / 300 / 0 / 200 이다. 값을 직접 고치면 Custom 으로 바뀐다. VAD ON 결과는 output/google/&lt;모드&gt;/vad_&lt;profile&gt;/ 아래에 따로 저장되어 baseline 을 덮어쓰지 않는다.</string>
 
     <!-- add-hyungchul-20260826-1100 : Noise Reduction -->
     <string name="ns_title">Noise Reduction (STT 앞단 잡음 제거)</string>

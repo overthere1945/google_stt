@@ -24,3 +24,4 @@ local.properties
 
 # 빌드 에러 로그 등 일회성 산출물
 /error.txt
+Claude outputs/

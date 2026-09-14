@@ -148,6 +148,38 @@ data class SttRow(
     /** feed_ms / feed_expected_ms. 1.0 근처가 정상, 크면 엔진이 파이프를 늦게 읽은 것이다. */
     var feedStallRatio: Double = -1.0,
 
+    // add-hyungchul-20260914-2130 : VAD 구간 사이 무음 / 타임아웃 / 앞부분 유실 의심
+    /** 구간 사이에 끼워 넣기로 설정한 무음 길이(ms). VAD OFF 면 -1. */
+    var vadJoinSilenceMs: Int = -1,
+    /** 실제로 끼워 넣은 무음 길이의 합(초). 구간이 N개면 (N-1) × joinSilenceMs 이다. */
+    var vadJoinSilenceSec: Double = -1.0,
+    /** 이 행에 적용한 STT 타임아웃(초). 타임아웃으로 실패한 행의 원인 판별용. */
+    var sttTimeoutSec: Long = -1,
+    /**
+     * 1 = ML Kit segments 결함으로 전사문 "앞부분" 이 유실된 것으로 의심되는 행.
+     * status 도 TRUNCATED_SUSPECT 로 바뀌지만, status 문자열로 거르기 힘든 집계를 위해 0/1 컬럼을 따로 둔다.
+     */
+    var truncatedSuspect: Int = 0,
+
+    // add-hyungchul-20260914-2350 : Speech EPD (무음 지점 분할)
+    /** OFF / SPLIT_SESSION / LONG_SILENCE */
+    var epdMode: String = "",
+    /** 조각 개수. 분할하지 않았으면 1. */
+    var epdChunks: Int = 1,
+    /** 절단 지점(초) 을 "|" 로 이은 문자열. 절단이 없으면 빈 칸. */
+    var epdCutPointsSec: String = "",
+    /** B안(긴 무음)에서 추가로 끼워 넣은 무음 길이 합(초). A안/OFF 면 0. */
+    var epdAddedSec: Double = -1.0,
+    /** 분할 계획을 세우는 데 걸린 시간(ms). */
+    var epdPlanMs: Long = -1,
+
+    // add-hyungchul-20260915-2200 : AICore 앱당 추론 할당량 추적
+    /**
+     * 이 파일의 첫 조각이 배치 시작 후 몇 번째 STT 세션이었는지(사전 점검 warm-up 포함, 1부터).
+     * 실측상 36번째 세션부터 엔진이 응답을 멈춘다. 실패 행의 이 값을 보면 할당량인지 바로 알 수 있다.
+     */
+    var sttSessionIndex: Int = -1,
+
     var decodeMs: Long = -1,
     var feedMode: String = "",
     var feedDelayMs: Long = -1,
@@ -261,6 +293,18 @@ data class SttRow(
 
         // add-hyungchul-20260914-1500
         feedExpectedMs.toString(), SttTelemetry.f3(feedStallRatio),
+
+        // add-hyungchul-20260914-2130
+        vadJoinSilenceMs.toString(), SttTelemetry.f3(vadJoinSilenceSec),
+        sttTimeoutSec.toString(), truncatedSuspect.toString(),
+
+        // add-hyungchul-20260914-2350
+        SttTelemetry.q(epdMode), epdChunks.toString(),
+        SttTelemetry.q(epdCutPointsSec), SttTelemetry.f3(epdAddedSec),
+        epdPlanMs.toString(),
+
+        // add-hyungchul-20260915-2200
+        sttSessionIndex.toString(),
     ).joinToString(",") + "\n"
 }
 
@@ -367,6 +411,16 @@ object SttTelemetry {
 
         // add-hyungchul-20260914-1500
         "feed_expected_ms", "feed_stall_ratio",
+
+        // add-hyungchul-20260914-2130
+        "vad_join_silence_ms", "vad_join_silence_sec",
+        "stt_timeout_sec", "truncated_suspect",
+
+        // add-hyungchul-20260914-2350
+        "epd_mode", "epd_chunks", "epd_cut_points_sec", "epd_added_sec", "epd_plan_ms",
+
+        // add-hyungchul-20260915-2200
+        "stt_session_index",
     ).joinToString(",") + "\n"
 
     /**

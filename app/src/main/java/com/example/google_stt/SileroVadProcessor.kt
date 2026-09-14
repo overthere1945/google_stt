@@ -41,16 +41,20 @@ import kotlin.math.min
 
 /**
  * 앱 UI 에 노출하는 VAD Profile.
- * ★ ASR Safe / Balanced / Aggressive 는 Silero 공식 preset 이 아니다.
- *   본 프로젝트의 Google On-device STT WER/CER 비교를 위해 정한 평가용 초기값이다.
+ * change-hyungchul-20260914-2130
+ *   기존 ASR Safe / Balanced / Aggressive(내가 임의로 정했던 값)를 전부 걷어내고,
+ *   PC 쪽 "STT모델 비교 GUI"(파이썬) 의 Silero VAD 설정 화면과 1:1 로 맞춘다.
+ *   - Default : GUI 가 처음 띄우는 기본값
+ *   - Safe    : GUI 의 Safe 설정
+ *   같은 음원을 PC GUI 와 안드로이드 앱에서 각각 돌렸을 때 STT 입력이 동일해야
+ *   WER/CER 비교가 성립하므로, 이름과 값을 임의로 바꾸지 않는다.
  */
 enum class VadProfile(
     val displayName: String,   // 스피너에 보여줄 이름
     val folderName: String,    // 결과 폴더명 조각 (output/google/<모드>/vad_<folderName>)
 ) {
-    ASR_SAFE("ASR Safe", "asr_safe"),
-    BALANCED("Balanced", "balanced"),
-    AGGRESSIVE("Aggressive", "aggressive"),
+    DEFAULT("Default (GUI 기본값)", "default"),
+    SAFE("Safe (GUI Safe)", "safe"),
     CUSTOM("Custom", "custom"),
 }
 
@@ -64,6 +68,12 @@ data class VadConfig(
     val minSilenceDurationMs: Int,      // 이보다 짧은 무음은 구간을 끊지 않는다
     val speechPadMs: Int,               // 구간 앞뒤로 붙여줄 여유 (앞말/뒷말 잘림 방지)
     val maxSpeechDurationSec: Double?,  // null = Unlimited
+    // add-hyungchul-20260914-2130 : 구간 사이 무음(ms)
+    //   PC GUI 의 --vad-join-silence-ms 와 같은 뜻이다(GUI 기본값 200).
+    //   speech 구간만 그대로 이어 붙이면 문장 경계가 사라져서 인식기가 한 덩어리로 붙여 읽는다.
+    //   구간 사이에 이 길이만큼 digital silence 를 끼워 넣어 문장 경계를 남긴다.
+    //   0 이면 예전 동작(무음 삽입 없음)과 완전히 같다.
+    val joinSilenceMs: Int = 200,
 ) {
     /** Silero 공식 기본 동작: neg_threshold = max(threshold - 0.15, 0.01) */
     val negThreshold: Float
@@ -75,6 +85,8 @@ data class VadConfig(
         require(minSpeechDurationMs >= 0) { "Min Speech 는 0 이상이어야 합니다." }
         require(minSilenceDurationMs >= 0) { "Min Silence 는 0 이상이어야 합니다." }
         require(speechPadMs >= 0) { "Speech Padding 은 0 이상이어야 합니다." }
+        // add-hyungchul-20260914-2130 : 구간 사이 무음 검증 (0 ~ 5000 ms)
+        require(joinSilenceMs in 0..5_000) { "구간 사이 무음은 0 ~ 5000 ms 여야 합니다." }
         require(maxSpeechDurationSec == null || maxSpeechDurationSec > 0.0) {
             "Max Speech 는 0(Unlimited) 이거나 0보다 커야 합니다."
         }
@@ -97,10 +109,20 @@ data class VadConfig(
 
 /**
  * 프로젝트 평가용 preset 모음.
- * ★ 다시 강조: Silero 공식 preset 이 아니다. 공식 기본값은 다음과 같다.
+ * change-hyungchul-20260914-2130
+ *   값의 출처를 "내 임의 판단" → "PC GUI 화면" 으로 바꾼다.
+ *
+ *   [Silero 공식 기본값] (참고용, 아래 preset 과 다르다)
  *     threshold=0.5, min_speech_duration_ms=250, min_silence_duration_ms=100,
  *     speech_pad_ms=30, max_speech_duration_s=inf
- *   ASR 앞단에서는 앞말/뒷말이 잘리면 WER 이 크게 나빠지므로 padding 을 공식값보다 크게 잡았다.
+ *
+ *   [PC GUI Default]  threshold 0.5 / min speech 250 ms / min silence 400 ms /
+ *                     speech pad 150 ms / max speech 0(Unlimited) / 구간 사이 무음 200 ms
+ *   [PC GUI Safe]     threshold 0.3 / min speech 150 ms / min silence 600 ms /
+ *                     speech pad 300 ms / max speech 0(Unlimited) / 구간 사이 무음 200 ms
+ *
+ *   Safe 가 threshold 를 0.5 → 0.3 으로 "낮추는" 것에 주의한다.
+ *   threshold 가 낮을수록 작은 소리도 speech 로 보므로 말이 덜 잘린다(=안전하다).
  */
 object VadPresets {
     /**
@@ -110,40 +132,34 @@ object VadPresets {
      * 리턴: VadConfig
      */
     fun config(profile: VadProfile): VadConfig = when (profile) {
-        // 잘림 위험을 최소화한다. WER/CER 비교의 1차 기준으로 권장한다.
-        VadProfile.ASR_SAFE -> VadConfig(
-            threshold = 0.50f,
-            minSpeechDurationMs = 100,
-            minSilenceDurationMs = 300,
-            speechPadMs = 200,
-            maxSpeechDurationSec = null,
+        // change-hyungchul-20260914-2130 : PC GUI 기본값과 동일
+        VadProfile.DEFAULT -> VadConfig(
+            threshold = 0.50f,              // GUI: Threshold 0.5
+            minSpeechDurationMs = 250,      // GUI: Min speech (ms) 250
+            minSilenceDurationMs = 400,     // GUI: Min silence (ms) 400
+            speechPadMs = 150,              // GUI: Speech pad (ms) 150
+            maxSpeechDurationSec = null,    // GUI: Max speech (s) 0 = Unlimited
+            joinSilenceMs = 200,            // GUI: 구간 사이 무음(ms) 200
         )
 
-        // 무음 제거량과 안전성의 절충.
-        VadProfile.BALANCED -> VadConfig(
-            threshold = 0.50f,
-            minSpeechDurationMs = 150,
-            minSilenceDurationMs = 300,
-            speechPadMs = 100,
-            maxSpeechDurationSec = null,
+        // change-hyungchul-20260914-2130 : PC GUI Safe 설정과 동일
+        VadProfile.SAFE -> VadConfig(
+            threshold = 0.30f,              // GUI Safe: Threshold 0.3
+            minSpeechDurationMs = 150,      // GUI Safe: Min speech (ms) 150
+            minSilenceDurationMs = 600,     // GUI Safe: Min silence (ms) 600
+            speechPadMs = 300,              // GUI Safe: Speech pad (ms) 300
+            maxSpeechDurationSec = null,    // GUI Safe: Max speech (s) 0 = Unlimited
+            joinSilenceMs = 200,            // GUI Safe: 구간 사이 무음(ms) 200
         )
 
-        // 무음을 가장 많이 깎는다. 잘림으로 WER 이 나빠질 수 있으니 반드시 baseline 과 비교할 것.
-        VadProfile.AGGRESSIVE -> VadConfig(
-            threshold = 0.60f,
-            minSpeechDurationMs = 250,
-            minSilenceDurationMs = 150,
-            speechPadMs = 50,
-            maxSpeechDurationSec = null,
-        )
-
-        // Custom 의 시작값은 ASR Safe 와 같게 둔다(사용자가 UI 에서 고쳐 쓴다).
+        // Custom 의 시작값은 Default 와 같게 둔다(사용자가 UI 에서 고쳐 쓴다).
         VadProfile.CUSTOM -> VadConfig(
             threshold = 0.50f,
-            minSpeechDurationMs = 100,
-            minSilenceDurationMs = 300,
-            speechPadMs = 200,
+            minSpeechDurationMs = 250,
+            minSilenceDurationMs = 400,
+            speechPadMs = 150,
             maxSpeechDurationSec = null,
+            joinSilenceMs = 200,
         )
     }
 }
@@ -169,10 +185,20 @@ class VadResult(
     val outputSamples: Int,
     /** padding 적용 전, 순수하게 검출된 speech sample 합 */
     val detectedSpeechSamples: Int,
+    // add-hyungchul-20260914-2130 : 구간 사이에 끼워 넣은 무음 sample 합(계측/CSV 용)
+    val joinSilenceSamples: Int = 0,
+    /**
+     * add-hyungchul-20260914-2350
+     * Speech EPD 가 쓸 "안전한 절단 후보" 좌표(출력 PCM 기준 sample).
+     * 구간 사이 무음 한가운데이므로 여기서 자르면 말이 잘리지 않는다.
+     */
+    val seams: List<Int> = emptyList(),
 ) {
     val originalSec: Double get() = originalSamples / SAMPLE_RATE_D
     val outputSec: Double get() = outputSamples / SAMPLE_RATE_D
     val detectedSpeechSec: Double get() = detectedSpeechSamples / SAMPLE_RATE_D
+    // add-hyungchul-20260914-2130 : 끼워 넣은 무음 길이(초)
+    val joinSilenceSec: Double get() = joinSilenceSamples / SAMPLE_RATE_D
     val removedSec: Double get() = (originalSec - outputSec).coerceAtLeast(0.0)
 
     /** 제거 비율(%) — 0 이면 아무것도 안 지웠다는 뜻이다. */
@@ -297,7 +323,9 @@ class SileroVadProcessor(context: Context) : AutoCloseable {
             audioLengthSamples = samples.size,
             config = config,
         )
-        val outputPcm = collectPcm(pcm16Le, collected.padded)   // 구간의 원본 PCM 만 이어 붙인다
+        // change-hyungchul-20260914-2130 : 구간 사이 무음(joinSilenceMs) 을 끼워 넣는다
+        val joined = collectPcm(pcm16Le, collected.padded, config.joinSilenceMs)
+        val outputPcm = joined.pcm                              // 구간 PCM + 구간 사이 무음
         val processMs = (System.nanoTime() - startedNs) / 1_000_000
 
         return VadResult(
@@ -309,6 +337,10 @@ class SileroVadProcessor(context: Context) : AutoCloseable {
             detectedSpeechSamples = collected.raw.sumOf {
                 (it.endSample - it.startSample).coerceAtLeast(0)
             },
+            // add-hyungchul-20260914-2130
+            joinSilenceSamples = joined.silenceSamples,
+            // add-hyungchul-20260914-2350
+            seams = joined.seams,
         )
     }
 
@@ -575,21 +607,74 @@ class SileroVadProcessor(context: Context) : AutoCloseable {
     }
 
     /**
-     * 목적: 구간에 해당하는 "원본" PCM 바이트만 순서대로 이어 붙인다.
-     * 입력: pcm — 원본 PCM16 LE, segments — 잘라낼 구간
-     * 리턴: 이어 붙인 PCM16 LE
-     * 비고: 구간 사이에 인위적인 무음을 넣지 않는다(넣으면 그것도 STT 입력을 바꾸는 것이다).
+     * 목적: collectPcm() 의 반환 묶음.
+     * add-hyungchul-20260914-2130
+     *   끼워 넣은 무음 길이를 CSV 에 남겨야 해서 PCM 과 함께 돌려준다.
      */
-    private fun collectPcm(pcm: ByteArray, segments: List<VadSegment>): ByteArray {
-        if (segments.isEmpty()) return ByteArray(0)
-        val estimated = segments.sumOf { (it.endSample - it.startSample).coerceAtLeast(0) * 2 }
+    private class JoinedPcm(
+        val pcm: ByteArray,             // 최종 STT 입력 PCM16 LE
+        val silenceSamples: Int,        // 구간 사이에 끼워 넣은 무음 sample 합
+        // add-hyungchul-20260914-2350 : Speech EPD 가 쓸 "안전한 절단 후보" 좌표
+        //   구간과 구간 사이(끼워 넣은 무음 한가운데)의 출력 PCM sample 좌표다.
+        //   여기서 자르면 말이 잘리지 않는다는 것이 VAD 로 이미 보장되어 있다.
+        val seams: List<Int>,
+    )
+
+    /**
+     * 목적: 구간에 해당하는 "원본" PCM 바이트를 순서대로 이어 붙이고,
+     *       구간과 구간 사이에 joinSilenceMs 만큼 digital silence 를 끼워 넣는다.
+     * 입력: pcm — 원본 PCM16 LE
+     *       segments — 잘라낼 구간(padding 적용 후)
+     *       joinSilenceMs — 구간 사이에 넣을 무음 길이(ms). 0 이면 예전 동작과 동일하다.
+     * 출력: 없음
+     * 리턴: JoinedPcm(최종 PCM, 끼워 넣은 무음 sample 수)
+     * 비고: change-hyungchul-20260914-2130
+     *   예전에는 "무음을 넣으면 STT 입력을 바꾸는 것" 이라는 이유로 넣지 않았다.
+     *   그런데 실측 결과, 구간을 딱 붙여 버리면 ML Kit 가 문장 경계를 못 잡고
+     *   segments=1 로 처리하다가 앞부분을 통째로 버리는 사례가 나왔다.
+     *   PC GUI 도 같은 이유로 --vad-join-silence-ms 를 200 ms 로 기본 적용한다.
+     *   PC/안드로이드 STT 입력을 같게 만들어야 WER/CER 비교가 성립하므로 동작을 맞춘다.
+     */
+    private fun collectPcm(
+        pcm: ByteArray,
+        segments: List<VadSegment>,
+        joinSilenceMs: Int,
+    ): JoinedPcm {
+        if (segments.isEmpty()) return JoinedPcm(ByteArray(0), 0, emptyList())
+
+        // 무음 1회분의 sample / byte 수. PCM16 은 sample 당 2 byte 이고, 0x0000 이 무음이다.
+        val gapSamples = (SAMPLE_RATE.toLong() * joinSilenceMs / 1_000L).toInt().coerceAtLeast(0)
+        val gapBytes = gapSamples * 2
+        val gap = if (gapBytes > 0) ByteArray(gapBytes) else ByteArray(0)  // ByteArray 는 0 으로 초기화된다
+
+        // 대략적인 최종 크기(구간 합 + 무음 (구간수-1) 회분)로 버퍼를 미리 잡아 재할당을 줄인다.
+        val estimated = segments.sumOf { (it.endSample - it.startSample).coerceAtLeast(0) * 2 } +
+            gapBytes * (segments.size - 1).coerceAtLeast(0)
         val out = ByteArrayOutputStream(estimated)
+
+        var wrote = false            // 실제로 뭔가 쓴 적이 있는지(맨 앞에 무음이 붙는 것을 막는다)
+        var insertedGaps = 0         // 실제로 끼워 넣은 무음 횟수
+        val seams = ArrayList<Int>() // add-hyungchul-20260914-2350 : 절단 후보 좌표
         for (s in segments) {
             val startByte = (s.startSample * 2).coerceIn(0, pcm.size)
             val endByte = (s.endSample * 2).coerceIn(startByte, pcm.size)
-            if (endByte > startByte) out.write(pcm, startByte, endByte - startByte)
+            if (endByte <= startByte) continue                 // 빈 구간은 건너뛴다
+            if (wrote) {                                       // 두 번째 구간부터
+                // add-hyungchul-20260914-2350
+                // 현재 출력 길이(sample) 가 곧 이 이음매의 시작점이다.
+                val seamStart = out.size() / 2
+                if (gapBytes > 0) {
+                    out.write(gap, 0, gapBytes)
+                    insertedGaps++
+                    seams.add(seamStart + gapSamples / 2)      // 무음 한가운데
+                } else {
+                    seams.add(seamStart)                       // 무음이 없으면 이음매 그 자리
+                }
+            }
+            out.write(pcm, startByte, endByte - startByte)     // 구간의 원본 PCM
+            wrote = true
         }
-        return out.toByteArray()
+        return JoinedPcm(out.toByteArray(), gapSamples * insertedGaps, seams)
     }
 
     /** 모델 파일의 SHA-256 (run_meta.csv 에 남겨 재현성을 확보한다) */
