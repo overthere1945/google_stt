@@ -432,3 +432,33 @@ print(ok[ok.ns_peak > 0.999][["variant", "path", "ns_peak"]])
 
 WER/CER 자체는 `.txt` 를 정답 스크립트와 대조해 따로 계산하고,
 그 결과를 `variant` 컬럼 기준으로 위 표에 붙이면 "품질 vs 비용" 표가 완성된다.
+
+---
+
+## 5. v2.0.0 추가 컬럼 — VAD 엔진 선택 / 구간 처리 / 조건 이름 (add-hyungchul-20261009-1530, 92~99번째)
+
+기존 91개 열 뒤에 덧붙였다(앞 열 index 는 그대로다).
+
+| 컬럼 | 뜻 |
+|---|---|
+| `vad_engine` | VAD 엔진: `NONE` / `SILERO` / `WEBRTC` / `PYANNOTE` / `FSMN` / `FIRERED` / `TEN` |
+| `vad_preset` | 프리셋 = 조건 이름의 VAD 부분(`SILERO_SAFE`, Custom 이면 `SILERO_CUSTOM_t40_sp250_si300_pad100` 처럼 값이 붙는다). VAD OFF 면 `NOVAD` |
+| `vad_params` | 엔진의 설정값 전체 `key=value, …`(엔진마다 항목이 달라 한 칸에 모았다) |
+| `vad_commercial` | 상업 사용 판정 `allowed` / `conditional`(TEN VAD) |
+| `seg_mode` | 구간 처리 `ENGINE_MAX`(엔진별 최대 길이) / `SEG10`(모든 엔진 10초 통일) |
+| `seg_chunks` | STT 에 실제로 넣은 조각 수(SEG10 의 조각 수. ENGINE_MAX 는 1 — EPD 로 나눈 수는 `epd_chunks`) |
+| `seg_splits` | 10초보다 긴 말 구간을 조용한 지점에서 자른 횟수 |
+| `condition` | 결과 조건 이름(PC GUI v7.7 평탄화 규칙의 `<조건>`) |
+
+바뀐 뜻(v2.0.0):
+- `vad_profile` : 예전 "Default (GUI 기본값)" → 지금은 `vad_preset` 과 같은 조건 이름(run_meta 의 `vad_profile` 과 같다).
+- `vad_model` : 고른 엔진의 모델/라이브러리 이름(`silero_vad_16k_op15.onnx`, `pyannote_seg3.onnx`, `libten_vad.so` …).
+- `vad_threshold` ~ `vad_max_speech_sec` : Silero 방식 항목이 있는 엔진(Silero / WebRTC / TEN)만 채운다. 다른 엔진은 빈 칸이고 `vad_params` 를 본다.
+- SEG10 에서는 `vad_output_sec` / `vad_removed_sec` / `vad_removed_ratio` / `vad_join_silence_sec` 가 "조각 합" 기준이고, `epd_mode` 는 `OFF` 다.
+- `mode` 에서 `advanced` 가 없어졌다(ML Kit Advanced 제거).
+
+결과 파일 위치(v7.7 평탄화):
+- `output/<엔진>_<모델>_<조건>/<하위>/<파일>.txt` (예: `google-mlkit_basic_SILERO_SAFE/vLog/01.txt`)
+- `output/<엔진>_<조건>_result.csv`, `output/<엔진>_<조건>_run_meta.csv`
+- run_meta 새 키: `vad_engine`, `vad_preset`, `vad_params`, `vad_license`, `vad_commercial`, `seg_mode`, `condition`, `result_dir`, `vad_runtime`, `vad_model_sha256`
+  (`onnxruntime_version` / `silero_model_sha256` 은 예전 뜻대로 Silero 일 때만 채운다)

@@ -31,8 +31,10 @@ android {
         // MODE_BASIC 은 API 31+, Android Platform on-device 파일 입력은 API 33+ 이다.
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // change-hyungchul-20261009-1626 : SW 버전 규칙(Major.Minor.Patch) 적용 — ML Kit Advanced 제거(기능 삭제)와
+        //   결과 폴더 규칙 변경이 있어 Major 를 올린다(1.0 → 2.0.0). 릴리스 노트: docs/RELEASE_NOTES_v2.0.0.md
+        versionCode = 2
+        versionName = "2.0.0"
     }
 
     compileOptions {
