@@ -149,8 +149,12 @@ data class VadSetting(
         val parts = VadParamCatalog.specs(engine).mapNotNull { spec ->     // 항목 순서대로 값 조각을 만든다
             val v = values[spec.key] ?: return@mapNotNull null
             val optional = spec.key == VadKeys.JOIN_MS || spec.key == VadKeys.MAX_SPEECH_SEC
+            // change-hyungchul-20261009-1626 : FSMN 동적 기준(max_end_silence_time = 0)에서는 speech_noise_thres 를 쓰지 않으므로(0.5 고정)
+            //   이름에서도 뺀다 — 결과가 같은데 폴더만 갈리는 것을 막는다(검토 지적 F)
+            val unused = engine == VadEngine.FSMN && spec.key == VadKeys.SPEECH_NOISE_THRES &&
+                (values[VadKeys.MAX_END_SILENCE_MS] ?: 0.0) <= 0.0
             // 사이 무음·최대 길이는 시작값과 같으면 이름에서 뺀다(Q14 예시와 같은 짧은 이름)
-            if (optional && defaults[spec.key] == v) null else spec.nameToken(v)
+            if (unused || (optional && defaults[spec.key] == v)) null else spec.nameToken(v)
         }
         return "${engine.token}_CUSTOM_" + parts.joinToString("_")
     }

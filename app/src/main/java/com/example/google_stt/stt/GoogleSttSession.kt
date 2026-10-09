@@ -99,6 +99,9 @@ class GoogleSttSession(
         relName: String,
         onFed: (Double) -> Unit,
     ): SttOutcome {
+        // change-hyungchul-20261009-1626 : 조각이 여러 개(EPD A안 / 10초 통일)면 재시도를 조각 단위로 한다(검토 지적 E).
+        //   예전처럼 파일 전체를 처음부터 다시 돌리면 이미 끝난 조각의 세션을 또 써서 SODA 한도에 빨리 닿는다.
+        if (chunks.size > 1) return transcribeChunks(chunks, modelConfig, locale, feed, onFed, relName)
         var attempt = 0                                          // 재시도 횟수
         while (true) {
             try {
@@ -141,6 +144,7 @@ class GoogleSttSession(
         locale: Locale,
         feed: FeedConfig,
         onFed: (Double) -> Unit,
+        relName: String = "",                                    // change-hyungchul-20261009-1626 : 조각 단위 재시도 로그용(빈 문자열이면 재시도 없음)
     ): SttOutcome {
         // 조각이 1개면 예전 경로를 그대로 탄다(진행률 계산도 건드리지 않는다).
         if (chunks.size <= 1) {
@@ -165,7 +169,8 @@ class GoogleSttSession(
         for ((i, chunk) in chunks.withIndex()) {
             val base = doneBytes                                     // 이 조각이 시작될 때의 누적 바이트
             val weight = chunk.size.toDouble()
-            val one = transcribeOne(chunk, modelConfig, locale, feed) { fed ->
+            // change-hyungchul-20261009-1626 : relName 이 있으면 이 조각만 할당량 재시도한다(QUOTA_RETRY_MAX 회, 한도 초과 뒤에는 즉시 포기)
+            val one = transcribeChunkWithRetry(chunk, modelConfig, locale, feed, relName, i, chunks.size) { fed ->
                 // 조각 내부 진행률(0~1)을 파일 전체 진행률로 환산한다.
                 onFed((base + fed * weight) / totalBytes)
             }
@@ -200,6 +205,41 @@ class GoogleSttSession(
             downloadMs = downloadMs,
             engineNote = notes.joinToString(" | "),
         )
+    }
+
+    /**
+     * change-hyungchul-20261009-1626
+     * 목적: 조각 1개를 전사하고, 할당량으로 막히면(시간 초과) 쉬었다가 그 조각만 다시 시도한다(검토 지적 E).
+     * 입력: chunk, modelConfig, locale, feed — 전사 조건
+     *       relName — 로그용 파일 이름(빈 문자열이면 재시도하지 않는다), index/count — 조각 번호/전체 수
+     *       onFed — 조각 내부 진행률(0~1)
+     * 리턴: SttOutcome
+     * 예외: 재시도까지 실패하거나 세션 한도를 이미 넘겼으면 TimeoutCancellationException 을 그대로 던진다
+     */
+    private suspend fun transcribeChunkWithRetry(
+        chunk: ByteArray,
+        modelConfig: ModelConfig,
+        locale: Locale,
+        feed: FeedConfig,
+        relName: String,
+        index: Int,
+        count: Int,
+        onFed: (Double) -> Unit,
+    ): SttOutcome {
+        var attempt = 0                                          // 재시도 횟수
+        while (true) {
+            try {
+                return transcribeOne(chunk, modelConfig, locale, feed, onFed)
+            } catch (e: TimeoutCancellationException) {
+                attempt++
+                if (relName.isEmpty() || attempt > QUOTA_RETRY_MAX || sttSessionCount > QUOTA_BUDGET_SESSIONS) throw e
+                log(
+                    "[quota] $relName 조각${index + 1}/$count 이 응답하지 않았다(세션 ${sttSessionCount}개째). " +
+                        "${QUOTA_COOLDOWN_MS / 1000}초 쉬었다가 이 조각만 다시 시도한다 ($attempt/$QUOTA_RETRY_MAX).",
+                )
+                delay(QUOTA_COOLDOWN_MS)                          // 할당량이 다시 채워질 시간을 준다
+            }
+        }
     }
 
     /**

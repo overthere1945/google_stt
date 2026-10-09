@@ -32,6 +32,7 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import com.example.google_stt.AudioDecoder
+import com.example.google_stt.EpdConfig   // change-hyungchul-20261009-1626
 import com.example.google_stt.EpdMode
 import com.example.google_stt.R
 import com.example.google_stt.SpeechEpd
@@ -161,7 +162,9 @@ class BatchRunner(
         val modelFolder = modelConfig.folder
         val feed = req.feed
         val vadSelection = req.vadSelection
-        val epdSelection = req.epdSelection
+        // change-hyungchul-20261009-1626 : 10초 통일(SEG10)에서는 EPD 를 쓰지 않으므로 CSV·run_meta·세션 예상치에도 OFF 로 남긴다(검토 지적 A)
+        val epdSelection =
+            if (req.vadSelection.segMode.maxSec != null) EpdSelection(EpdConfig(EpdMode.OFF), null) else req.epdSelection
         val noiseConfig = req.noiseConfig
         val condition = req.condition                 // change-hyungchul-20261009-1530
         val vadSetting = vadSelection.setting         // change-hyungchul-20261009-1530 : VAD 엔진·프리셋·값
@@ -289,7 +292,7 @@ class BatchRunner(
             }
             // change-hyungchul-20261009-1530 : 구간 처리 안내 — SEG10 은 조각마다 세션을 연다
             appendLog("[seg] ${vadSelection.segMode.displayName} / 조건=$condition")
-            if (vadSelection.segMode == SegMode.SEG10 && epdSelection.enabled) {
+            if (vadSelection.segMode == SegMode.SEG10 && req.epdSelection.enabled) {   // change-hyungchul-20261009-1626 : 화면 설정 기준으로 안내
                 appendLog("[seg] 10초 통일에서는 조각이 이미 짧아 Speech EPD 를 쓰지 않는다(설정은 무시된다).")
             }
 
@@ -302,7 +305,7 @@ class BatchRunner(
                     // change-hyungchul-20261009-1530 : Silero 방식 항목(threshold 등)은 Silero / WebRTC / TEN 에만 있다. 다른 엔진은 빈 칸.
                     val cfg = sileroStyleConfig(vadSelection)
                     val on = vadSelection.enabled
-                    val vadProfileText = if (on) vadSelection.conditionToken else "OFF"
+                    val vadProfileText = if (on) vadSelection.conditionToken else "OFF"   // result.csv vad_profile 과 같은 값
                     val vadModelText = if (on) (vadProcessor?.label ?: "") else ""
                     val vadThresholdText = cfg?.threshold?.toString() ?: ""
                     val vadNegThresholdText = cfg?.negThreshold?.toString() ?: ""
@@ -346,8 +349,12 @@ class BatchRunner(
                             "epd_mode" to epdSelection.config.mode.name,
                             "epd_config" to epdSelection.config.summary(),
                             "engine_warmup" to warmUpStatus,
-                            "onnxruntime_version" to (vadProcessor?.runtimeVersion ?: ""),
-                            "silero_model_sha256" to (vadProcessor?.modelSha256 ?: ""),
+                            // change-hyungchul-20261009-1626 : 아래 두 키는 예전 뜻(Silero 전용)대로 Silero 일 때만 채운다(검토 지적 G)
+                            "onnxruntime_version" to (if (vadSetting.engine == VadEngine.SILERO) vadProcessor?.runtimeVersion ?: "" else ""),
+                            "silero_model_sha256" to (if (vadSetting.engine == VadEngine.SILERO) vadProcessor?.modelSha256 ?: "" else ""),
+                            // change-hyungchul-20261009-1626 : 모든 VAD 엔진 공통 — 실제 런타임 판과 모델 해시
+                            "vad_runtime" to (vadProcessor?.runtimeVersion ?: ""),
+                            "vad_model_sha256" to (vadProcessor?.modelSha256 ?: ""),
                             // change-hyungchul-20261009-1530 : VAD 엔진 선택 / 구간 처리 / 조건 이름
                             "vad_engine" to vadSetting.engine.name,
                             "vad_preset" to vadSelection.conditionToken,
@@ -641,6 +648,11 @@ class BatchRunner(
                         for (c in packed.chunks) { System.arraycopy(c, 0, buf, off, c.size); off += c.size }
                     }
                     row.vadOutputSec = sttPcm.size / BYTES_PER_SEC.toDouble()   // 실제 STT 입력 길이(조각 합)
+                    // change-hyungchul-20261009-1626 : 제거 길이·비율·사이 무음도 조각 합 기준으로 다시 계산한다(검토 지적 A — vad_output_sec 와 기준을 맞춤)
+                    val origSec = stagePcm.size / BYTES_PER_SEC.toDouble()
+                    row.vadRemovedSec = (origSec - row.vadOutputSec).coerceAtLeast(0.0)
+                    row.vadRemovedRatio = if (origSec > 0) row.vadRemovedSec * 100.0 / origSec else 0.0
+                    row.vadJoinSilenceSec = packed.joinSilenceSamples / 16_000.0
                     appendLog(
                         "[seg] $relName : ${packed.chunks.size}조각(≤${segMax.toInt()}s, 긴 구간 절단 ${packed.splitCount}회), " +
                             "합계 ${"%.2f".format(Locale.US, row.vadOutputSec)}s",
@@ -742,6 +754,7 @@ class BatchRunner(
                     val charsPerSec =
                         if (sttInputSec > 0) outcome.text.length / sttInputSec else 0.0
                     if (modelConfig.engine == SttEngine.ML_KIT &&
+                        segMax == null &&                      // change-hyungchul-20261009-1626 : 10초 통일 조각은 61초 결함과 무관(검토 지적 H)
                         row.status == "OK" &&
                         outcome.segments == 1 &&
                         sttInputSec > MLKIT_SEGMENT_TRUNCATION_SEC &&
@@ -996,7 +1009,7 @@ class BatchRunner(
         }
         row.vadEnabled = 1
         row.vadModel = detector?.label ?: ""
-        row.vadProfile = selection.setting.preset.name
+        row.vadProfile = selection.conditionToken                           // change-hyungchul-20261009-1626 : run_meta vad_profile 과 같은 값(검토 지적 C)
         row.vadJoinSilenceMs = selection.setting.joinMs                     // add-hyungchul-20260914-2130
         val c = sileroStyleConfig(selection) ?: return                      // 다른 엔진은 여기까지
         row.vadThreshold = c.threshold.toDouble()

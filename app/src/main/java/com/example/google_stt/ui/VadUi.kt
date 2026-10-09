@@ -62,7 +62,11 @@ class VadUi(
     private var currentPresets: List<VadPreset> = VadPresetCatalog.presets(VadEngine.NONE)   // 지금 엔진의 프리셋
     private val paramEdits = LinkedHashMap<String, EditText>()              // 키 → 입력칸(항목 순서 유지)
 
-    /** 프리셋 값을 코드로 채우는 동안 TextWatcher 가 Custom 으로 되돌리지 않게 막는 재진입 가드 */
+    /**
+     * 프리셋 값을 코드로 채우는 동안 TextWatcher 가 Custom 으로 되돌리지 않게 막는 재진입 가드.
+     * change-hyungchul-20261009-1626 : setText() 의 TextWatcher 는 즉시(동기) 불리므로 이 가드가 효과가 있다. Spinner.setSelection() 의
+     *   onItemSelected 는 나중에(비동기) 불려 가드가 이미 풀린 뒤일 수 있으나, 그때는 같은 값을 다시 채울 뿐이라 결과가 같다.
+     */
     private var applyingVadPreset = false
 
     /** 입력칸을 사람이 고치면 프리셋을 Custom 으로 바꾸는 감시기(모든 입력칸이 함께 쓴다) */
@@ -224,9 +228,10 @@ class VadUi(
         }
         val preset = currentPresets[vadProfileSpinner.selectedItemPosition.coerceIn(0, currentPresets.lastIndex)]
         val values: Map<String, Double> = if (preset.isCustom) {            // Custom 은 입력칸 값을 읽는다
+            val labels = VadParamCatalog.specs(currentEngine).associate { it.key to it.label }
             paramEdits.mapValues { (key, edit) ->
                 edit.text.toString().trim().toDoubleOrNull()
-                    ?: throw IllegalArgumentException("$key 값을 확인하세요.")
+                    ?: throw IllegalArgumentException("${labels[key] ?: key} 값을 확인하세요.")   // change-hyungchul-20261009-1626 : 화면 이름으로 안내
             }
         } else {
             preset.values                                                   // 고정 프리셋은 정의값 그대로

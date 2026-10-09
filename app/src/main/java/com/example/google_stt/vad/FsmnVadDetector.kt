@@ -133,8 +133,7 @@ class FsmnVadDetector(context: Context) : VadDetector {
         val t = feats.size
         if (t < 1) return FrameSegmenter.Result(emptyList(), emptyList())  // 한 프레임도 안 되면 말 없음
 
-        val lfr = buildLfrCmvn(feats)                                      // [T * 400]
-        val silProb = runEncoder(lfr, t)                                   // 프레임별 무음 확률
+        val silProb = runEncoder(feats)                                    // 프레임별 무음 확률(change-hyungchul-20261009-1626 : LFR·CMVN 을 조각마다 만든다)
 
         val segsMs = stateMachine(                                         // E2E VAD 상태 기계
             silProb = silProb,
@@ -149,23 +148,25 @@ class FsmnVadDetector(context: Context) : VadDetector {
     }
 
     /**
-     * 목적: LFR(m=5, n=1) 과 CMVN 을 적용한 [T × 400] 특징을 만든다(funasr_vad.h lfr() 와 같다).
-     * 입력: feats — [T][80]
-     * 리턴: 길이 T × 400 의 평탄화 배열
+     * 목적: LFR(m=5, n=1) 과 CMVN 을 적용한 [n × 400] 특징을 프레임 [start, start+n) 만큼 만든다(funasr_vad.h lfr() 와 같다).
+     * 입력: feats — [T][80], start — 시작 LFR 프레임, n — 만들 프레임 수
+     * 리턴: 길이 n × 400 의 평탄화 배열
+     * 비고: change-hyungchul-20261009-1626 — 예전에는 파일 전체(T × 400)를 한 번에 만들어 긴 음원에서 메모리가 컸다(검토 지적 I). LFR_N = 1 이라
+     *       LFR 프레임 i 는 fbank 프레임 i-2 ~ i+2 만 보므로 조각으로 나눠 만들어도 값이 같다.
      */
-    private fun buildLfrCmvn(feats: Array<FloatArray>): FloatArray {
+    private fun buildLfrCmvn(feats: Array<FloatArray>, start: Int, n: Int): FloatArray {
         val t = feats.size
         val pad = (LFR_M - 1) / 2                                          // 앞쪽 복사 프레임 수(2)
-        val tl = (t + LFR_N - 1) / LFR_N                                   // 출력 프레임 수(= T)
-        val out = FloatArray(tl * FEAT_DIM)
-        for (i in 0 until tl) {
+        val out = FloatArray(n * FEAT_DIM)
+        for (k in 0 until n) {
+            val i = start + k                                              // LFR 프레임 번호
             for (j in 0 until LFR_M) {
                 val src = (i * LFR_N + j - pad).coerceIn(0, t - 1)         // 앞은 첫 프레임, 뒤는 마지막 프레임 복사
-                System.arraycopy(feats[src], 0, out, (i * LFR_M + j) * KaldiFbank.NUM_MEL, KaldiFbank.NUM_MEL)
+                System.arraycopy(feats[src], 0, out, (k * LFR_M + j) * KaldiFbank.NUM_MEL, KaldiFbank.NUM_MEL)
             }
         }
-        for (i in 0 until tl) {                                            // CMVN: (x + shift) × scale
-            val base = i * FEAT_DIM
+        for (k in 0 until n) {                                             // CMVN: (x + shift) × scale
+            val base = k * FEAT_DIM
             for (d in 0 until FEAT_DIM) out[base + d] = (out[base + d] + shift[d]) * scale[d]
         }
         return out
@@ -173,16 +174,17 @@ class FsmnVadDetector(context: Context) : VadDetector {
 
     /**
      * 목적: FSMN 인코더를 3000 프레임씩 돌려 프레임별 무음 확률(출력 0번 클래스)을 모은다.
-     * 입력: feats — [T × 400], t — 프레임 수
+     * 입력: feats — fbank [T][80] (change-hyungchul-20261009-1626 : LFR·CMVN 은 조각마다 buildLfrCmvn 으로 만든다)
      * 리턴: 길이 T 의 무음 확률
      */
-    private fun runEncoder(feats: FloatArray, t: Int): FloatArray {
+    private fun runEncoder(feats: Array<FloatArray>): FloatArray {
+        val t = (feats.size + LFR_N - 1) / LFR_N                           // LFR 프레임 수(= T)
         val sil = FloatArray(t)
         var caches = List(4) { FloatArray(CACHE_DIM * CACHE_LEN) }        // 처음 cache 는 0
         var start = 0
         while (start < t) {
             val n = minOf(CHUNK_FRAMES, t - start)                         // 이번 조각 프레임 수
-            val chunk = FloatBuffer.wrap(feats, start * FEAT_DIM, n * FEAT_DIM).slice()
+            val chunk = FloatBuffer.wrap(buildLfrCmvn(feats, start, n))     // change-hyungchul-20261009-1626 : 이 조각만 만든다
             val inputs = LinkedHashMap<String, OnnxTensor>()
             try {
                 inputs[featInputName] = OnnxTensor.createTensor(env, chunk, longArrayOf(1, n.toLong(), FEAT_DIM.toLong()))
@@ -246,8 +248,10 @@ class FsmnVadDetector(context: Context) : VadDetector {
                 acc <= 60000 -> 200
                 else -> 100
             }
-            maxEndSil = maxOf(s - 150, 0) / FRAME_MS                       // (끝 무음 - speech_to_sil) / 10
-            endLookback = maxOf(maxEndSil - lookaheadEnd - 1, 0)
+            // change-hyungchul-20261009-1626 : FunASR 는 csil*10 >= (끝 무음 - 150) 으로 비교한다 → 프레임 기준은 올림(10 의 배수가 아닌 Custom 값 대응, 검토 지적 B)
+            val endSilMs = maxOf(s - 150, 0)                                // (끝 무음 - speech_to_sil) ms
+            maxEndSil = (endSilMs + FRAME_MS - 1) / FRAME_MS               // 올림 프레임
+            endLookback = maxOf(endSilMs / FRAME_MS - lookaheadEnd - 1, 0)
         }
         recompute()
 

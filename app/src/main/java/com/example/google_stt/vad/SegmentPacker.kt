@@ -32,6 +32,7 @@ enum class SegMode(
 class PackedChunks(
     val chunks: List<ByteArray>,              // STT 에 넣을 PCM 조각들(순서대로)
     val splitCount: Int,                      // 상한 때문에 말 구간을 자른 횟수
+    val joinSilenceSamples: Int = 0,          // change-hyungchul-20261009-1626 : 조각 안에 끼워 넣은 사이 무음 샘플 합(CSV vad_join_silence_sec)
 )
 
 /** 조각 만들기 */
@@ -53,6 +54,7 @@ object SegmentPacker {
         val gap = (SAMPLE_RATE.toLong() * joinMs / 1000L).toInt().coerceAtLeast(0)   // 사이 무음(샘플)
         val src = segments ?: listOf(VadSegment(0, total))                 // VAD 없음 = 파일 전체
         var splits = 0
+        var joined = 0                                                     // change-hyungchul-20261009-1626 : 끼워 넣은 무음 샘플 합
 
         // 1) 상한보다 긴 구간을 조용한 지점에서 자른다
         val pieces = ArrayList<VadSegment>()
@@ -82,12 +84,13 @@ object SegmentPacker {
             if (curSamples > 0 && gap > 0) {                                 // 같은 조각 안의 두 번째 구간부터 무음
                 cur.write(ByteArray(gap * 2))
                 curSamples += gap
+                joined += gap
             }
             cur.write(pcm, p.startSample * 2, len * 2)
             curSamples += len
         }
         if (curSamples > 0) chunks.add(cur.toByteArray())
-        return PackedChunks(chunks, splits)
+        return PackedChunks(chunks, splits, joined)
     }
 
     /**

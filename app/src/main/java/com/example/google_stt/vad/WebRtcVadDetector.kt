@@ -61,12 +61,14 @@ class WebRtcVadDetector : VadDetector {
         val frameCount = (samples.size + window - 1) / window              // 마지막 짧은 프레임 포함
         val probs = FloatArray(frameCount)                                 // 프레임별 판정(0/1)
 
+        // change-hyungchul-20261009-1626 : JitPack AAR 이 minify 되어 Kotlin 메타데이터가 없을 때도 컴파일되도록 위치 인자로 부른다
+        //   (선언 순서: sampleRate, frameSize, mode, speechDurationMs, silenceDurationMs)
         VadWebRTC(                                                         // 파일마다 새 핸들
-            sampleRate = SampleRate.SAMPLE_RATE_16K,
-            frameSize = frameSize,
-            mode = mode,
-            speechDurationMs = 0,                                          // 원래 판정 그대로 받기
-            silenceDurationMs = 0,
+            SampleRate.SAMPLE_RATE_16K,
+            frameSize,
+            mode,
+            0,                                                             // speechDurationMs = 0 → 원래 판정 그대로
+            0,                                                             // silenceDurationMs = 0
         ).use { vad ->
             val frame = ShortArray(window)                                 // 재사용 버퍼
             for (i in 0 until frameCount) {
