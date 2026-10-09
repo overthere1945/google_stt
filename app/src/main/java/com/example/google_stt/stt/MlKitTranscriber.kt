@@ -43,7 +43,7 @@ class MlKitTranscriber(private val log: (String) -> Unit) {
     // ─────────────────────── (1)(2) ML Kit GenAI Speech Recognition ───────────────────────
     /**
      * 목적: ML Kit GenAI Speech Recognition 으로 PCM 1건을 전사하고 지연을 계측한다.
-     * 입력: pcm(16k/mono/PCM16), locale, mode(MODE_BASIC/MODE_ADVANCED), feed(공급 속도), onFed(진행률)
+     * 입력: pcm(16k/mono/PCM16), locale, mode(MODE_BASIC — change-hyungchul-20261009-1524: MODE_ADVANCED 제거), feed(공급 속도), onFed(진행률)
      * 출력: SttOutcome
      * 예외: 모델이 AVAILABLE 이 아니거나 인식 오류 시 IOException
      */
@@ -98,7 +98,7 @@ class MlKitTranscriber(private val log: (String) -> Unit) {
             if (status != FeatureStatus.AVAILABLE) {
                 throw IOException(
                     "모델 사용 불가: ${statusName(status)}. " +
-                            "MODE_ADVANCED 는 Pixel 10 계열에서만 제공되고, " +
+                            // change-hyungchul-20261009-1524 : MODE_ADVANCED(Pixel 10 전용) 안내 문구 제거
                             "MODE_BASIC 은 API 31+ 대부분의 기기에서 제공된다.",
                 )
             }

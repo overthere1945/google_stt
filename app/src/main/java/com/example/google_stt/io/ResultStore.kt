@@ -29,7 +29,7 @@ class ResultStore(
      *   노이즈 저감 폴더가 하나 더 끼어들어야 해서, 앞으로 단계가 늘어나도 시그니처를 안 바꾸도록
      *   "추가 경로 조각 목록"을 그대로 받는다.
      * 목적: 이번 실행의 결과 폴더를 만든다.
-     * 입력: outputRoot(출력 트리), modelFolder(base/advanced/android_ondevice),
+     * 입력: outputRoot(출력 트리), modelFolder(base/android_ondevice — change-hyungchul-20261009-1524: advanced 제거),
      *       variant — 비어 있으면 기존 경로를 그대로 쓴다. 예: ["ns_gtcrn_lim12", "vad_asr_safe"]
      * 리턴: output/google/<모드>[/ns_xxx][/vad_yyy] DocumentFile
      */

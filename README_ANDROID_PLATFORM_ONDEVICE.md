@@ -1,5 +1,7 @@
 # Android Platform On-device STT 적용 메모
 
+> **[change-hyungchul-20261009-1524] v2.0.0 에서 ML Kit `MODE_ADVANCED`(Pixel 10 전용, 결과 폴더 `advanced`)를 제거했습니다.** 아래 Advanced 관련 설명은 v1.x 기록입니다. 최신 사용법은 `README.md` 를 보세요.
+
 <!-- change(add)-hyungchul-20260812-1709 -->
 
 ## 결론

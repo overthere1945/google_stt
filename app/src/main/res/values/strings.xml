@@ -65,7 +65,7 @@
     <string name="lang_auto">auto (기기 언어)</string>
 
     <string name="model_base">ML Kit GenAI — Basic (API 31+)</string>
-    <string name="model_advanced">ML Kit GenAI — Advanced (Pixel 10)</string>
+    <!-- change-hyungchul-20261009-1524 : model_advanced(ML Kit GenAI — Advanced, Pixel 10 전용) 제거 -->
     <string name="model_android_ondevice">Android Platform On-device (API 33+)</string>
 
     <string name="msg_already_running">이미 실행 중입니다.</string>

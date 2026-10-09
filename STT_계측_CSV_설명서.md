@@ -43,7 +43,7 @@ stt_wall_ms ≈ 음원 길이 × 1000   (엔진이 아무리 빨라도)
 | `file` | 파일명(확장자 제외) |
 | `status` | `OK` / `NO_MATCH` / `ERROR` |
 | `engine` | `ML_KIT` / `ANDROID_PLATFORM_ON_DEVICE` |
-| `mode` | `base` / `advanced` / `android_ondevice` |
+| `mode` | `base` / `android_ondevice` (`advanced` 는 v2.0.0 에서 제거 — change-hyungchul-20261009-1524) |
 | `execution` | API 계약상 실행 위치. 예: `ON_DEVICE(platform on-device service)` |
 | `lang` | BCP-47 (`ko-KR`, `en-US`) |
 

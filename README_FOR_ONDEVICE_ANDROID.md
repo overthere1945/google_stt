@@ -1,5 +1,7 @@
 # Google On-Device STT 안드로이드 앱 (ML Kit GenAI Speech Recognition)
 
+> **[change-hyungchul-20261009-1524] v2.0.0 에서 ML Kit `MODE_ADVANCED`(Pixel 10 전용, 결과 폴더 `advanced`)를 제거했습니다.** 아래 Advanced 관련 설명은 v1.x 기록입니다. 최신 사용법은 `README.md` 를 보세요.
+
 폴더 안의 음성 파일을 **기기 내부(On-Device)** 에서 **ML Kit GenAI Speech
 Recognition** 으로 전사하는 안드로이드 앱입니다. 화면에는 **Input / Output /
 Lang / Start** 가 있고, Start 를 누르면 Input 폴더(하위 폴더 포함)의 모든 음성

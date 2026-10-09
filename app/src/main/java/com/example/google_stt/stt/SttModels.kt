@@ -61,7 +61,7 @@ data class SttOutcome(
 object SttCatalog {
     val models = listOf(
         ModelConfig("base", SttEngine.ML_KIT, SpeechRecognizerOptions.Mode.MODE_BASIC),
-        ModelConfig("advanced", SttEngine.ML_KIT, SpeechRecognizerOptions.Mode.MODE_ADVANCED),
+        // change-hyungchul-20261009-1524 : Pixel 10 전용 ML Kit MODE_ADVANCED("advanced") 경로 제거
         ModelConfig("android_ondevice", SttEngine.ANDROID_PLATFORM_ON_DEVICE),
     )
 

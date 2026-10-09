@@ -4,7 +4,7 @@
  * - 입력 폴더의 음성 파일을 16 kHz / mono / PCM16 으로 변환한 뒤 Google 계열 On-device STT 로 전사한다.
  * - 비교 가능한 3개 경로:
  *     (1) ML Kit GenAI Speech Recognition — MODE_BASIC   → 폴더 base
- *     (2) ML Kit GenAI Speech Recognition — MODE_ADVANCED→ 폴더 advanced (Pixel 10 계열만)
+ *     (2) (삭제) ML Kit GenAI — MODE_ADVANCED(Pixel 10 전용) — change-hyungchul-20261009-1524 : Galaxy S25 Ultra 평가에서 쓸 수 없어 제거
  *     (3) Android Platform SpeechRecognizer.createOnDeviceSpeechRecognizer() → 폴더 android_ondevice
  * - 결과 저장:
  *     output/google/<모드>/<입력 하위 폴더>/<파일명>.txt
@@ -231,7 +231,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
             android.R.layout.simple_spinner_dropdown_item,
             listOf(
                 getString(R.string.model_base),
-                getString(R.string.model_advanced),
+                // change-hyungchul-20261009-1524 : Pixel 10 전용 Advanced 항목 제거(SttCatalog.models 와 순서를 맞춘다)
                 getString(R.string.model_android_ondevice),
             ),
         )

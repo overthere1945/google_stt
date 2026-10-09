@@ -850,12 +850,8 @@ class BatchRunner(
      * 비고: 세 경로 모두 문서상 온디바이스다. 실제 증명은 CSV 의 net_type/airplane 컬럼으로 한다.
      */
     private fun executionLabel(config: ModelConfig): String = when (config.engine) {
-        SttEngine.ML_KIT ->
-            if (config.mlKitMode == SpeechRecognizerOptions.Mode.MODE_ADVANCED) {
-                "ON_DEVICE(MLKit GenAI)"
-            } else {
-                "ON_DEVICE(MLKit basic=platform SpeechRecognizer)"
-            }
+        // change-hyungchul-20261009-1524 : MODE_ADVANCED("ON_DEVICE(MLKit GenAI)") 분기 제거 — ML Kit 경로는 BASIC 만 남았다.
+        SttEngine.ML_KIT -> "ON_DEVICE(MLKit basic=platform SpeechRecognizer)"
 
         SttEngine.ANDROID_PLATFORM_ON_DEVICE -> "ON_DEVICE(platform on-device service)"
     }
@@ -867,7 +863,7 @@ class BatchRunner(
             SttEngine.ML_KIT -> {
                 for (m in listOf(
                     SpeechRecognizerOptions.Mode.MODE_BASIC,
-                    SpeechRecognizerOptions.Mode.MODE_ADVANCED,
+                    // change-hyungchul-20261009-1524 : MODE_ADVANCED(Pixel 10 전용) 점검 제거
                 )) {
                     // change-hyungchul-20260915-1400
                     //   use{} 는 블록을 벗어날 때 close() 를 부른다. 엔진이 먹통이면 그 close() 가
@@ -886,8 +882,8 @@ class BatchRunner(
                             )
                     }
                     mlKit.closeRecognizerBounded(client)
-                    val name =
-                        if (m == SpeechRecognizerOptions.Mode.MODE_BASIC) "BASIC" else "ADVANCED"
+                    // change-hyungchul-20261009-1524 : ADVANCED 가 없어졌으므로 이름은 항상 BASIC 이다.
+                    val name = "BASIC"
                     val text = st.fold({ mlKit.statusName(it) }, { describe(it) })
                     val line = "ML Kit $name (${locale.toLanguageTag()}) = $text"
                     appendLog("[preflight] $line")
