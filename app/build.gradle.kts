@@ -77,6 +77,17 @@ dependencies {
     //   · settings.gradle.kts 에 mavenCentral() 이 이미 있어 저장소 추가는 필요 없다.
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.25.1")
 
+    // ★ add-hyungchul-20261009-1530 : VAD 엔진 추가
+    //   · Google WebRTC VAD — gkonovalov/android-vad 의 webrtc 모듈(MIT, 내부 WebRTC 코드 BSD-3).
+    //     JitPack 배포라 settings.gradle.kts 에 https://jitpack.io 저장소를 추가했다.
+    //     2.0.10 은 NDK r28 로 빌드되어 16 KB 페이지 정렬 요건을 충족한다(모듈 build.gradle 확인).
+    implementation("com.github.gkonovalov.android-vad:webrtc:2.0.10")
+    //   · TEN VAD — 공식 libten_vad.so(C API)를 부르기 위한 JNA. 공식 Java 래퍼(TenVad.java)도 JNA 를 쓴다.
+    //     Android 16 KB 페이지 대응(libjnidispatch.so)은 5.16.0 이상에서 들어갔다 → 5.17.0 으로 고정.
+    //     @aar 를 붙여야 Android 용 libjnidispatch.so 가 함께 들어온다.
+    implementation("net.java.dev.jna:jna:5.17.0@aar")
+    //   · pyannote / FSMN / FireRed VAD 는 위 onnxruntime-android 1.25.1 로 직접 실행한다(추가 의존성 없음).
+
     // ※ Google Cloud STT 관련 의존성(google-cloud-speech, grpc, 서비스계정 JSON 등)은
     //    이 앱에 필요 없다. 세 경로 모두 온디바이스이며 네트워크 자격증명을 쓰지 않는다.
 }

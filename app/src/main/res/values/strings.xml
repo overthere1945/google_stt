@@ -27,15 +27,19 @@
     <string name="feed_hint">이 엔진은 스트리밍 전용이라 stt_wall_ms 가 공급 속도에 묶인다(REALTIME→RTF≈1.0, 15ms→RTF≈0.15). 지연 없음(MAX)은 ERROR_TYPE_AUDIO_BUFFER_OVERFLOW 로 실패한다. 전량 OK 이면서 전사 텍스트가 REALTIME 과 동일한 가장 낮은 지연값이 이 엔진의 진짜 RTF 다. 10→8→6→5→4→3→2 ms 순으로 낮춰가며 확인할 것.</string>
 
     <!-- add-hyungchul-20260825-1430 : Silero VAD -->
-    <string name="vad_switch">Silero VAD 사용 (OFF = 기존 baseline 과 100% 동일)</string>
-    <string name="vad_profile_title">VAD Profile</string>
-    <string name="vad_threshold_title">Threshold (0.01 ~ 0.99)</string>
-    <string name="vad_min_speech_title">Min Speech (ms)</string>
-    <string name="vad_min_silence_title">Min Silence (ms)</string>
-    <string name="vad_speech_pad_title">Speech Padding (ms)</string>
-    <string name="vad_max_speech_title">Max Speech (sec, 0 = Unlimited)</string>
+    <!-- change-hyungchul-20261009-1530 : vad_switch 제거(입력칸을 ui/VadUi.kt 가 엔진별로 만든다) -->
+    <!-- change-hyungchul-20261009-1530 : 엔진 선택 / 프리셋 제목 -->
+    <string name="vad_engine_title">VAD 엔진 (사용 안 함 = 기존 baseline 과 100% 동일)</string>
+    <string name="vad_profile_title">VAD 프리셋 (공식 기본값 · 추천값 · Custom)</string>
+    <string name="seg_title">구간 처리 (STT 1회 입력 길이)</string>
+    <string name="seg_hint">엔진별 최대 길이: Google 엔진은 기존처럼 말 구간을 이어 붙여 세션 1개로 넣는다(61초 결함은 Speech EPD 로 대응). 모든 엔진 10초 통일: 말 구간을 10초 이하 조각으로 묶어 조각마다 세션을 연다(Speech EPD 는 쓰지 않는다). Google 엔진에서 10초 통일은 세션 수가 크게 늘어 SODA 세션 한도(약 35)에 빨리 닿는다.</string>
+    <!-- change-hyungchul-20261009-1530 : vad_threshold_title 제거(입력칸을 ui/VadUi.kt 가 엔진별로 만든다) -->
+    <!-- change-hyungchul-20261009-1530 : vad_min_speech_title 제거(입력칸을 ui/VadUi.kt 가 엔진별로 만든다) -->
+    <!-- change-hyungchul-20261009-1530 : vad_min_silence_title 제거(입력칸을 ui/VadUi.kt 가 엔진별로 만든다) -->
+    <!-- change-hyungchul-20261009-1530 : vad_speech_pad_title 제거(입력칸을 ui/VadUi.kt 가 엔진별로 만든다) -->
+    <!-- change-hyungchul-20261009-1530 : vad_max_speech_title 제거(입력칸을 ui/VadUi.kt 가 엔진별로 만든다) -->
     <!-- add-hyungchul-20260914-2130 -->
-    <string name="vad_join_silence_title">구간 사이 무음 (ms, 0 = 삽입 안 함)</string>
+    <!-- change-hyungchul-20261009-1530 : vad_join_silence_title 제거(입력칸을 ui/VadUi.kt 가 엔진별로 만든다) -->
     <!-- add-hyungchul-20260914-2350 : Speech EPD -->
     <string name="epd_title">Speech EPD (무음 지점 분할)</string>
     <string name="epd_target_title">목표 조각 길이 (초)</string>
@@ -43,7 +47,8 @@
     <string name="epd_silence_title">긴 무음 (ms, B안에서만 사용)</string>
     <string name="epd_hint">Google on-device 는 한 세션 오디오가 약 61초를 넘고 segments 가 1개로 잡히면 전사문의 앞부분을 통째로 버린다(실측 61.3초 정상 / 67.1초 잘림). 그래서 무음 지점에서 미리 잘라 둔다. 1순위로 Silero VAD 가 찾은 구간 사이 무음에서 자르고, 그런 지점이 없으면 32 ms 단위로 역방향 탐색해 가장 조용한 곳에서 자른다. A안은 조각마다 STT 세션을 따로 돌려 전사문을 이어 붙이고(결함을 확실히 피하지만 세션 수가 늘어난다), B안은 세션 1개로 두고 절단 지점의 무음만 길게 늘린다(문맥은 유지되지만 끊어준다는 보장은 없다). OFF 가 기존 baseline 이다.</string>
     <!-- change-hyungchul-20260914-2130 : preset 출처를 PC GUI 로 바꿨으므로 설명도 같이 고친다. -->
-    <string name="vad_hint">Default / Safe 는 PC 쪽 "STT모델 비교 GUI" 의 Silero VAD 설정과 값이 같다. Default = 0.5 / 250 / 400 / 150 / 0 / 200, Safe = 0.3 / 150 / 600 / 300 / 0 / 200 이다. 값을 직접 고치면 Custom 으로 바뀐다. VAD ON 결과는 output/google/&lt;모드&gt;/vad_&lt;profile&gt;/ 아래에 따로 저장되어 baseline 을 덮어쓰지 않는다.</string>
+    <!-- change-hyungchul-20261009-1530 : vad_hint 를 엔진 선택 구조에 맞게 바꿨다 -->
+    <string name="vad_hint">SILERO 8종은 PC "STT 통합 실행기" 조건 프리셋과 이름·값이 같다(SILERO 0.5/250/400/150, SILERO_SAFE 0.3/150/600/300, SILERO_FW 0.5/0/2000/400·join 0, SILERO_DEFAULT 0.5/250/100/30, SILERO_SHERPA 0.5/250/500/0, SILERO_QWEN3 0.5/1500/500/30, SILERO_WS 0.5/0/500/100, SILERO_USER 0.4/250/300/100). PYANNOTE·FSMN·FIRERED 의 DEFAULT/S500/S2000 도 PC 와 같다. 값을 직접 고치면 Custom 으로 바뀌고 값이 결과 폴더 이름에 들어간다. 결과는 output/&lt;엔진&gt;_&lt;모델&gt;_&lt;조건&gt;/ 아래에 따로 저장된다.</string>
 
     <!-- add-hyungchul-20260826-1100 : Noise Reduction -->
     <string name="ns_title">Noise Reduction (STT 앞단 잡음 제거)</string>

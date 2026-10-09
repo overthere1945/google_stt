@@ -21,6 +21,11 @@ local.properties
 # ONNX 모델 — 저장소에 넣지 않는다(합계 약 10.6 MB, 이진 파일이라 history 가 영구히 무거워진다).
 # tools/download_models.sh 로 받고, 무결성은 app/src/main/assets/models.sha256 으로 확인한다.
 /app/src/main/assets/*.onnx
+# add-hyungchul-20261009-1530 : VAD 엔진 추가분(CMVN·라이선스 사본·TEN 네이티브 라이브러리)도 스크립트로 받는다
+/app/src/main/assets/*.mvn
+/app/src/main/assets/*.ark
+/app/src/main/assets/*.LICENSE.txt
+/app/src/main/jniLibs/
 
 # 빌드 에러 로그 등 일회성 산출물
 /error.txt

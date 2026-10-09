@@ -118,15 +118,19 @@
                 android:textColor="?android:attr/textColorSecondary" />
 
             <!-- add-hyungchul-20260825-1430 : Silero VAD (STT 앞단 선택적 전처리) -->
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/vadSwitch"
+            <!-- change-hyungchul-20261009-1530 : VAD 사용 스위치 + 고정 입력칸 6개 →
+                 "VAD 엔진 스피너(사용 안 함 포함) → 프리셋 스피너 → 엔진별 입력칸(코드로 생성)" 으로 바꿨다. -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/vad_engine_title"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary" />
+
+            <Spinner
+                android:id="@+id/vadEngineSpinner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/vad_switch"
-                android:textStyle="bold"
-                android:textColor="?android:attr/textColorPrimary"
-                android:checked="false"
-                android:paddingTop="4dp"
                 android:paddingBottom="4dp" />
 
             <LinearLayout
@@ -134,6 +138,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
+                android:visibility="gone"
                 android:paddingStart="12dp"
                 android:paddingEnd="12dp"
                 android:paddingBottom="12dp">
@@ -151,102 +156,20 @@
                     android:layout_height="wrap_content"
                     android:paddingBottom="8dp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/vad_threshold_title"
-                    android:textColor="?android:attr/textColorPrimary" />
-
-                <EditText
-                    android:id="@+id/vadThresholdEdit"
+                <!-- change-hyungchul-20261009-1530 : 엔진별 설정 입력칸을 ui/VadUi.kt 가 이 안에 만든다 -->
+                <LinearLayout
+                    android:id="@+id/vadParamContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:inputType="numberDecimal"
-                    android:maxLines="1"
-                    android:importantForAutofill="no"
-                    android:text="0.50"
-                    android:hint="0.50" />
+                    android:orientation="vertical" />
 
                 <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/vad_min_speech_title"
-                    android:textColor="?android:attr/textColorPrimary" />
-
-                <EditText
-                    android:id="@+id/vadMinSpeechEdit"
+                    android:id="@+id/vadInfoText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:inputType="number"
-                    android:maxLines="1"
-                    android:importantForAutofill="no"
-                    android:text="100"
-                    android:hint="100" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/vad_min_silence_title"
-                    android:textColor="?android:attr/textColorPrimary" />
-
-                <EditText
-                    android:id="@+id/vadMinSilenceEdit"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="number"
-                    android:maxLines="1"
-                    android:importantForAutofill="no"
-                    android:text="300"
-                    android:hint="300" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/vad_speech_pad_title"
-                    android:textColor="?android:attr/textColorPrimary" />
-
-                <EditText
-                    android:id="@+id/vadSpeechPadEdit"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="number"
-                    android:maxLines="1"
-                    android:importantForAutofill="no"
-                    android:text="200"
-                    android:hint="200" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/vad_max_speech_title"
-                    android:textColor="?android:attr/textColorPrimary" />
-
-                <EditText
-                    android:id="@+id/vadMaxSpeechEdit"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="numberDecimal"
-                    android:maxLines="1"
-                    android:importantForAutofill="no"
-                    android:text="0"
-                    android:hint="0" />
-
-                <!-- add-hyungchul-20260914-2130 : 구간 사이 무음(ms) — PC GUI 의 vad-join-silence-ms -->
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/vad_join_silence_title"
-                    android:textColor="?android:attr/textColorPrimary" />
-
-                <EditText
-                    android:id="@+id/vadJoinSilenceEdit"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="number"
-                    android:maxLines="1"
-                    android:importantForAutofill="no"
-                    android:text="200"
-                    android:hint="200" />
+                    android:textSize="12sp"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:paddingTop="4dp" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -257,6 +180,27 @@
                     android:paddingTop="4dp" />
 
             </LinearLayout>
+
+            <!-- change-hyungchul-20261009-1530 : 구간 처리(엔진별 최대 길이 / 모든 엔진 10초 통일) -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/seg_title"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary" />
+
+            <Spinner
+                android:id="@+id/segModeSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/seg_hint"
+                android:textSize="12sp"
+                android:paddingBottom="12dp"
+                android:textColor="?android:attr/textColorSecondary" />
 
             <!-- add-hyungchul-20260914-2350 : Speech EPD (VAD 뒤, STT 바로 앞) -->
             <TextView

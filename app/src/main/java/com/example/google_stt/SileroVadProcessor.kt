@@ -22,6 +22,14 @@
  *    받는 방법은 app/src/main/assets/README_SILERO_MODEL.md 와 tools/download_models.sh 참고.
  *
  * add-hyungchul-20260825-1430
+ *
+ * change-hyungchul-20261009-1530 — VAD 엔진 선택 구조(vad/ 패키지) 도입
+ *   · VadProfile(Default/Safe/Custom) 와 VadPresets 를 지웠다. 프리셋은 vad/VadModels.kt 의
+ *     VadPresetCatalog(SILERO 8종 + SILERO_CUSTOM)로 옮겼다.
+ *   · SileroVadProcessor 는 공통 계약 VadDetector 를 구현한다(detect = 확률 계산 + 구간 계산).
+ *   · 구간 상태 기계(collectSpeechSegments)는 vad/FrameSegmenter.collect() 로, 구간 이어 붙이기(collectPcm)는
+ *     vad/VadPipeline.kt 의 VadPcmJoiner.join() 으로 내용 그대로 옮겼다(WebRTC/TEN/다른 VAD 도 같이 쓴다).
+ *   · 확률 계산(inferProbabilities)과 ONNX 세션 관리는 그대로다 → 같은 설정이면 결과가 이전과 같다.
  */
 package com.example.google_stt
 
@@ -29,34 +37,22 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
-import java.io.ByteArrayOutputStream
+import com.example.google_stt.vad.FrameSegmenter   // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.VadAudio   // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.VadDetector   // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.VadEngine   // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.VadKeys   // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.VadSetting   // change-hyungchul-20261009-1530
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
-import java.security.MessageDigest
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt   // change-hyungchul-20261009-1530
 
-/**
- * 앱 UI 에 노출하는 VAD Profile.
- * change-hyungchul-20260914-2130
- *   기존 ASR Safe / Balanced / Aggressive(내가 임의로 정했던 값)를 전부 걷어내고,
- *   PC 쪽 "STT모델 비교 GUI"(파이썬) 의 Silero VAD 설정 화면과 1:1 로 맞춘다.
- *   - Default : GUI 가 처음 띄우는 기본값
- *   - Safe    : GUI 의 Safe 설정
- *   같은 음원을 PC GUI 와 안드로이드 앱에서 각각 돌렸을 때 STT 입력이 동일해야
- *   WER/CER 비교가 성립하므로, 이름과 값을 임의로 바꾸지 않는다.
- */
-enum class VadProfile(
-    val displayName: String,   // 스피너에 보여줄 이름
-    val folderName: String,    // 결과 폴더명 조각 (output/google/<모드>/vad_<folderName>)
-) {
-    DEFAULT("Default (GUI 기본값)", "default"),
-    SAFE("Safe (GUI Safe)", "safe"),
-    CUSTOM("Custom", "custom"),
-}
+// change-hyungchul-20261009-1530 : VadProfile(Default/Safe/Custom) 제거 → vad/VadModels.kt 의 VadPresetCatalog 로 대체
 
 /**
  * 목적: Silero get_speech_timestamps() 에 넘길 파라미터 묶음.
@@ -78,6 +74,28 @@ data class VadConfig(
     /** Silero 공식 기본 동작: neg_threshold = max(threshold - 0.15, 0.01) */
     val negThreshold: Float
         get() = max(threshold - 0.15f, 0.01f)
+
+    // change-hyungchul-20261009-1530
+    companion object {
+        /**
+         * 목적: 화면에서 고른 VAD 설정(VadSetting) 값을 Silero 파라미터로 바꾼다(init 의 범위 검증을 그대로 탄다).
+         * 입력: s — Silero 방식 키(threshold / min_speech_ms / min_silence_ms / pad_ms / max_speech_sec / join_ms)를 가진 설정
+         *       thresholdOverride — threshold 항목이 없는 엔진(WebRTC)이 넘기는 고정 임계값
+         * 리턴: VadConfig
+         * 비고: max_speech_sec 0 이하 = Unlimited(null) — 기존 화면 규칙과 같다.
+         */
+        fun fromSetting(s: VadSetting, thresholdOverride: Float? = null): VadConfig {
+            val maxSpeech = s[VadKeys.MAX_SPEECH_SEC]                     // 0 이하면 무제한
+            return VadConfig(
+                threshold = thresholdOverride ?: s[VadKeys.THRESHOLD].toFloat(),
+                minSpeechDurationMs = s[VadKeys.MIN_SPEECH_MS].roundToInt(),
+                minSilenceDurationMs = s[VadKeys.MIN_SILENCE_MS].roundToInt(),
+                speechPadMs = s[VadKeys.PAD_MS].roundToInt(),
+                maxSpeechDurationSec = if (maxSpeech <= 0.0) null else maxSpeech,
+                joinSilenceMs = s[VadKeys.JOIN_MS].roundToInt(),
+            )
+        }
+    }
 
     init {
         // UI 입력값을 여기서 한 번 더 검증한다(잘못된 값으로 배치가 돌면 결과 전체를 버려야 하므로).
@@ -107,62 +125,7 @@ data class VadConfig(
     }
 }
 
-/**
- * 프로젝트 평가용 preset 모음.
- * change-hyungchul-20260914-2130
- *   값의 출처를 "내 임의 판단" → "PC GUI 화면" 으로 바꾼다.
- *
- *   [Silero 공식 기본값] (참고용, 아래 preset 과 다르다)
- *     threshold=0.5, min_speech_duration_ms=250, min_silence_duration_ms=100,
- *     speech_pad_ms=30, max_speech_duration_s=inf
- *
- *   [PC GUI Default]  threshold 0.5 / min speech 250 ms / min silence 400 ms /
- *                     speech pad 150 ms / max speech 0(Unlimited) / 구간 사이 무음 200 ms
- *   [PC GUI Safe]     threshold 0.3 / min speech 150 ms / min silence 600 ms /
- *                     speech pad 300 ms / max speech 0(Unlimited) / 구간 사이 무음 200 ms
- *
- *   Safe 가 threshold 를 0.5 → 0.3 으로 "낮추는" 것에 주의한다.
- *   threshold 가 낮을수록 작은 소리도 speech 로 보므로 말이 덜 잘린다(=안전하다).
- */
-object VadPresets {
-    /**
-     * 목적: Profile 에 해당하는 파라미터를 돌려준다.
-     * 입력: profile
-     * 출력: 없음
-     * 리턴: VadConfig
-     */
-    fun config(profile: VadProfile): VadConfig = when (profile) {
-        // change-hyungchul-20260914-2130 : PC GUI 기본값과 동일
-        VadProfile.DEFAULT -> VadConfig(
-            threshold = 0.50f,              // GUI: Threshold 0.5
-            minSpeechDurationMs = 250,      // GUI: Min speech (ms) 250
-            minSilenceDurationMs = 400,     // GUI: Min silence (ms) 400
-            speechPadMs = 150,              // GUI: Speech pad (ms) 150
-            maxSpeechDurationSec = null,    // GUI: Max speech (s) 0 = Unlimited
-            joinSilenceMs = 200,            // GUI: 구간 사이 무음(ms) 200
-        )
-
-        // change-hyungchul-20260914-2130 : PC GUI Safe 설정과 동일
-        VadProfile.SAFE -> VadConfig(
-            threshold = 0.30f,              // GUI Safe: Threshold 0.3
-            minSpeechDurationMs = 150,      // GUI Safe: Min speech (ms) 150
-            minSilenceDurationMs = 600,     // GUI Safe: Min silence (ms) 600
-            speechPadMs = 300,              // GUI Safe: Speech pad (ms) 300
-            maxSpeechDurationSec = null,    // GUI Safe: Max speech (s) 0 = Unlimited
-            joinSilenceMs = 200,            // GUI Safe: 구간 사이 무음(ms) 200
-        )
-
-        // Custom 의 시작값은 Default 와 같게 둔다(사용자가 UI 에서 고쳐 쓴다).
-        VadProfile.CUSTOM -> VadConfig(
-            threshold = 0.50f,
-            minSpeechDurationMs = 250,
-            minSilenceDurationMs = 400,
-            speechPadMs = 150,
-            maxSpeechDurationSec = null,
-            joinSilenceMs = 200,
-        )
-    }
-}
+// change-hyungchul-20261009-1530 : VadPresets(Default/Safe/Custom 값) 제거 → vad/VadModels.kt 의 VadPresetCatalog(SILERO 8종 + Custom)로 대체
 
 /** 원본 PCM 기준 sample 좌표. endSample 은 exclusive(그 sample 은 포함하지 않음). */
 data class VadSegment(
@@ -218,7 +181,8 @@ class VadResult(
  * - recurrent state 와 context 는 process() 를 시작할 때마다 초기화해 파일 간 상태가 섞이지 않게 한다.
  * - 이 클래스는 thread-safe 하지 않으므로 process() 를 @Synchronized 로 감쌌다.
  */
-class SileroVadProcessor(context: Context) : AutoCloseable {
+// change-hyungchul-20261009-1530 : 공통 계약 VadDetector 를 구현한다(AutoCloseable 는 VadDetector 가 이어받는다).
+class SileroVadProcessor(context: Context) : VadDetector {
 
     companion object {
         /** app/src/main/assets/ 아래에 있어야 하는 파일명 */
@@ -234,8 +198,7 @@ class SileroVadProcessor(context: Context) : AutoCloseable {
         /** state tensor 총 float 개수: 2 x batch(1) x 128 */
         private const val STATE_FLOATS = 2 * 1 * 128
 
-        /** 공식 상수: min_silence_samples_at_max_speech = sampling_rate * 98 / 1000 */
-        private const val MIN_SILENCE_AT_MAX_SPEECH_MS = 98
+        // change-hyungchul-20261009-1530 : MIN_SILENCE_AT_MAX_SPEECH_MS(98) 는 구간 계산과 함께 vad/FrameSegmenter 로 옮겼다.
     }
 
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
@@ -248,10 +211,14 @@ class SileroVadProcessor(context: Context) : AutoCloseable {
     private val srTensor: OnnxTensor
 
     /** run_meta.csv 에 남길 ONNX Runtime 버전 */
-    val runtimeVersion: String = env.version
+    override val runtimeVersion: String = env.version   // change-hyungchul-20261009-1530 : override
 
     /** run_meta.csv 에 남길 모델 파일 해시 — "어떤 모델로 낸 수치인지"를 재현 가능하게 만든다. */
-    val modelSha256: String
+    override val modelSha256: String   // change-hyungchul-20261009-1530 : override
+
+    // change-hyungchul-20261009-1530 : VadDetector 계약 — 엔진 종류와 CSV vad_model 이름
+    override val engine: VadEngine = VadEngine.SILERO
+    override val label: String = MODEL_LABEL
 
     init {
         // ── 1) assets 에서 모델을 읽는다. 없으면 원인을 정확히 알려주고 즉시 실패한다. ──
@@ -263,7 +230,7 @@ class SileroVadProcessor(context: Context) : AutoCloseable {
                     "Silero 공식 모델을 app/src/main/assets/$MODEL_ASSET 에 넣어주세요. (원인: ${e.message})",
             )
         }
-        modelSha256 = sha256(modelBytes)
+        modelSha256 = VadAudio.sha256(modelBytes)               // change-hyungchul-20261009-1530 : 공통 해시 함수 사용
 
         // ── 2) 공식 Python OnnxWrapper 와 같은 단일 thread 설정으로 세션을 만든다. ──
         sessionOptions.setInterOpNumThreads(1)
@@ -301,46 +268,29 @@ class SileroVadProcessor(context: Context) : AutoCloseable {
     }
 
     /**
-     * 목적: PCM 1건에서 speech 구간만 남긴 PCM 을 만든다.
-     * 입력: pcm16Le — 16 kHz / mono / PCM16 LE, config — VAD 파라미터
+     * change-hyungchul-20261009-1530
+     * 목적: PCM 1건에서 말 구간을 찾는다(VadDetector 계약).
+     * 입력: pcm16Le — 16 kHz / mono / PCM16 LE, setting — Silero 방식 설정(SILERO_* 프리셋 또는 Custom)
      * 출력: 없음
-     * 리턴: VadResult (구간 목록 + 재구성 PCM + 계측치)
-     * 예외: PCM 바이트 수가 홀수이면 IllegalArgumentException, ONNX 실행 실패 시 OrtException
+     * 리턴: FrameSegmenter.Result(raw = 패딩 전, padded = 패딩 후)
+     * 예외: 값 범위 오류는 IllegalArgumentException(VadConfig init), ONNX 실행 실패 시 OrtException
+     * 비고: 예전 process() 에서 "확률 계산 → 구간 계산" 까지만 남겼다. 이어 붙이기는 VadRunner 가 공통으로 한다.
      */
     @Synchronized
-    fun process(pcm16Le: ByteArray, config: VadConfig): VadResult {
-        require(pcm16Le.size % 2 == 0) { "PCM16 은 byte 수가 짝수여야 합니다: ${pcm16Le.size}" }
-
-        val startedNs = System.nanoTime()                       // 처리시간 계측 시작
-        val samples = pcm16ToFloat(pcm16Le)                     // PCM16 → [-1, 1) float
-        if (samples.isEmpty()) {                                // 빈 입력은 그대로 빈 결과
-            return VadResult(ByteArray(0), emptyList(), 0, 0, 0, 0)
-        }
-
-        val probabilities = inferProbabilities(samples)         // frame 별 speech 확률
-        val collected = collectSpeechSegments(                  // 확률 → 구간 목록
+    override fun detect(pcm16Le: ByteArray, setting: VadSetting): FrameSegmenter.Result {
+        val config = VadConfig.fromSetting(setting)                      // 범위 검증 포함
+        val samples = VadAudio.toFloat(pcm16Le)                          // PCM16 → [-1, 1) float
+        if (samples.isEmpty()) return FrameSegmenter.Result(emptyList(), emptyList())
+        val probabilities = inferProbabilities(samples)                  // frame 별 speech 확률(기존 그대로)
+        return FrameSegmenter.collect(                                   // 기존 collectSpeechSegments 와 같은 규칙
             probabilities = probabilities,
+            windowSamples = WINDOW_SAMPLES,
             audioLengthSamples = samples.size,
-            config = config,
-        )
-        // change-hyungchul-20260914-2130 : 구간 사이 무음(joinSilenceMs) 을 끼워 넣는다
-        val joined = collectPcm(pcm16Le, collected.padded, config.joinSilenceMs)
-        val outputPcm = joined.pcm                              // 구간 PCM + 구간 사이 무음
-        val processMs = (System.nanoTime() - startedNs) / 1_000_000
-
-        return VadResult(
-            pcm = outputPcm,
-            segments = collected.padded,
-            processMs = processMs,
-            originalSamples = samples.size,
-            outputSamples = outputPcm.size / 2,
-            detectedSpeechSamples = collected.raw.sumOf {
-                (it.endSample - it.startSample).coerceAtLeast(0)
-            },
-            // add-hyungchul-20260914-2130
-            joinSilenceSamples = joined.silenceSamples,
-            // add-hyungchul-20260914-2350
-            seams = joined.seams,
+            threshold = config.threshold,
+            minSpeechMs = config.minSpeechDurationMs,
+            minSilenceMs = config.minSilenceDurationMs,
+            speechPadMs = config.speechPadMs,
+            maxSpeechSec = config.maxSpeechDurationSec,
         )
     }
 
@@ -417,271 +367,13 @@ class SileroVadProcessor(context: Context) : AutoCloseable {
         return probs
     }
 
-    /** raw = padding 전 구간(계측용), padded = padding 후 구간(실제 잘라낼 구간) */
-    private class SegmentCollection(
-        val raw: List<VadSegment>,
-        val padded: List<VadSegment>,
-    )
+    // change-hyungchul-20261009-1530
+    //   collectSpeechSegments() → vad/FrameSegmenter.collect() (창 크기만 인자로 바꾼 같은 코드)
+    //   pcm16ToFloat()          → vad/VadPipeline.kt VadAudio.toFloat()
+    //   collectPcm()/JoinedPcm  → vad/VadPipeline.kt VadPcmJoiner.join()
+    //   로 옮겼다(모든 VAD 엔진이 같은 구간 규칙·이어 붙이기를 쓰게 하기 위함).
 
-    /** 상태 기계를 도는 동안 start/end 를 고쳐 쓰기 위한 가변 구간 */
-    private class MutableSegment(var start: Int, var end: Int)
-
-    /**
-     * 목적: 공식 get_speech_timestamps() 의 상태 기계를 그대로 옮겨 speech 구간을 만든다.
-     * 입력: probabilities(frame 확률), audioLengthSamples(전체 sample 수), config
-     * 출력: 없음
-     * 리턴: SegmentCollection
-     * 비고:
-     * - use_max_poss_sil_at_max_speech = true (공식 기본값) 동작만 구현한다.
-     * - ★ Max Speech 분할 분기는 Custom 에서 Max Speech 를 0 보다 크게 넣었을 때만 실행된다.
-     *   기본 3개 Profile 은 모두 Unlimited 라 이 분기를 타지 않는다.
-     * - 공식 Python 과 동일하게 min speech / min silence 비교에 엄격한 '>' 와 '<' 를 쓴다.
-     */
-    private fun collectSpeechSegments(
-        probabilities: FloatArray,
-        audioLengthSamples: Int,
-        config: VadConfig,
-    ): SegmentCollection {
-        // ── 공식 식 그대로: ms → sample 환산 ──
-        val minSpeechSamples = SAMPLE_RATE * config.minSpeechDurationMs / 1000.0
-        val speechPadSamples = SAMPLE_RATE * config.speechPadMs / 1000.0
-        val minSilenceSamples = SAMPLE_RATE * config.minSilenceDurationMs / 1000.0
-        val minSilenceAtMaxSamples = SAMPLE_RATE * MIN_SILENCE_AT_MAX_SPEECH_MS / 1000.0
-        val maxSpeechSamples = config.maxSpeechDurationSec?.let {
-            SAMPLE_RATE * it - WINDOW_SAMPLES - 2.0 * speechPadSamples
-        } ?: Double.POSITIVE_INFINITY                            // null = Unlimited
-
-        var triggered = false                                    // 지금 speech 안인지
-        var currentSpeech: MutableSegment? = null                // 진행 중인 구간
-        var tempEnd = 0                                          // 잠정 무음 시작 위치
-        var prevEnd = 0                                          // 직전 분할 후보 위치
-        var nextStart = 0                                        // 분할 후 다음 구간 시작 위치
-        val possibleEnds = mutableListOf<Pair<Int, Int>>()        // (무음 시작, 무음 길이) 후보들
-        val speeches = mutableListOf<MutableSegment>()
-
-        for (i in probabilities.indices) {
-            val speechProb = probabilities[i]
-            val curSample = WINDOW_SAMPLES * i                    // 공식: cur_sample = window * i
-
-            // (1) 무음이 끝나고 speech 가 다시 나오면, 그 무음을 max-speech 분할 후보로 저장한다.
-            if (speechProb >= config.threshold && tempEnd != 0) {
-                val silenceDuration = curSample - tempEnd
-                if (silenceDuration > minSilenceAtMaxSamples) {
-                    possibleEnds.add(tempEnd to silenceDuration)
-                }
-                tempEnd = 0
-                if (nextStart < prevEnd) nextStart = curSample
-            }
-
-            // (2) speech 시작
-            if (speechProb >= config.threshold && !triggered) {
-                triggered = true
-                currentSpeech = MutableSegment(start = curSample, end = 0)
-                continue
-            }
-
-            // (3) Max Speech 초과 → 구간을 강제로 끊는다. (Unlimited 면 절대 실행되지 않는다)
-            val current = currentSpeech
-            if (triggered && current != null && (curSample - current.start) > maxSpeechSamples) {
-                if (possibleEnds.isNotEmpty()) {
-                    // 공식: prev_end, dur = max(possible_ends, key=lambda x: x[1])
-                    val best = possibleEnds.maxByOrNull { it.second }!!
-                    prevEnd = best.first
-                    val duration = best.second
-                    current.end = prevEnd                          // 가장 긴 무음 지점에서 끊는다
-                    speeches.add(current)
-
-                    nextStart = prevEnd + duration
-                    // 공식: if next_start < prev_end -> triggered = False, else 새 구간을 next_start 에서 시작
-                    if (nextStart < prevEnd) {
-                        triggered = false
-                        currentSpeech = null
-                    } else {
-                        currentSpeech = MutableSegment(start = nextStart, end = 0)
-                    }
-                    prevEnd = 0
-                    nextStart = 0
-                    tempEnd = 0
-                    possibleEnds.clear()
-                } else {
-                    // 쓸 만한 무음 후보가 없으면 현재 frame 위치에서 그냥 끊는다.
-                    current.end = curSample
-                    speeches.add(current)
-                    currentSpeech = null
-                    prevEnd = 0
-                    nextStart = 0
-                    tempEnd = 0
-                    triggered = false
-                    possibleEnds.clear()
-                    continue
-                }
-            }
-
-            // (4) speech 중에 neg_threshold 아래로 떨어지면 잠정 무음이 시작된다.
-            if (speechProb < config.negThreshold && triggered) {
-                if (tempEnd == 0) tempEnd = curSample
-                // 무음이 min silence 보다 짧으면 아직 구간을 끊지 않는다.
-                if (curSample - tempEnd < minSilenceSamples) continue
-
-                val speech = currentSpeech
-                if (speech != null) {
-                    speech.end = tempEnd
-                    // 너무 짧은 speech 는 버린다(공식과 같이 엄격한 '>').
-                    if (speech.end - speech.start > minSpeechSamples) speeches.add(speech)
-                }
-                currentSpeech = null
-                prevEnd = 0
-                nextStart = 0
-                tempEnd = 0
-                triggered = false
-                possibleEnds.clear()
-                continue
-            }
-        }
-
-        // (5) 파일 끝까지 speech 가 이어졌으면 마지막 구간을 닫는다.
-        val lastSpeech = currentSpeech
-        if (lastSpeech != null && audioLengthSamples - lastSpeech.start > minSpeechSamples) {
-            lastSpeech.end = audioLengthSamples
-            speeches.add(lastSpeech)
-        }
-
-        // padding 전 구간 — result.csv 의 vad_detected_speech_sec 계산에 쓴다.
-        val raw = speeches.mapNotNull { toSegment(it.start, it.end, audioLengthSamples) }
-
-        // (6) 공식 padding 로직을 그대로 적용한다.
-        val padded = raw.map { MutableSegment(it.startSample, it.endSample) }.toMutableList()
-        val pad = speechPadSamples.toInt()
-        for (i in padded.indices) {
-            val speech = padded[i]
-            if (i == 0) {
-                speech.start = max(0, speech.start - pad)          // 첫 구간은 앞으로 pad
-            }
-            if (i != padded.lastIndex) {
-                val next = padded[i + 1]
-                val silenceDuration = next.start - speech.end
-                if (silenceDuration < 2 * pad) {
-                    // 두 구간 사이가 좁으면 무음을 절반씩 나눠 갖는다(겹침 방지).
-                    val half = silenceDuration / 2
-                    speech.end += half
-                    next.start = max(0, next.start - half)
-                } else {
-                    speech.end = min(audioLengthSamples, speech.end + pad)
-                    next.start = max(0, next.start - pad)
-                }
-            } else {
-                speech.end = min(audioLengthSamples, speech.end + pad)  // 마지막 구간은 뒤로 pad
-            }
-        }
-
-        val paddedImmutable = padded.mapNotNull { toSegment(it.start, it.end, audioLengthSamples) }
-        return SegmentCollection(raw = raw, padded = paddedImmutable)
-    }
-
-    /**
-     * 목적: 구간 좌표를 오디오 길이 안으로 자르고, 길이가 0 이하이면 버린다.
-     * 입력: start, end, length
-     * 리턴: VadSegment 또는 null
-     */
-    private fun toSegment(start: Int, end: Int, length: Int): VadSegment? {
-        val s = start.coerceIn(0, length)
-        val e = end.coerceIn(0, length)
-        return if (e > s) VadSegment(s, e) else null
-    }
-
-    /**
-     * 목적: PCM16 LE 바이트를 [-1, 1) 범위 float 로 바꾼다.
-     * 입력: pcm — PCM16 LE
-     * 리턴: FloatArray (sample 수 = pcm.size / 2)
-     */
-    private fun pcm16ToFloat(pcm: ByteArray): FloatArray {
-        val out = FloatArray(pcm.size / 2)
-        var bi = 0
-        for (i in out.indices) {
-            val lo = pcm[bi].toInt() and 0xFF                     // little-endian: 낮은 바이트가 먼저
-            val hi = pcm[bi + 1].toInt()                          // 부호 확장을 위해 마스킹하지 않는다
-            out[i] = ((hi shl 8) or lo).toShort().toInt() / 32768.0f
-            bi += 2
-        }
-        return out
-    }
-
-    /**
-     * 목적: collectPcm() 의 반환 묶음.
-     * add-hyungchul-20260914-2130
-     *   끼워 넣은 무음 길이를 CSV 에 남겨야 해서 PCM 과 함께 돌려준다.
-     */
-    private class JoinedPcm(
-        val pcm: ByteArray,             // 최종 STT 입력 PCM16 LE
-        val silenceSamples: Int,        // 구간 사이에 끼워 넣은 무음 sample 합
-        // add-hyungchul-20260914-2350 : Speech EPD 가 쓸 "안전한 절단 후보" 좌표
-        //   구간과 구간 사이(끼워 넣은 무음 한가운데)의 출력 PCM sample 좌표다.
-        //   여기서 자르면 말이 잘리지 않는다는 것이 VAD 로 이미 보장되어 있다.
-        val seams: List<Int>,
-    )
-
-    /**
-     * 목적: 구간에 해당하는 "원본" PCM 바이트를 순서대로 이어 붙이고,
-     *       구간과 구간 사이에 joinSilenceMs 만큼 digital silence 를 끼워 넣는다.
-     * 입력: pcm — 원본 PCM16 LE
-     *       segments — 잘라낼 구간(padding 적용 후)
-     *       joinSilenceMs — 구간 사이에 넣을 무음 길이(ms). 0 이면 예전 동작과 동일하다.
-     * 출력: 없음
-     * 리턴: JoinedPcm(최종 PCM, 끼워 넣은 무음 sample 수)
-     * 비고: change-hyungchul-20260914-2130
-     *   예전에는 "무음을 넣으면 STT 입력을 바꾸는 것" 이라는 이유로 넣지 않았다.
-     *   그런데 실측 결과, 구간을 딱 붙여 버리면 ML Kit 가 문장 경계를 못 잡고
-     *   segments=1 로 처리하다가 앞부분을 통째로 버리는 사례가 나왔다.
-     *   PC GUI 도 같은 이유로 --vad-join-silence-ms 를 200 ms 로 기본 적용한다.
-     *   PC/안드로이드 STT 입력을 같게 만들어야 WER/CER 비교가 성립하므로 동작을 맞춘다.
-     */
-    private fun collectPcm(
-        pcm: ByteArray,
-        segments: List<VadSegment>,
-        joinSilenceMs: Int,
-    ): JoinedPcm {
-        if (segments.isEmpty()) return JoinedPcm(ByteArray(0), 0, emptyList())
-
-        // 무음 1회분의 sample / byte 수. PCM16 은 sample 당 2 byte 이고, 0x0000 이 무음이다.
-        val gapSamples = (SAMPLE_RATE.toLong() * joinSilenceMs / 1_000L).toInt().coerceAtLeast(0)
-        val gapBytes = gapSamples * 2
-        val gap = if (gapBytes > 0) ByteArray(gapBytes) else ByteArray(0)  // ByteArray 는 0 으로 초기화된다
-
-        // 대략적인 최종 크기(구간 합 + 무음 (구간수-1) 회분)로 버퍼를 미리 잡아 재할당을 줄인다.
-        val estimated = segments.sumOf { (it.endSample - it.startSample).coerceAtLeast(0) * 2 } +
-            gapBytes * (segments.size - 1).coerceAtLeast(0)
-        val out = ByteArrayOutputStream(estimated)
-
-        var wrote = false            // 실제로 뭔가 쓴 적이 있는지(맨 앞에 무음이 붙는 것을 막는다)
-        var insertedGaps = 0         // 실제로 끼워 넣은 무음 횟수
-        val seams = ArrayList<Int>() // add-hyungchul-20260914-2350 : 절단 후보 좌표
-        for (s in segments) {
-            val startByte = (s.startSample * 2).coerceIn(0, pcm.size)
-            val endByte = (s.endSample * 2).coerceIn(startByte, pcm.size)
-            if (endByte <= startByte) continue                 // 빈 구간은 건너뛴다
-            if (wrote) {                                       // 두 번째 구간부터
-                // add-hyungchul-20260914-2350
-                // 현재 출력 길이(sample) 가 곧 이 이음매의 시작점이다.
-                val seamStart = out.size() / 2
-                if (gapBytes > 0) {
-                    out.write(gap, 0, gapBytes)
-                    insertedGaps++
-                    seams.add(seamStart + gapSamples / 2)      // 무음 한가운데
-                } else {
-                    seams.add(seamStart)                       // 무음이 없으면 이음매 그 자리
-                }
-            }
-            out.write(pcm, startByte, endByte - startByte)     // 구간의 원본 PCM
-            wrote = true
-        }
-        return JoinedPcm(out.toByteArray(), gapSamples * insertedGaps, seams)
-    }
-
-    /** 모델 파일의 SHA-256 (run_meta.csv 에 남겨 재현성을 확보한다) */
-    private fun sha256(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(bytes)
-            .joinToString("") { String.format(Locale.US, "%02x", it) }
+    // change-hyungchul-20261009-1530 : sha256() → VadAudio.sha256() 로 옮겼다.
 
     /**
      * 목적: 배치가 끝날 때 ONNX 자원을 정리한다.

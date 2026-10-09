@@ -205,7 +205,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
             session = GoogleSttSession(mlKit, platform, ::appendLog),
             mlKit = mlKit,
             platform = platform,
-            store = ResultStore(contentResolver, algoName),
+            store = ResultStore(contentResolver),   // change-hyungchul-20261009-1530 : 평탄화 규칙 — algoName 인자 제거
             algoName = algoName,
         )
 
@@ -311,13 +311,19 @@ class MainActivity : AppCompatActivity(), BatchHost {
             toast("노이즈 저감 설정 오류: ${describe(e)}"); return
         }
 
-        // 결과 폴더 조합: output/google/<모드>/[ns_xxx/][vad_yyy/]...
-        // baseline(둘 다 미사용)이면 빈 목록이라 기존 경로를 그대로 쓴다.
-        val variantSegments = buildList {
-            noiseConfig.outputFolder()?.let { add(it) }
-            vadSelection.outputFolder?.let { add(it) }
-            epdSelection.outputFolder?.let { add(it) }   // add-hyungchul-20260914-2350
-        }
+        // change-hyungchul-20261009-1530 : 결과 폴더 조합을 PC GUI v7.7 평탄화 규칙의 "조건 이름" 으로 바꿨다.
+        //   예전: output/google/<모드>/[ns_xxx/][vad_yyy/][epd_zzz/]...
+        //   지금: output/<엔진>_<모델>_<조건>/...  ,  <조건> = [NS_…_]<VAD 프리셋>[_SEG10][_EPD_…]
+        //   예) NOVAD, SILERO_SAFE, NS_GTCRN_SILERO, PYANNOTE_S500_SEG10, SILERO_EPD_SPLIT_T45_M55
+        val condition = buildList {
+            noiseConfig.outputFolder()?.let { add(it.uppercase(Locale.US)) }         // ns_gtcrn_lim12 → NS_GTCRN_LIM12
+            add(vadSelection.conditionToken)                                          // NOVAD / SILERO_SAFE / …
+            if (vadSelection.segMode.conditionSuffix.isNotEmpty()) add(vadSelection.segMode.conditionSuffix)  // SEG10
+            // EPD 는 10초 통일에서 쓰지 않으므로(BatchRunner) 그때는 이름에도 넣지 않는다
+            if (vadSelection.segMode.maxSec == null) {
+                epdSelection.outputFolder?.let { add(it.uppercase(Locale.US)) }       // epd_split_t45_m55 → EPD_SPLIT_T45_M55
+            }
+        }.joinToString("_")
 
         running = true
         startButton.isEnabled = false
@@ -337,7 +343,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
                     vadSelection = vadSelection,
                     epdSelection = epdSelection,
                     noiseConfig = noiseConfig,
-                    variantSegments = variantSegments,
+                    condition = condition,   // change-hyungchul-20261009-1530
                 ),
             )
         }

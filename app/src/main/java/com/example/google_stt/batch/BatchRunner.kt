@@ -13,6 +13,15 @@
  *     this@MainActivity → activity, applicationContext → appContext, getString → activity.getString,
  *     return@launch → return, sttSessionCount → session.sttSessionCount,
  *     warmUpEngine / transcribeWithQuotaRetry → session.*, 마지막 running/버튼 복구 → host.onBatchFinished()
+ *
+ * change-hyungchul-20261009-1530 — VAD 엔진 선택 / 구간 처리 / 결과 폴더 평탄화
+ *   · Silero 전용 SileroVadProcessor.process() → 공통 VadDetector + VadRunner.process() (엔진: Silero/WebRTC/
+ *     pyannote/FSMN/FireRed/TEN). 이어 붙이기·사이 무음·EPD 절단 후보 규칙은 모든 엔진이 같다.
+ *   · 구간 처리 SEG10(모든 엔진 10초 통일) 이면 말 구간을 10초 이하 조각으로 묶어 조각마다 세션을 연다
+ *     (이때 Speech EPD 는 쓰지 않는다 — 조각이 이미 61초 결함 경계보다 훨씬 짧다).
+ *   · 결과 폴더: output/<엔진>_<모델>_<조건>/…, CSV: output/<엔진>_<조건>_result.csv (PC GUI v7.7 규칙)
+ *   · result.csv 끝에 vad_engine / vad_preset / vad_params / vad_commercial / seg_mode / seg_chunks /
+ *     seg_splits / condition 컬럼을 덧붙였다(앞 컬럼 index 는 그대로).
  */
 package com.example.google_stt.batch
 
@@ -25,7 +34,6 @@ import androidx.documentfile.provider.DocumentFile
 import com.example.google_stt.AudioDecoder
 import com.example.google_stt.EpdMode
 import com.example.google_stt.R
-import com.example.google_stt.SileroVadProcessor
 import com.example.google_stt.SpeechEpd
 import com.example.google_stt.SttResourceSnapshot
 import com.example.google_stt.SttRow
@@ -62,6 +70,12 @@ import com.example.google_stt.stt.isEngineDead
 import com.example.google_stt.stt.sttTimeoutSec
 import com.example.google_stt.ui.EpdSelection
 import com.example.google_stt.ui.VadSelection
+import com.example.google_stt.vad.SegMode                 // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.SegmentPacker           // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.VadDetector             // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.VadDetectorFactory      // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.VadEngine               // change-hyungchul-20261009-1530
+import com.example.google_stt.vad.VadRunner               // change-hyungchul-20261009-1530
 import com.google.mlkit.genai.speechrecognition.SpeechRecognition
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
 import com.google.mlkit.genai.speechrecognition.speechRecognizerOptions
@@ -102,7 +116,7 @@ data class BatchRequest(
     val vadSelection: VadSelection,       // VAD 설정 snapshot
     val epdSelection: EpdSelection,       // Speech EPD 설정 snapshot
     val noiseConfig: NoiseReduceConfig,   // 노이즈 저감 설정
-    val variantSegments: List<String>,    // 결과 폴더 조각 목록
+    val condition: String,                // change-hyungchul-20261009-1530 : 결과 조건 이름(v7.7 평탄화) — 예전 variantSegments(폴더 조각 목록) 대체
 )
 
 /**
@@ -127,14 +141,11 @@ class BatchRunner(
     private fun toast(msg: String) = host.toast(msg)
     private fun updateProgress(fraction: Double) = host.updateProgress(fraction)
     private fun openSpeechServiceSettings() = host.openSpeechServiceSettings()
-    private fun ensureRunDir(outputRoot: DocumentFile, modelFolder: String, variant: List<String>) =
-        store.ensureRunDir(outputRoot, modelFolder, variant)
-    private fun writeCsv(outputRoot: DocumentFile, modelFolder: String, variant: List<String>, body: String) =
-        store.writeCsv(outputRoot, modelFolder, variant, body)
-    private fun saveResult(outputRoot: DocumentFile, modeFolder: String, variant: List<String>, item: AudioItem, text: String) =
-        store.saveResult(outputRoot, modeFolder, variant, item, text)
-    private fun writeBytes(dir: DocumentFile, fileName: String, bytes: ByteArray, mime: String = "text/plain") =
-        store.writeBytes(dir, fileName, bytes, mime)
+    // change-hyungchul-20261009-1530 : 결과 저장 위치를 v7.7 평탄화 규칙으로 바꾸며 인자가 (modelFolder, variant 목록) → (modelConfig, condition) 로 바뀌었다
+    private fun writeCsv(outputRoot: DocumentFile, model: ModelConfig, condition: String, body: String) =
+        store.writeCsv(outputRoot, model, condition, body)
+    private fun saveResult(outputRoot: DocumentFile, model: ModelConfig, condition: String, item: AudioItem, text: String) =
+        store.saveResult(outputRoot, model, condition, item, text)
 
     /**
      * 목적: 배치 1회를 끝까지 실행한다(MainActivity 의 lifecycleScope.launch 안에서 부른다).
@@ -152,13 +163,14 @@ class BatchRunner(
         val vadSelection = req.vadSelection
         val epdSelection = req.epdSelection
         val noiseConfig = req.noiseConfig
-        val variantSegments = req.variantSegments
+        val condition = req.condition                 // change-hyungchul-20261009-1530
+        val vadSetting = vadSelection.setting         // change-hyungchul-20261009-1530 : VAD 엔진·프리셋·값
 
         var ok = 0
         var fail = 0
         val csv = StringBuilder(SttTelemetry.CSV_HEADER)
         var abortedByWedge = false                    // add-hyungchul-20260914-2350
-        var vadProcessor: SileroVadProcessor? = null   // add-hyungchul-20260825-1430
+        var vadProcessor: VadDetector? = null          // add-hyungchul-20260825-1430 / change-hyungchul-20261009-1530 : 엔진 공통 계약
         var noiseReducer: NoiseReducer? = null         // add-hyungchul-20260826-1100
         try {
             val inputRoot = DocumentFile.fromTreeUri(activity, inUri)
@@ -181,7 +193,8 @@ class BatchRunner(
             // add-hyungchul-20260825-1430
             appendLog(
                 if (vadSelection.enabled) {
-                    "[vad] ON / ${vadSelection.profile.displayName} / ${vadConfigText(vadSelection.config)}"
+                    // change-hyungchul-20261009-1530 : 엔진·프리셋·값 요약(엔진마다 항목이 다르다)
+                    "[vad] ON / ${vadSetting.engine.displayName} / ${vadSelection.conditionToken} / ${vadSetting.summary()}"
                 } else {
                     "[vad] OFF — AudioDecoder 가 만든 PCM 을 그대로 STT 에 넣는다(기존 baseline)."
                 },
@@ -264,36 +277,42 @@ class BatchRunner(
             // 파일 사이의 상태 오염은 process() 안에서 state/context 를 reset 해서 막는다.
             if (vadSelection.enabled) {
                 val processor = withContext(Dispatchers.Default) {
-                    SileroVadProcessor(appContext)
+                    VadDetectorFactory.create(appContext, vadSetting.engine)   // change-hyungchul-20261009-1530 : 고른 엔진의 실행기
                 }
                 vadProcessor = processor
                 appendLog(
-                    "[vad] model=${SileroVadProcessor.MODEL_LABEL}, " +
-                            "ORT=${processor.runtimeVersion}, " +
-                            "sha256=${processor.modelSha256.take(16)}...",
+                    "[vad] model=${processor.label}, " +
+                            "runtime=${processor.runtimeVersion}, " +
+                            "sha256=${processor.modelSha256.take(16)}..., " +
+                            "license=${vadSetting.engine.license} (commercial=${vadSetting.engine.commercial})",
                 )
+            }
+            // change-hyungchul-20261009-1530 : 구간 처리 안내 — SEG10 은 조각마다 세션을 연다
+            appendLog("[seg] ${vadSelection.segMode.displayName} / 조건=$condition")
+            if (vadSelection.segMode == SegMode.SEG10 && epdSelection.enabled) {
+                appendLog("[seg] 10초 통일에서는 조각이 이미 짧아 Speech EPD 를 쓰지 않는다(설정은 무시된다).")
             }
 
             // change(add)-hyungchul-20260820 — 실행 환경 요약을 먼저 저장해 둔다.
             withContext(Dispatchers.IO) {
                 runCatching {
-                    // change-hyungchul-20260825-1430: VAD ON 이면 vad_<profile> 하위에 따로 남긴다.
-                    val dir = ensureRunDir(outputRoot, modelFolder, variantSegments)
+                    // change-hyungchul-20261009-1530 : run_meta 는 출력 폴더 바로 아래 <엔진>_<조건>_run_meta.csv 로 쓴다(아래 writeRunMeta).
                     // add-hyungchul-20260825-1430
                     // VAD OFF 면 설정 컬럼을 빈 칸으로 남긴다(0 과 "미사용"을 구분하기 위함).
-                    val cfg = vadSelection.config
+                    // change-hyungchul-20261009-1530 : Silero 방식 항목(threshold 등)은 Silero / WebRTC / TEN 에만 있다. 다른 엔진은 빈 칸.
+                    val cfg = sileroStyleConfig(vadSelection)
                     val on = vadSelection.enabled
-                    val vadProfileText = if (on) vadSelection.profile.displayName else "OFF"
-                    val vadModelText = if (on) SileroVadProcessor.MODEL_LABEL else ""
-                    val vadThresholdText = if (on) cfg.threshold.toString() else ""
-                    val vadNegThresholdText = if (on) cfg.negThreshold.toString() else ""
-                    val vadMinSpeechText = if (on) cfg.minSpeechDurationMs.toString() else ""
-                    val vadMinSilenceText = if (on) cfg.minSilenceDurationMs.toString() else ""
-                    val vadSpeechPadText = if (on) cfg.speechPadMs.toString() else ""
+                    val vadProfileText = if (on) vadSelection.conditionToken else "OFF"
+                    val vadModelText = if (on) (vadProcessor?.label ?: "") else ""
+                    val vadThresholdText = cfg?.threshold?.toString() ?: ""
+                    val vadNegThresholdText = cfg?.negThreshold?.toString() ?: ""
+                    val vadMinSpeechText = cfg?.minSpeechDurationMs?.toString() ?: ""
+                    val vadMinSilenceText = cfg?.minSilenceDurationMs?.toString() ?: ""
+                    val vadSpeechPadText = cfg?.speechPadMs?.toString() ?: ""
                     val vadMaxSpeechText =
-                        if (on) (cfg.maxSpeechDurationSec?.toString() ?: "Unlimited") else ""
+                        if (cfg != null) (cfg.maxSpeechDurationSec?.toString() ?: "Unlimited") else ""
                     // add-hyungchul-20260914-2130
-                    val vadJoinSilenceText = if (on) cfg.joinSilenceMs.toString() else ""
+                    val vadJoinSilenceText = if (on) vadSetting.joinMs.toString() else ""   // change-hyungchul-20261009-1530
                     // add-hyungchul-20260826-1100
                     val nsOn = noiseConfig.algorithm != NoiseAlgorithm.NONE
                     val nsReducer = noiseReducer
@@ -329,6 +348,15 @@ class BatchRunner(
                             "engine_warmup" to warmUpStatus,
                             "onnxruntime_version" to (vadProcessor?.runtimeVersion ?: ""),
                             "silero_model_sha256" to (vadProcessor?.modelSha256 ?: ""),
+                            // change-hyungchul-20261009-1530 : VAD 엔진 선택 / 구간 처리 / 조건 이름
+                            "vad_engine" to vadSetting.engine.name,
+                            "vad_preset" to vadSelection.conditionToken,
+                            "vad_params" to vadSetting.summary(),
+                            "vad_license" to vadSetting.engine.license,
+                            "vad_commercial" to vadSetting.engine.commercial,
+                            "seg_mode" to vadSelection.segMode.name,
+                            "condition" to condition,
+                            "result_dir" to store.resultDirName(modelConfig, condition),
                             // add-hyungchul-20260826-1100
                             "ns_enabled" to nsOn.toString(),
                             "ns_algorithm" to if (nsOn) noiseConfig.algorithm.name else "NONE",
@@ -336,14 +364,10 @@ class BatchRunner(
                             "ns_config" to if (nsOn) noiseConfig.summary() else "",
                             "ns_model_sha256" to nsModelSha,
                             "pipeline_order" to "decode -> noise_reduction -> vad -> epd -> stt",
-                            "output_variant" to
-                                (if (variantSegments.isEmpty()) "baseline" else variantSegments.joinToString("/")),
+                            "output_variant" to condition,   // change-hyungchul-20261009-1530 : 예전 폴더 조각 목록 → 조건 이름
                         ),
                     )
-                    writeBytes(
-                        dir, "run_meta.csv",
-                        SttTelemetry.BOM + meta.toByteArray(Charsets.UTF_8), "text/csv",
-                    )
+                    store.writeRunMeta(outputRoot, modelConfig, condition, meta)   // change-hyungchul-20261009-1530
                 }
             }
 
@@ -364,6 +388,14 @@ class BatchRunner(
                 "[quota] 예상 세션 수 약 ${projectedSessions}개 / 실측 한도 약 " +
                     "${QUOTA_BUDGET_SESSIONS}개 (com.google.android.tts 의 SODA 세션 한도).",
             )
+            // change-hyungchul-20261009-1530 : 10초 통일이면 파일마다 (말 길이 / 10초) 개의 세션을 쓴다 — 미리 크게 경고한다.
+            if (vadSelection.segMode == SegMode.SEG10) {
+                appendLog(
+                    "[quota][경고] 구간 처리 = 10초 통일: 파일 하나가 '말 길이 / 10초' 개의 세션을 쓴다" +
+                        "(60초 파일 ≈ 6세션). Google 엔진은 한도(약 ${QUOTA_BUDGET_SESSIONS}세션)에 빨리 닿으니 " +
+                        "입력 폴더를 작게 나눠 돌릴 것.",
+                )
+            }
             if (projectedSessions > QUOTA_BUDGET_SESSIONS) {
                 appendLog(
                     "[quota][경고] 한도를 넘길 것으로 보인다. 중간부터 응답이 멈출 수 있다. " +
@@ -391,7 +423,8 @@ class BatchRunner(
                     airplane = SttTelemetry.airplaneMode(appContext),
                     startedAt = SttTelemetry.isoNow(),
                 )
-                fillVadConfig(row, vadSelection)                       // add-hyungchul-20260825-1430
+                fillVadConfig(row, vadSelection, vadProcessor)         // add-hyungchul-20260825-1430 / change-hyungchul-20261009-1530
+                row.condition = condition                              // change-hyungchul-20261009-1530 : 새 컬럼(조건 이름)
                 fillEpdConfig(row, epdSelection)                       // add-hyungchul-20260914-2350
                 fillNoiseConfig(row, noiseConfig, noiseReducer)         // add-hyungchul-20260826-1100
                 val snap = SttResourceSnapshot.take(appContext)
@@ -406,7 +439,7 @@ class BatchRunner(
                     Log.e(logTag, "decode failed: $relName", e)
                     withContext(Dispatchers.IO) {
                         saveResult(
-                            outputRoot, modelFolder, variantSegments, item,
+                            outputRoot, modelConfig, condition, item,
                             "[ERROR] 디코딩 실패: $msg",
                         )
                     }
@@ -473,7 +506,7 @@ class BatchRunner(
                         row.error = "NS: $msg"
                         withContext(Dispatchers.IO) {
                             saveResult(
-                                outputRoot, modelFolder, variantSegments, item,
+                                outputRoot, modelConfig, condition, item,
                                 "[ERROR] 노이즈 저감 실패: $msg",
                             )
                         }
@@ -496,14 +529,17 @@ class BatchRunner(
                 // VAD 가 알려주는 "안전한 절단 후보". VAD OFF 면 비어 있고,
                 // 그때 EPD 는 32 ms 역방향 탐색만으로 절단 지점을 찾는다.
                 var vadSeams: List<Int> = emptyList()
+                // add-hyungchul-20261009-1530 : VAD 말 구간(원본 좌표, 패딩 후) — 구간 처리 SEG10 이 쓴다. VAD OFF 면 null(파일 전체)
+                var vadSegmentsForSeg: List<com.example.google_stt.VadSegment>? = null
                 if (vadSelection.enabled) {
                     try {
                         val processor = vadProcessor
-                            ?: throw IllegalStateException("Silero VAD processor 가 초기화되지 않았습니다.")
+                            ?: throw IllegalStateException("VAD 실행기가 초기화되지 않았습니다.")   // change-hyungchul-20261009-1530
                         val vadResult = withContext(Dispatchers.Default) {
-                            processor.process(stagePcm, vadSelection.config)
+                            VadRunner.process(processor, stagePcm, vadSetting)   // change-hyungchul-20261009-1530 : 엔진 공통 처리
                         }
                         sttPcm = vadResult.pcm
+                        vadSegmentsForSeg = vadResult.segments   // change-hyungchul-20261009-1530 : 10초 통일 조각 만들기에 쓴다
                         vadSeams = vadResult.seams        // add-hyungchul-20260914-2350
                         row.vadProcessMs = vadResult.processMs
                         row.vadOriginalSec = vadResult.originalSec
@@ -531,7 +567,7 @@ class BatchRunner(
                             row.words = 0
                             withContext(Dispatchers.IO) {
                                 saveResult(
-                                    outputRoot, modelFolder, variantSegments, item, "",
+                                    outputRoot, modelConfig, condition, item, "",
                                 )
                             }
                             snap.fillDelta(appContext, row)
@@ -544,8 +580,8 @@ class BatchRunner(
                                 withContext(Dispatchers.IO) {
                                     runCatching {
                                         writeCsv(
-                                            outputRoot, modelFolder,
-                                            variantSegments, csv.toString(),
+                                            outputRoot, modelConfig,
+                                            condition, csv.toString(),
                                         )
                                     }
                                 }
@@ -561,7 +597,7 @@ class BatchRunner(
                         row.error = "VAD: $msg"
                         withContext(Dispatchers.IO) {
                             saveResult(
-                                outputRoot, modelFolder, variantSegments, item,
+                                outputRoot, modelConfig, condition, item,
                                 "[ERROR] VAD 실패: $msg",
                             )
                         }
@@ -588,7 +624,32 @@ class BatchRunner(
                 // 전사문의 앞부분을 통째로 버린다. 그래서 무음 지점에서 미리 잘라 둔다.
                 // sttChunks 가 실제로 STT 에 들어갈 조각 목록이다. EPD OFF 면 1개짜리 목록이다.
                 var sttChunks: List<ByteArray> = listOf(sttPcm)
-                if (epdSelection.enabled && sttPcm.isNotEmpty()) {
+                // ── add-hyungchul-20261009-1530 : 3.4) 구간 처리 — 모든 엔진 10초 통일(SEG10) ──
+                //   말 구간(또는 파일 전체)을 10초 이하 조각으로 묶는다. 조각마다 세션을 연다(transcribeChunks).
+                //   EPD 는 쓰지 않는다(조각이 61초 결함 경계보다 훨씬 짧다).
+                val segMax = vadSelection.segMode.maxSec
+                if (segMax != null && sttPcm.isNotEmpty()) {
+                    val packed = withContext(Dispatchers.Default) {
+                        SegmentPacker.pack(stagePcm, vadSegmentsForSeg, segMax, vadSetting.joinMs)
+                    }
+                    sttChunks = packed.chunks
+                    row.segChunks = packed.chunks.size
+                    row.segSplits = packed.splitCount
+                    val joinedSize = packed.chunks.sumOf { it.size }
+                    sttPcm = ByteArray(joinedSize).also { buf ->        // 계측(stt-in 길이·공급 이론값)용으로 이어 둔다
+                        var off = 0
+                        for (c in packed.chunks) { System.arraycopy(c, 0, buf, off, c.size); off += c.size }
+                    }
+                    row.vadOutputSec = sttPcm.size / BYTES_PER_SEC.toDouble()   // 실제 STT 입력 길이(조각 합)
+                    appendLog(
+                        "[seg] $relName : ${packed.chunks.size}조각(≤${segMax.toInt()}s, 긴 구간 절단 ${packed.splitCount}회), " +
+                            "합계 ${"%.2f".format(Locale.US, row.vadOutputSec)}s",
+                    )
+                } else {
+                    row.segChunks = 1                                   // 엔진별 최대 길이 = 기존(EPD 가 나누면 epd_chunks 에 남는다)
+                    row.segSplits = 0
+                }
+                if (segMax == null && epdSelection.enabled && sttPcm.isNotEmpty()) {   // add-hyungchul-20261009-1530 : SEG10 이 아닐 때만 EPD
                     val epdCfg = epdSelection.config
                     // 어디를 자를지 계획만 먼저 세운다(PCM 은 아직 건드리지 않는다).
                     val plan = withContext(Dispatchers.Default) {
@@ -722,7 +783,7 @@ class BatchRunner(
 
                     withContext(Dispatchers.IO) {
                         saveResult(
-                            outputRoot, modelFolder, variantSegments, item, outcome.text,
+                            outputRoot, modelConfig, condition, item, outcome.text,
                         )
                     }
                     ok++
@@ -738,7 +799,7 @@ class BatchRunner(
                     Log.e(logTag, "transcribe failed: $modelFolder/$relName", e)
                     withContext(Dispatchers.IO) {
                         saveResult(
-                            outputRoot, modelFolder, variantSegments, item, "[ERROR] $msg",
+                            outputRoot, modelConfig, condition, item, "[ERROR] $msg",
                         )
                     }
                     row.status = "ERROR"
@@ -787,7 +848,7 @@ class BatchRunner(
                     withContext(Dispatchers.IO) {
                         runCatching {
                             writeCsv(
-                                outputRoot, modelFolder, variantSegments, csv.toString(),
+                                outputRoot, modelConfig, condition, csv.toString(),
                             )
                         }
                     }
@@ -795,7 +856,7 @@ class BatchRunner(
             }
 
             withContext(Dispatchers.IO) {
-                writeCsv(outputRoot, modelFolder, variantSegments, csv.toString())
+                writeCsv(outputRoot, modelConfig, condition, csv.toString())
             }
 
             updateProgress(1.0)
@@ -822,7 +883,7 @@ class BatchRunner(
                 val outputRoot = DocumentFile.fromTreeUri(activity, outUri)
                 if (outputRoot != null) {
                     withContext(NonCancellable + Dispatchers.IO) {
-                        writeCsv(outputRoot, modelFolder, variantSegments, csv.toString())
+                        writeCsv(outputRoot, modelConfig, condition, csv.toString())
                     }
                 }
             }
@@ -835,7 +896,7 @@ class BatchRunner(
                 withContext(NonCancellable + Dispatchers.IO) {
                     val root = DocumentFile.fromTreeUri(activity, outUri)
                     if (root != null) {
-                        writeCsv(root, modelFolder, variantSegments, csv.toString())
+                        writeCsv(root, modelConfig, condition, csv.toString())
                     }
                 }
             }
@@ -918,25 +979,44 @@ class BatchRunner(
      * 입력: row — 계측 행, selection — 실행 snapshot
      * 출력: 없음 (row 를 직접 수정)
      * 리턴: 없음
+     * change-hyungchul-20261009-1530 : 엔진 선택 구조에 맞게 바꿨다. Silero 방식 항목(threshold 등)은 Silero / WebRTC / TEN 만 채우고,
+     *   엔진 공통 정보는 새 컬럼(vad_engine / vad_preset / vad_params / vad_commercial / seg_mode)에 남긴다.
      */
-    private fun fillVadConfig(row: SttRow, selection: VadSelection) {
+    private fun fillVadConfig(row: SttRow, selection: VadSelection, detector: VadDetector?) {
+        row.vadEngine = selection.setting.engine.name                       // 새 컬럼: 엔진
+        row.vadPreset = selection.conditionToken                            // 새 컬럼: 프리셋(조건 조각)
+        row.vadParams = selection.setting.summary()                         // 새 컬럼: 값 전체
+        row.vadCommercial = selection.setting.engine.commercial             // 새 컬럼: 상업 사용 판정
+        row.segMode = selection.segMode.name                                // 새 컬럼: 구간 처리
         if (!selection.enabled) {
             row.vadEnabled = 0
             row.vadProfile = "OFF"
             row.vadModel = ""
             return
         }
-        val c = selection.config
         row.vadEnabled = 1
-        row.vadModel = SileroVadProcessor.MODEL_LABEL
-        row.vadProfile = selection.profile.displayName
+        row.vadModel = detector?.label ?: ""
+        row.vadProfile = selection.setting.preset.name
+        row.vadJoinSilenceMs = selection.setting.joinMs                     // add-hyungchul-20260914-2130
+        val c = sileroStyleConfig(selection) ?: return                      // 다른 엔진은 여기까지
         row.vadThreshold = c.threshold.toDouble()
         row.vadNegThreshold = c.negThreshold.toDouble()
         row.vadMinSpeechMs = c.minSpeechDurationMs
         row.vadMinSilenceMs = c.minSilenceDurationMs
         row.vadSpeechPadMs = c.speechPadMs
         row.vadMaxSpeechSec = c.maxSpeechDurationSec ?: -1.0              // -1 = Unlimited
-        row.vadJoinSilenceMs = c.joinSilenceMs                            // add-hyungchul-20260914-2130
+    }
+
+    /**
+     * add-hyungchul-20261009-1530
+     * 목적: Silero 방식 항목을 가진 엔진(Silero / WebRTC / TEN)이면 VadConfig 로 바꿔 준다.
+     * 입력: selection
+     * 리턴: VadConfig 또는 null(VAD OFF 이거나 다른 엔진)
+     */
+    private fun sileroStyleConfig(selection: VadSelection): VadConfig? = when (selection.setting.engine) {
+        VadEngine.SILERO, VadEngine.TEN -> VadConfig.fromSetting(selection.setting)
+        VadEngine.WEBRTC -> VadConfig.fromSetting(selection.setting, thresholdOverride = 0.5f)
+        else -> null
     }
 
     /**
@@ -949,12 +1029,7 @@ class BatchRunner(
         row.epdMode = selection.config.mode.name
     }
 
-    /** 로그/run_meta 에 남길 VAD 설정 한 줄 요약. */
-    private fun vadConfigText(c: VadConfig): String =
-        "threshold=${c.threshold}, neg=${c.negThreshold}, minSpeech=${c.minSpeechDurationMs}ms, " +
-                "minSilence=${c.minSilenceDurationMs}ms, pad=${c.speechPadMs}ms, " +
-                "maxSpeech=${c.maxSpeechDurationSec?.toString() ?: "Unlimited"}, " +
-                "joinSilence=${c.joinSilenceMs}ms"   // add-hyungchul-20260914-2130
+    // change-hyungchul-20261009-1530 : vadConfigText() 는 VadSetting.summary() 로 대체했다.
 
     /**
      * 목적: result.csv 의 노이즈 저감 설정 공통 컬럼을 채운다(파일마다 같은 값).

@@ -1,18 +1,23 @@
 /*
  * 파일명: ui/VadUi.kt
  * 목적 및 기능:
- * - 화면의 VAD 영역(스위치 / Profile 스피너 / 파라미터 입력칸)을 초기화하고 서로 연동한다.
- * - START 를 누른 순간의 VAD 설정을 검증해 VadSelection snapshot 으로 만든다.
- * - Silero 모델 파일(assets) 유무를 확인해 알린다.
+ * - 화면의 VAD 영역을 초기화하고 서로 연동한다.
+ *     · VAD 엔진 스피너 : 사용 안 함 / Silero / WebRTC / pyannote / FSMN / FireRed / TEN
+ *     · 프리셋 스피너   : 고른 엔진의 공식 기본값·추천값 프리셋 + Custom
+ *     · 설정값 입력칸   : 고른 엔진의 항목만 동적으로 만든다(값을 고치면 자동으로 Custom 으로 바뀐다)
+ *     · 구간 처리 스피너 : 엔진별 최대 길이 / 모든 엔진 10초 통일
+ * - START 를 누른 순간의 설정을 검증해 VadSelection snapshot 으로 만든다.
+ * - 고른 엔진의 모델 파일(assets) 유무를 바로 확인해 알린다.
  *
- * change-hyungchul-20261009-1514
- *   MainActivity.kt 의 VAD UI 멤버 변수와 setupVadUi / applyVadPreset / readVadSelection /
- *   customVadFolder / warnIfVadModelMissing 을 내용 변경 없이 옮겼다.
- *   (setGroupEnabled 는 ui/UiUtils.kt, fillVadConfig 는 batch/BatchRunner.kt 로 옮겼다)
+ * change-hyungchul-20261009-1530 — VAD 사용 스위치(vadSwitch) + Profile(Default/Safe/Custom) + 고정 입력칸 6개 구조를
+ *   "엔진 선택 → 프리셋 선택 → 엔진별 입력칸" 구조로 바꿨다(사용자 요청). 예전 함수 이름(setupVadUi /
+ *   readVadSelection / warnIfVadModelMissing)은 호출부가 바뀌지 않도록 유지했다.
+ *   (이전 판: change-hyungchul-20261009-1514 에서 MainActivity.kt 로부터 옮긴 파일)
  */
 package com.example.google_stt.ui
 
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.View
 import android.widget.AdapterView
@@ -20,15 +25,18 @@ import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Spinner
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SwitchCompat
 import com.example.google_stt.R
-import com.example.google_stt.SileroVadProcessor
 import com.example.google_stt.VadConfig
-import com.example.google_stt.VadPresets
-import com.example.google_stt.VadProfile
-import java.util.Locale
-import kotlin.math.roundToInt
+import com.example.google_stt.vad.SegMode
+import com.example.google_stt.vad.VadDetectorFactory
+import com.example.google_stt.vad.VadEngine
+import com.example.google_stt.vad.VadParamCatalog
+import com.example.google_stt.vad.VadParamSpec
+import com.example.google_stt.vad.VadPreset
+import com.example.google_stt.vad.VadPresetCatalog
+import com.example.google_stt.vad.VadSetting
 
 /**
  * 목적: VAD 화면 컨트롤러.
@@ -40,200 +48,217 @@ class VadUi(
     private val toast: (String) -> Unit,
 ) {
 
-    // add-hyungchul-20260825-1430 : Silero VAD UI
-    private val vadSwitch: SwitchCompat = activity.findViewById(R.id.vadSwitch)
-    private val vadOptionsGroup: LinearLayout = activity.findViewById(R.id.vadOptionsGroup)
-    private val vadProfileSpinner: Spinner = activity.findViewById(R.id.vadProfileSpinner)
-    private val vadThresholdEdit: EditText = activity.findViewById(R.id.vadThresholdEdit)
-    private val vadMinSpeechEdit: EditText = activity.findViewById(R.id.vadMinSpeechEdit)
-    private val vadMinSilenceEdit: EditText = activity.findViewById(R.id.vadMinSilenceEdit)
-    private val vadSpeechPadEdit: EditText = activity.findViewById(R.id.vadSpeechPadEdit)
-    private val vadMaxSpeechEdit: EditText = activity.findViewById(R.id.vadMaxSpeechEdit)
+    // ── 화면 요소(activity_main.xml) ──
+    private val vadEngineSpinner: Spinner = activity.findViewById(R.id.vadEngineSpinner)        // VAD 엔진
+    private val vadOptionsGroup: LinearLayout = activity.findViewById(R.id.vadOptionsGroup)     // 엔진을 고르면 보이는 영역
+    private val vadProfileSpinner: Spinner = activity.findViewById(R.id.vadProfileSpinner)      // 프리셋
+    private val vadParamContainer: LinearLayout = activity.findViewById(R.id.vadParamContainer) // 동적 입력칸 자리
+    private val vadInfoText: TextView = activity.findViewById(R.id.vadInfoText)                 // 출처·라이선스 안내
+    private val segModeSpinner: Spinner = activity.findViewById(R.id.segModeSpinner)            // 구간 처리
 
-    // add-hyungchul-20260914-2130 : 구간 사이 무음(ms) 입력창 (PC GUI 의 --vad-join-silence-ms)
-    private val vadJoinSilenceEdit: EditText = activity.findViewById(R.id.vadJoinSilenceEdit)
+    private val engines = VadEngine.entries                                 // 엔진 표시 순서 = enum 순서
+    private val segModes = SegMode.entries                                  // 구간 처리 표시 순서
+    private var currentEngine: VadEngine = VadEngine.NONE                   // 지금 고른 엔진
+    private var currentPresets: List<VadPreset> = VadPresetCatalog.presets(VadEngine.NONE)   // 지금 엔진의 프리셋
+    private val paramEdits = LinkedHashMap<String, EditText>()              // 키 → 입력칸(항목 순서 유지)
 
-    /** preset 을 코드로 채워 넣는 동안 TextWatcher 가 Custom 으로 되돌리지 않게 막는 재진입 가드 */
+    /** 프리셋 값을 코드로 채우는 동안 TextWatcher 가 Custom 으로 되돌리지 않게 막는 재진입 가드 */
     private var applyingVadPreset = false
 
-    // ────────────────── add-hyungchul-20260825-1430 : Silero VAD UI ──────────────────
+    /** 입력칸을 사람이 고치면 프리셋을 Custom 으로 바꾸는 감시기(모든 입력칸이 함께 쓴다) */
+    private val watcher = object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+        override fun afterTextChanged(s: Editable?) {
+            if (applyingVadPreset) return                                  // 코드가 채운 값이면 무시
+            val pos = vadProfileSpinner.selectedItemPosition.coerceIn(0, currentPresets.lastIndex)
+            if (!currentPresets[pos].isCustom) {                           // 사람이 고친 값이면 Custom 으로 전환
+                applyingVadPreset = true
+                vadProfileSpinner.setSelection(currentPresets.indexOfFirst { it.isCustom })
+                applyingVadPreset = false
+                showInfo(currentPresets.first { it.isCustom })
+            }
+        }
+    }
+
     /**
-     * 목적: VAD 스위치 / Profile 스피너 / 파라미터 입력창을 초기화하고 서로 연동시킨다.
+     * 목적: VAD 엔진 / 프리셋 / 구간 처리 스피너를 초기화하고 서로 연동시킨다.
      * 입력: 없음 (멤버 View 를 사용)
      * 출력: 없음
      * 리턴: 없음
-     * 동작: 시작 상태는 "VAD OFF + Default(PC GUI 기본값) 가 채워진 상태"다.  // change-hyungchul-20260914-2130
-     *       값을 직접 고치면 Profile 이 Custom 으로 자동 전환된다.
+     * 동작: 시작 상태는 "VAD 사용 안 함 + 엔진별 최대 길이" = 기존 baseline 과 같다.
      */
     fun setupVadUi() {
-        // change-hyungchul-20260828-1000: values() 는 호출마다 배열을 새로 만든다. entries 는 불변 List 라 권장값이다.
-        val profiles = VadProfile.entries                               // 표시 순서 = enum 선언 순서
-        vadProfileSpinner.adapter = ArrayAdapter(                        // Profile 목록을 스피너에 채운다
+        vadEngineSpinner.adapter = ArrayAdapter(                            // 엔진 목록
             activity,
             android.R.layout.simple_spinner_dropdown_item,
-            profiles.map { it.displayName },
+            engines.map { it.displayName },
         )
+        segModeSpinner.adapter = ArrayAdapter(                              // 구간 처리 목록
+            activity,
+            android.R.layout.simple_spinner_dropdown_item,
+            segModes.map { it.displayName },
+        )
+        segModeSpinner.setSelection(segModes.indexOf(SegMode.ENGINE_MAX))   // 기본 = 기존 동작
 
-        applyingVadPreset = true                                         // 초기 세팅 중에는 watcher 를 무시한다
-        // change-hyungchul-20260914-2130 : ASR_SAFE → DEFAULT (PC GUI 기본값)
-        vadProfileSpinner.setSelection(profiles.indexOf(VadProfile.DEFAULT))
-        applyVadPreset(VadProfile.DEFAULT)                               // PC GUI 기본값을 입력창에 채운다
-        applyingVadPreset = false
+        vadEngineSpinner.setSelection(engines.indexOf(VadEngine.NONE))      // 기본 = VAD 사용 안 함
+        applyEngine(VadEngine.NONE)
 
-        vadSwitch.isChecked = false                                      // 기본값은 OFF = 기존 baseline
-        setGroupEnabled(vadOptionsGroup, false)                          // OFF 면 옵션 입력을 비활성화한다
-        vadSwitch.setOnCheckedChangeListener { _, checked ->
-            setGroupEnabled(vadOptionsGroup, checked)
-            // add-hyungchul-20260825-1620
-            // START 를 눌러 preflight 까지 다 돈 뒤에 실패하면 시간이 아깝다. 켜는 즉시 알린다.
-            if (checked) warnIfVadModelMissing()
-        }
-
-        vadProfileSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        vadEngineSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (applyingVadPreset) return                            // 코드가 고른 것이면 무시
-                val profile = profiles[position.coerceIn(0, profiles.lastIndex)]
-                if (profile != VadProfile.CUSTOM) applyVadPreset(profile)
+                val engine = engines[position.coerceIn(0, engines.lastIndex)]
+                if (engine == currentEngine) return                         // 같은 엔진이면 다시 만들지 않는다
+                applyEngine(engine)
+                if (engine != VadEngine.NONE) warnIfVadModelMissing()       // 모델이 없으면 바로 알린다
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
 
-        val watcher = object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-            override fun afterTextChanged(s: Editable?) {
-                if (applyingVadPreset) return                            // preset 적용 중이면 무시
-                val position = vadProfileSpinner.selectedItemPosition.coerceIn(0, profiles.lastIndex)
-                if (profiles[position] != VadProfile.CUSTOM) {           // 사람이 고친 값이면 Custom 으로 전환
-                    applyingVadPreset = true
-                    vadProfileSpinner.setSelection(profiles.indexOf(VadProfile.CUSTOM))
-                    applyingVadPreset = false
-                }
+        vadProfileSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (applyingVadPreset) return                               // 코드가 고른 것이면 무시
+                val preset = currentPresets[position.coerceIn(0, currentPresets.lastIndex)]
+                if (!preset.isCustom) fillValues(preset.values)             // 고정 프리셋은 값을 채운다
+                showInfo(preset)                                            // Custom 은 지금 값을 유지
             }
-        }
 
-        listOf(
-            vadThresholdEdit,
-            vadMinSpeechEdit,
-            vadMinSilenceEdit,
-            vadSpeechPadEdit,
-            vadMaxSpeechEdit,
-            vadJoinSilenceEdit,                                          // add-hyungchul-20260914-2130
-        ).forEach { it.addTextChangedListener(watcher) }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
     }
 
     /**
-     * 목적: Profile 을 고르면 그 Profile 의 추천값을 입력창에 채운다.
-     * 입력: profile — 채워 넣을 Profile (CUSTOM 이면 아무것도 하지 않는다)
-     * 출력: 없음 (입력창 텍스트를 바꾼다)
+     * 목적: 엔진을 바꾸면 프리셋 목록과 입력칸을 그 엔진에 맞게 다시 만든다.
+     * 입력: engine — 고른 엔진
+     * 출력: 없음(화면을 바꾼다)
      * 리턴: 없음
      */
-    private fun applyVadPreset(profile: VadProfile) {
-        if (profile == VadProfile.CUSTOM) return                          // Custom 은 사용자 값을 유지한다
-        val config = VadPresets.config(profile)
+    private fun applyEngine(engine: VadEngine) {
+        currentEngine = engine
+        currentPresets = VadPresetCatalog.presets(engine)
         applyingVadPreset = true
         try {
-            vadThresholdEdit.setText(String.format(Locale.US, "%.2f", config.threshold))
-            vadMinSpeechEdit.setText(config.minSpeechDurationMs.toString())
-            vadMinSilenceEdit.setText(config.minSilenceDurationMs.toString())
-            vadSpeechPadEdit.setText(config.speechPadMs.toString())
-            vadMaxSpeechEdit.setText(                                     // null(Unlimited) 은 UI 에서 0 으로 표기
-                config.maxSpeechDurationSec?.let { String.format(Locale.US, "%.1f", it) } ?: "0",
+            vadProfileSpinner.adapter = ArrayAdapter(                       // 이 엔진의 프리셋 목록
+                activity,
+                android.R.layout.simple_spinner_dropdown_item,
+                currentPresets.map { it.displayName },
             )
-            // add-hyungchul-20260914-2130
-            vadJoinSilenceEdit.setText(config.joinSilenceMs.toString())
+            vadProfileSpinner.setSelection(0)                               // 첫 프리셋(= 대표값)으로 시작
+            buildParamRows(VadParamCatalog.specs(engine))                   // 입력칸 다시 만들기
+            fillValues(currentPresets[0].values)
+        } finally {
+            applyingVadPreset = false
+        }
+        vadOptionsGroup.visibility = if (engine == VadEngine.NONE) View.GONE else View.VISIBLE
+        showInfo(currentPresets[0])
+    }
+
+    /**
+     * 목적: 엔진의 설정 항목마다 "이름 + 입력칸" 한 줄씩 만든다.
+     * 입력: specs — 항목 정의 목록
+     * 리턴: 없음
+     */
+    private fun buildParamRows(specs: List<VadParamSpec>) {
+        paramEdits.values.forEach { it.removeTextChangedListener(watcher) } // 예전 입력칸 감시 해제
+        paramEdits.clear()
+        vadParamContainer.removeAllViews()
+        for (spec in specs) {
+            val label = TextView(activity).apply { text = spec.label }      // 항목 이름
+            val edit = EditText(activity).apply {                           // 값 입력칸
+                inputType = if (spec.isInt) {
+                    InputType.TYPE_CLASS_NUMBER                             // 정수
+                } else {
+                    InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or
+                        InputType.TYPE_NUMBER_FLAG_SIGNED                   // 실수(FSMN thres 는 음수 허용)
+                }
+                maxLines = 1
+                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            }
+            vadParamContainer.addView(label)
+            vadParamContainer.addView(edit)
+            edit.addTextChangedListener(watcher)
+            paramEdits[spec.key] = edit
+        }
+    }
+
+    /**
+     * 목적: 값 맵을 입력칸에 채운다(감시기가 Custom 으로 바꾸지 않게 가드를 건다).
+     * 입력: values — 키 → 값
+     * 리턴: 없음
+     */
+    private fun fillValues(values: Map<String, Double>) {
+        val specs = VadParamCatalog.specs(currentEngine).associateBy { it.key }
+        applyingVadPreset = true
+        try {
+            for ((key, edit) in paramEdits) {
+                val v = values[key] ?: continue
+                edit.setText(specs[key]?.format(v) ?: v.toString())
+            }
         } finally {
             applyingVadPreset = false
         }
     }
 
     /**
+     * 목적: 프리셋의 출처와 엔진 라이선스를 안내 문구로 보여 준다.
+     * 입력: preset
+     * 리턴: 없음
+     */
+    private fun showInfo(preset: VadPreset) {
+        val e = preset.engine
+        vadInfoText.text = if (e == VadEngine.NONE) "" else
+            "출처: ${preset.description}\n라이선스: ${e.license} (상업 사용: ${e.commercial})"
+    }
+
+    /**
      * 목적: START 를 누른 순간의 VAD 설정을 읽어 검증하고 snapshot 으로 만든다.
-     * 입력: 없음 (입력창 값을 읽는다)
+     * 입력: 없음 (스피너·입력칸 값을 읽는다)
      * 출력: 없음
      * 리턴: VadSelection
      * 예외: 값이 비었거나 범위를 벗어나면 IllegalArgumentException (호출부에서 토스트로 안내한다)
-     * 비고: Max Speech 에 0 을 넣으면 Unlimited(null) 로 해석한다.
      */
     fun readVadSelection(): VadSelection {
-        if (!vadSwitch.isChecked) {                                       // OFF: 기존 baseline 경로 유지
-            return VadSelection(
-                enabled = false,
-                profile = VadProfile.DEFAULT,                             // change-hyungchul-20260914-2130
-                config = VadPresets.config(VadProfile.DEFAULT),
-                outputFolder = null,
-            )
+        val segMode = segModes[segModeSpinner.selectedItemPosition.coerceIn(0, segModes.lastIndex)]
+        if (currentEngine == VadEngine.NONE) {                              // VAD 사용 안 함
+            return VadSelection(VadSetting(VadEngine.NONE, VadPresetCatalog.NONE_PRESET, emptyMap()), segMode)
         }
-
-        val profiles = VadProfile.entries   // change-hyungchul-20260828-1000
-        val profile = profiles[vadProfileSpinner.selectedItemPosition.coerceIn(0, profiles.lastIndex)]
-
-        fun requiredFloat(edit: EditText, name: String): Float =
-            edit.text.toString().trim().toFloatOrNull()
-                ?: throw IllegalArgumentException("$name 값을 확인하세요.")
-
-        fun requiredInt(edit: EditText, name: String): Int =
-            edit.text.toString().trim().toIntOrNull()
-                ?: throw IllegalArgumentException("$name 값을 확인하세요.")
-
-        val maxSpeech = vadMaxSpeechEdit.text.toString().trim().toDoubleOrNull()
-            ?: throw IllegalArgumentException("Max Speech 값을 확인하세요.")
-
-        val config = VadConfig(                                           // VadConfig 의 init 이 범위를 재검증한다
-            threshold = requiredFloat(vadThresholdEdit, "Threshold"),
-            minSpeechDurationMs = requiredInt(vadMinSpeechEdit, "Min Speech"),
-            minSilenceDurationMs = requiredInt(vadMinSilenceEdit, "Min Silence"),
-            speechPadMs = requiredInt(vadSpeechPadEdit, "Speech Padding"),
-            maxSpeechDurationSec = if (maxSpeech <= 0.0) null else maxSpeech,
-            // add-hyungchul-20260914-2130 : 구간 사이 무음(ms)
-            joinSilenceMs = requiredInt(vadJoinSilenceEdit, "구간 사이 무음"),
-        )
-
-        val outputFolder = when (profile) {                               // 결과를 profile 별로 분리 저장
-            VadProfile.CUSTOM -> customVadFolder(config)
-            else -> "vad_" + profile.folderName
+        val preset = currentPresets[vadProfileSpinner.selectedItemPosition.coerceIn(0, currentPresets.lastIndex)]
+        val values: Map<String, Double> = if (preset.isCustom) {            // Custom 은 입력칸 값을 읽는다
+            paramEdits.mapValues { (key, edit) ->
+                edit.text.toString().trim().toDoubleOrNull()
+                    ?: throw IllegalArgumentException("$key 값을 확인하세요.")
+            }
+        } else {
+            preset.values                                                   // 고정 프리셋은 정의값 그대로
         }
-        return VadSelection(true, profile, config, outputFolder)
+        VadParamCatalog.validate(currentEngine, values)                     // 범위 검증
+        val setting = VadSetting(currentEngine, preset, values)
+        if (currentEngine == VadEngine.SILERO || currentEngine == VadEngine.TEN) {
+            VadConfig.fromSetting(setting)                                  // Silero 방식 추가 규칙(Max Speech 하한) 검증
+        } else if (currentEngine == VadEngine.WEBRTC) {
+            VadConfig.fromSetting(setting, thresholdOverride = 0.5f)
+        }
+        return VadSelection(setting, segMode)
     }
 
     /**
-     * 목적: Custom 값을 바꿔가며 여러 번 돌려도 서로 덮어쓰지 않도록 설정값을 폴더명에 녹인다.
-     * 입력: config — Custom 파라미터
-     * 출력: 없음
-     * 리턴: "vad_custom_t50_sp250_si400_pad150_maxinf_join200" 형태의 폴더명
-     * 비고: change-hyungchul-20260914-2130
-     *   구간 사이 무음(join) 도 STT 입력을 바꾸므로 폴더명에 포함시켜야
-     *   join 값만 다른 실행이 서로 덮어쓰지 않는다.
-     */
-    private fun customVadFolder(config: VadConfig): String {
-        val threshold100 = (config.threshold * 100).roundToInt()          // 0.50 → 50 (폴더명에 소수점을 피한다)
-        val maxText = config.maxSpeechDurationSec
-            ?.let { String.format(Locale.US, "%.1f", it).replace('.', 'p') }
-            ?: "inf"
-        return "vad_custom_t${threshold100}_sp${config.minSpeechDurationMs}" +
-                "_si${config.minSilenceDurationMs}_pad${config.speechPadMs}_max$maxText" +
-                "_join${config.joinSilenceMs}"       // add-hyungchul-20260914-2130
-    }
-
-    /**
-     * add-hyungchul-20260825-1620
-     * 목적: assets 에 Silero 모델 파일이 있는지 확인하고, 없으면 화면 로그와 토스트로 즉시 알린다.
+     * add-hyungchul-20260825-1620 / change-hyungchul-20261009-1530 (엔진별 파일 목록으로 확장)
+     * 목적: 고른 엔진의 assets 모델 파일이 있는지 확인하고, 없으면 화면 로그와 토스트로 즉시 알린다.
      * 입력: 없음
      * 출력: 없음 (로그/토스트 출력)
-     * 리턴: 파일이 있으면 true
-     * 비고: 여기서 막지는 않는다. 실제 차단은 SileroVadProcessor 생성 시점에서 예외로 처리한다.
+     * 리턴: 파일이 모두 있으면 true
+     * 비고: 여기서 막지는 않는다. 실제 차단은 VAD 실행기 생성 시점에서 예외로 처리한다.
+     *       TEN VAD 는 assets 가 아니라 jniLibs 의 네이티브 라이브러리라 실행 시점에 확인한다.
      */
     fun warnIfVadModelMissing(): Boolean {
-        val exists = runCatching {
-            activity.assets.list("")?.contains(SileroVadProcessor.MODEL_ASSET) == true
-        }.getOrDefault(false)
-        if (!exists) {
-            val msg = "assets/${SileroVadProcessor.MODEL_ASSET} 이 없습니다. " +
-                    "tools/download_models.sh 를 실행한 뒤 다시 빌드하세요."
+        val have = runCatching { activity.assets.list("")?.toSet() ?: emptySet() }.getOrDefault(emptySet())
+        val missing = VadDetectorFactory.requiredAssets(currentEngine).filter { it !in have }
+        if (missing.isNotEmpty()) {
+            val msg = "assets/${missing.joinToString(", ")} 이 없습니다. " +
+                "tools/download_models.sh 를 실행한 뒤 다시 빌드하세요."
             log("[vad][경고] $msg")
             toast(msg)
         }
-        return exists
+        return missing.isEmpty()
     }
 }

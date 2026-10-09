@@ -18,6 +18,11 @@ data class ModelConfig(
     val folder: String,
     val engine: SttEngine,
     val mlKitMode: Int? = null,
+    // change-hyungchul-20261009-1530 : PC GUI v7.7 평탄화 결과 폴더 <엔진>_<모델>_<조건> 의 <엔진>·<모델> 이름.
+    //   PC 의 Google Cloud 엔진(algo "google")과 섞이지 않게 엔진 이름을 따로 두고,
+    //   이름 안에 '_' 를 쓰지 않는다(PC 평가기가 '_' 로 엔진/모델/조건을 나누기 때문).
+    val resultEngine: String = "",
+    val resultModel: String = "",
 )
 
 // change(add)-hyungchul-20260820
@@ -60,9 +65,11 @@ data class SttOutcome(
  */
 object SttCatalog {
     val models = listOf(
-        ModelConfig("base", SttEngine.ML_KIT, SpeechRecognizerOptions.Mode.MODE_BASIC),
+        // change-hyungchul-20261009-1530 : 결과 폴더 이름(google-mlkit_basic_<조건>) 추가
+        ModelConfig("base", SttEngine.ML_KIT, SpeechRecognizerOptions.Mode.MODE_BASIC, "google-mlkit", "basic"),
         // change-hyungchul-20261009-1524 : Pixel 10 전용 ML Kit MODE_ADVANCED("advanced") 경로 제거
-        ModelConfig("android_ondevice", SttEngine.ANDROID_PLATFORM_ON_DEVICE),
+        // change-hyungchul-20261009-1530 : 결과 폴더 이름(google-platform_ondevice_<조건>) 추가
+        ModelConfig("android_ondevice", SttEngine.ANDROID_PLATFORM_ON_DEVICE, null, "google-platform", "ondevice"),
     )
 
     // change-hyungchul-20260824

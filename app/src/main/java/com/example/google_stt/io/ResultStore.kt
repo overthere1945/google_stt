@@ -6,68 +6,90 @@
  * change-hyungchul-20261009-1514
  *   MainActivity.kt 의 ensureRunDir / writeCsv / saveResult / ensureDir / writeBytes 를 내용 변경 없이 옮겼다.
  *   contentResolver 와 algoName("google") 은 생성자로 받는다.
+ *
+ * change-hyungchul-20261009-1530 — 결과 폴더를 PC "STT 통합 실행기" v7.7 평탄화 규칙으로 바꿨다(사용자 결정 Q10·Q13).
+ *   예전: output/google/<모드>/[ns_*/][vad_*/][epd_*/]<하위>/<파일>.txt , …/result.csv , …/run_meta.csv
+ *   지금: output/<엔진>_<모델>_<조건>/<하위>/<파일>.txt
+ *         output/<엔진>_<조건>_result.csv     (CSV 는 결과 폴더 바로 아래 — PC 와 같음)
+ *         output/<엔진>_<조건>_run_meta.csv   (앱 전용 실행 요약, 같은 위치)
+ *   <엔진>/<모델> = ModelConfig.resultEngine / resultModel (예: google-mlkit / basic)
+ *   <조건>       = [NS_…_]<VAD 프리셋>[_SEG10][_EPD_…]  (예: NOVAD, SILERO_SAFE, PYANNOTE_S500_SEG10)
  */
 package com.example.google_stt.io
 
 import android.content.ContentResolver
 import androidx.documentfile.provider.DocumentFile
 import com.example.google_stt.SttTelemetry
+import com.example.google_stt.stt.ModelConfig   // change-hyungchul-20261009-1530
 import java.io.IOException
 
 /**
  * 목적: 결과 저장기.
- * 입력(생성자): contentResolver — 파일 쓰기에 쓸 ContentResolver, algoName — 결과 최상위 폴더 이름("google")
+ * 입력(생성자): contentResolver — 파일 쓰기에 쓸 ContentResolver
+ *   (change-hyungchul-20261009-1530 : algoName 인자 제거 — 평탄화 규칙에서는 최상위 "google" 폴더를 만들지 않는다)
  */
 class ResultStore(
     private val contentResolver: ContentResolver,
-    private val algoName: String,
 ) {
 
-    /**
-     * add-hyungchul-20260825-1430
-     * change-hyungchul-20260826-1100: vadFolder(String?) → variant(List<String>) 로 일반화.
-     *   노이즈 저감 폴더가 하나 더 끼어들어야 해서, 앞으로 단계가 늘어나도 시그니처를 안 바꾸도록
-     *   "추가 경로 조각 목록"을 그대로 받는다.
-     * 목적: 이번 실행의 결과 폴더를 만든다.
-     * 입력: outputRoot(출력 트리), modelFolder(base/android_ondevice — change-hyungchul-20261009-1524: advanced 제거),
-     *       variant — 비어 있으면 기존 경로를 그대로 쓴다. 예: ["ns_gtcrn_lim12", "vad_asr_safe"]
-     * 리턴: output/google/<모드>[/ns_xxx][/vad_yyy] DocumentFile
-     */
-    fun ensureRunDir(
-        outputRoot: DocumentFile,
-        modelFolder: String,
-        variant: List<String>,
-    ): DocumentFile {
-        val segments = mutableListOf(algoName, modelFolder)
-        segments.addAll(variant)
-        return ensureDir(outputRoot, segments)
-    }
+    // change-hyungchul-20261009-1530 : 예전 ensureRunDir / writeCsv / saveResult(output/google/<모드>/<variant…>) 를
+    //   v7.7 평탄화 규칙의 아래 함수들로 바꿨다(algo 값은 run_meta 에만 남는다).
 
-    // change-hyungchul-20260826-1100: variant 목록을 받는다(빈 목록이면 기존 동작과 동일)
-    fun writeCsv(
-        outputRoot: DocumentFile,
-        modelFolder: String,
-        variant: List<String>,
-        body: String,
-    ) {
-        val dir = ensureRunDir(outputRoot, modelFolder, variant)
+    /**
+     * 목적: 결과 폴더 이름 <엔진>_<모델>_<조건> 을 만든다.
+     * 입력: model — STT 경로, condition — 조건 이름
+     * 리턴: 폴더 이름
+     */
+    fun resultDirName(model: ModelConfig, condition: String): String =
+        "${model.resultEngine}_${model.resultModel}_$condition"
+
+    /**
+     * 목적: CSV 이름 앞부분 <엔진>_<조건> 을 만든다(PC v7.7: "<엔진>_<조건>_result.csv").
+     * 입력: model, condition
+     * 리턴: 파일 이름 앞부분
+     */
+    private fun csvBase(model: ModelConfig, condition: String): String =
+        "${model.resultEngine}_$condition"
+
+    /**
+     * 목적: 이번 실행의 결과 폴더(output/<엔진>_<모델>_<조건>)를 만든다.
+     * 입력: outputRoot, model, condition
+     * 리턴: DocumentFile
+     */
+    fun ensureRunDir(outputRoot: DocumentFile, model: ModelConfig, condition: String): DocumentFile =
+        ensureDir(outputRoot, listOf(resultDirName(model, condition)))
+
+    /**
+     * 목적: result.csv 를 출력 폴더 바로 아래 <엔진>_<조건>_result.csv 로 쓴다(utf-8-sig).
+     * 입력: outputRoot, model, condition, body(CSV 본문)
+     * 리턴: 없음
+     */
+    fun writeCsv(outputRoot: DocumentFile, model: ModelConfig, condition: String, body: String) {
         writeBytes(
-            dir, "result.csv",
+            outputRoot, csvBase(model, condition) + "_result.csv",
             SttTelemetry.BOM + body.toByteArray(Charsets.UTF_8), "text/csv",
         )
     }
 
-    // ─────────────────────────── 출력 저장 ───────────────────────────
-    // change-hyungchul-20260826-1100: variant 목록을 받는다(빈 목록이면 기존 경로와 완전히 동일)
-    fun saveResult(
-        outputRoot: DocumentFile,
-        modeFolder: String,
-        variant: List<String>,
-        item: AudioItem,
-        text: String,
-    ) {
-        val segments = mutableListOf(algoName, modeFolder)
-        segments.addAll(variant)
+    /**
+     * 목적: run_meta.csv 를 출력 폴더 바로 아래 <엔진>_<조건>_run_meta.csv 로 쓴다(utf-8-sig).
+     * 입력: outputRoot, model, condition, body
+     * 리턴: 없음
+     */
+    fun writeRunMeta(outputRoot: DocumentFile, model: ModelConfig, condition: String, body: String) {
+        writeBytes(
+            outputRoot, csvBase(model, condition) + "_run_meta.csv",
+            SttTelemetry.BOM + body.toByteArray(Charsets.UTF_8), "text/csv",
+        )
+    }
+
+    /**
+     * 목적: 전사 TXT 를 output/<엔진>_<모델>_<조건>/<입력 하위 폴더>/<파일명>.txt 로 쓴다.
+     * 입력: outputRoot, model, condition, item(입력 파일), text(전사문)
+     * 리턴: 없음
+     */
+    fun saveResult(outputRoot: DocumentFile, model: ModelConfig, condition: String, item: AudioItem, text: String) {
+        val segments = mutableListOf(resultDirName(model, condition))
         segments.addAll(item.relPath)
         val dir = ensureDir(outputRoot, segments)
         writeBytes(dir, item.nameNoExt + ".txt", text.toByteArray(Charsets.UTF_8))

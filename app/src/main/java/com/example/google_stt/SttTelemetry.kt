@@ -180,6 +180,24 @@ data class SttRow(
      */
     var sttSessionIndex: Int = -1,
 
+    // add-hyungchul-20261009-1530 : VAD 엔진 선택 / 구간 처리(SEG) / 조건 이름 — 기존 컬럼 뒤에 append 한다(앞 index 유지)
+    /** VAD 엔진(NONE / SILERO / WEBRTC / PYANNOTE / FSMN / FIRERED / TEN) */
+    var vadEngine: String = "",
+    /** VAD 프리셋 이름(SILERO_SAFE …, Custom 이면 값이 붙은 이름) */
+    var vadPreset: String = "",
+    /** VAD 설정 전체 요약("key=value, …") — 엔진마다 항목이 달라 한 칸에 모은다 */
+    var vadParams: String = "",
+    /** VAD 상업 사용 판정(allowed / conditional) */
+    var vadCommercial: String = "",
+    /** 구간 처리(ENGINE_MAX / SEG10) */
+    var segMode: String = "",
+    /** STT 에 실제로 넣은 조각 수 */
+    var segChunks: Int = -1,
+    /** 상한 때문에 말 구간을 자른 횟수(SEG10) */
+    var segSplits: Int = -1,
+    /** 결과 조건 이름(PC GUI v7.7 평탄화 규칙의 <조건>) */
+    var condition: String = "",
+
     var decodeMs: Long = -1,
     var feedMode: String = "",
     var feedDelayMs: Long = -1,
@@ -305,6 +323,11 @@ data class SttRow(
 
         // add-hyungchul-20260915-2200
         sttSessionIndex.toString(),
+
+        // add-hyungchul-20261009-1530
+        SttTelemetry.q(vadEngine), SttTelemetry.q(vadPreset), SttTelemetry.q(vadParams),
+        SttTelemetry.q(vadCommercial), SttTelemetry.q(segMode), segChunks.toString(),
+        segSplits.toString(), SttTelemetry.q(condition),
     ).joinToString(",") + "\n"
 }
 
@@ -421,6 +444,10 @@ object SttTelemetry {
 
         // add-hyungchul-20260915-2200
         "stt_session_index",
+
+        // add-hyungchul-20261009-1530 : VAD 엔진 선택 / 구간 처리 / 조건 이름
+        "vad_engine", "vad_preset", "vad_params", "vad_commercial",
+        "seg_mode", "seg_chunks", "seg_splits", "condition",
     ).joinToString(",") + "\n"
 
     /**
