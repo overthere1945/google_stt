@@ -35,11 +35,18 @@
  *   · 태그 "GoogleStt" + 접두어 "[D][batch]/[D][file]/[D][stt]" 로 Log.d 만 쓴다(화면 로그창에는 넣지 않는다).
  *   · 화면 로그(appendLog)는 원래부터 같은 태그로 Logcat 에 Log.i 로 나간다 → NS/VAD/seg 결과 줄은 중복해서 넣지 않았다.
  *   · 넣은 곳: 배치 시작/끝/중단, warm-up 결과, 파일 시작/끝, 디코딩 상세, STT 입력 조각·결과, finally. 프레임 단위 출력은 없다.
+ *
+ * add-hyungchul-20261010-2238 — sherpa 모델 위치 변경(사용자 결정 Q24, v2.1.1)
+ *   · 모델 폴더: 앱 전용 Android/data/…/files/models → 공용 /sdcard/Documents/stt_models (adb 가 만든 앱 전용 폴더를 앱이 못 읽었다).
+ *   · 배치 시작 전에 '모든 파일 접근'(Environment.isExternalStorageManager) 을 확인하고, 꺼져 있으면 설정 화면을 열고 시작하지 않는다.
  */
 package com.example.google_stt.batch
 
+import android.content.Intent                             // add-hyungchul-20261010-2238 : '모든 파일 접근' 설정 화면 열기
 import android.net.Uri
 import android.os.Build                                   // preflight 의 API 레벨 확인
+import android.os.Environment                             // add-hyungchul-20261010-2238 : isExternalStorageManager()
+import android.provider.Settings                          // add-hyungchul-20261010-2238 : ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
 import android.speech.SpeechRecognizer as AndroidSpeechRecognizer
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
@@ -271,6 +278,23 @@ class BatchRunner(
             // 실행 전 1회 가용성 점검 — 어떤 엔진이 실제로 쓰이는지 로그와 run_meta 에 남긴다.
             val preflightText = preflight(modelConfig, locale)
             // add-hyungchul-20261010-1800 : sherpa 모델 파일이 없으면 시작하지 않는다(없는 파일로 네이티브를 부르면 앱이 죽는다)
+            // add-hyungchul-20261010-2238 : 사용자 결정 Q24 — 모델이 공용 폴더(/sdcard/Documents/stt_models)에 있으므로
+            //   '모든 파일 접근'(MANAGE_EXTERNAL_STORAGE) 이 꺼져 있으면 파일이 있어도 못 읽는다 → 설정 화면을 열고 시작하지 않는다.
+            if (sherpaSpec != null && !Environment.isExternalStorageManager()) {
+                dbg("batch", "abort: all-files access not granted (isExternalStorageManager=false)")
+                appendLog(
+                    "[sherpa][중단] '모든 파일 접근' 권한이 꺼져 있어 ${SherpaOfflineTranscriber.modelsRoot(appContext).absolutePath} 의 " +
+                        "모델을 읽을 수 없다. 지금 열리는 설정 화면에서 이 앱의 '모든 파일 접근 허용' 을 켠 뒤 다시 START 할 것.",
+                )
+                toast("'모든 파일 접근' 을 허용한 뒤 다시 START 하세요.")
+                val pkgUri = Uri.parse("package:${activity.packageName}")                    // 이 앱의 권한 화면으로 바로 가기
+                runCatching {
+                    activity.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, pkgUri))
+                }.onFailure {                                                                   // 기기에 앱별 화면이 없으면 전체 목록 화면으로
+                    runCatching { activity.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+                }
+                return
+            }
             if (sherpaSpec != null) {
                 val missing = SherpaOfflineTranscriber.missingFiles(appContext, sherpaSpec)
                 if (missing.isNotEmpty()) {
@@ -1093,7 +1117,8 @@ class BatchRunner(
                 }
             }
 
-            // add-hyungchul-20261010-1800 : sherpa-onnx — 모델 파일이 휴대폰 앱 전용 폴더에 있는지 본다
+            // add-hyungchul-20261010-1800 : sherpa-onnx — 모델 파일이 휴대폰 모델 폴더에 있는지 본다
+            //   (change-hyungchul-20261010-2238 : 앱 전용 폴더 → 공용 /sdcard/Documents/stt_models, 사용자 결정 Q24)
             SttEngine.SHERPA_OFFLINE -> {
                 val spec = config.sherpa
                 val line = if (spec == null) {

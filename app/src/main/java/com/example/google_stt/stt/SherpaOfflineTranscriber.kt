@@ -8,8 +8,9 @@
  *     · 실시간 공급을 하지 않는다(feed_ms = -1). 조각을 받자마자 디코딩한다.
  *     · stt_wall_ms = 첫 조각 디코딩 시작 → 마지막 조각 결과. 입력이 처음부터 다 있으므로 tail_ms 도 같은 값이다.
  *     · segments = 실제로 디코딩한 조각 수.
- * - 모델 위치: getExternalFilesDir(null)/models/<SherpaModelSpec.dirName>/
- *   = /sdcard/Android/data/com.example.google_stt/files/models/…  (tools/download_stt_models.sh 가 adb 로 넣는다)
+ * - 모델 위치: /sdcard/Documents/stt_models/<SherpaModelSpec.dirName>/  (tools/download_stt_models.sh 가 adb 로 넣는다)
+ *   change-hyungchul-20261010-2238 : 사용자 결정 Q24 — 공용 폴더 + '모든 파일 접근'(MANAGE_EXTERNAL_STORAGE).
+ *     예전 getExternalFilesDir(null)/models 는 adb 가 만든 폴더를 앱이 읽지 못했다(실기기 Logcat: canRead=false).
  *
  * 공식 API 근거(sherpa-onnx v1.13.7 kotlin-api):
  *   OfflineRecognizer(assetManager: AssetManager? = null, config: OfflineRecognizerConfig) — assetManager 가 null 이면 파일 경로로 읽는다
@@ -28,6 +29,7 @@
 package com.example.google_stt.stt
 
 import android.content.Context
+import android.os.Environment                             // add-hyungchul-20261010-2238 : 공용 Documents 폴더 / 모든 파일 접근 확인
 import android.util.Log                                   // add-hyungchul-20261010-1951 : Logcat 디버그 출력
 import com.example.google_stt.vad.VadAudio
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
@@ -42,7 +44,7 @@ import java.util.Locale
 
 /**
  * 목적: sherpa-onnx 오프라인 전사기(배치 1회에 1개).
- * 입력(생성자): context — 모델 폴더(getExternalFilesDir) 위치를 얻는 데 쓴다
+ * 입력(생성자): context — 모델 폴더 위치를 얻는 함수들에 넘긴다(change-hyungchul-20261010-2238 : 지금은 공용 Documents 폴더라 실제로 쓰지 않는다)
  */
 class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
 
@@ -217,10 +219,10 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
          * 입력: context, spec / 출력: Logcat 여러 줄 / 리턴: 없음
          */
         fun logDirReport(context: Context, spec: SherpaModelSpec) {
-            val ext = context.getExternalFilesDir(null)                             // 앱 전용 외부 폴더(null 이면 내부 filesDir 로 대체됨)
-            val root = modelsRoot(context)                                          // …/files/models
-            val dir = modelDir(context, spec)                                       // …/files/models/<패키지>
-            dbg("dir report: externalFilesDir=${ext?.absolutePath ?: "null(내부 filesDir 사용)"}")
+            // change-hyungchul-20261010-2238 : 앱 전용 폴더 대신 공용 Documents/stt_models 를 점검한다 — 권한 상태를 먼저 남긴다
+            val root = modelsRoot(context)                                          // /sdcard/Documents/stt_models
+            val dir = modelDir(context, spec)                                       // …/stt_models/<패키지>
+            dbg("dir report: allFilesAccess(isExternalStorageManager)=${Environment.isExternalStorageManager()}")
             dbg("dir report: modelsRoot=${root.absolutePath} exists=${root.exists()} canRead=${root.canRead()} " +
                 "children=${root.list()?.joinToString(",") ?: "null(읽을 수 없음)"}")   // 안에 어떤 패키지 폴더가 있는지
             dbg("dir report: modelDir=${dir.absolutePath} exists=${dir.exists()} isDir=${dir.isDirectory} canRead=${dir.canRead()} " +
@@ -232,12 +234,19 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
             }
         }
 
+        /** add-hyungchul-20261010-2238 : 공용 Documents 아래 모델 폴더 이름 */
+        const val MODELS_DIR_NAME = "stt_models"
+
         /**
-         * 목적: 앱 전용 모델 폴더(…/files/models).
-         * 입력: context / 리턴: File
+         * 목적: 모델 폴더(/sdcard/Documents/stt_models).
+         * 입력: context(지금은 쓰지 않음 — 호출부를 바꾸지 않으려고 남겼다) / 리턴: File
+         * change-hyungchul-20261010-2238 : 사용자 결정 Q24 — getExternalFilesDir(null)/models → 공용 Documents/stt_models.
+         *   adb 가 Android/data 안에 만든 폴더를 앱이 읽지 못했기 때문(실기기 Logcat: canRead=false).
+         *   읽으려면 '모든 파일 접근'(MANAGE_EXTERNAL_STORAGE) 이 켜져 있어야 한다 → BatchRunner 가 배치 시작 전에 확인한다.
          */
+        @Suppress("DEPRECATION", "UNUSED_PARAMETER")   // getExternalStoragePublicDirectory 는 API 29 부터 deprecated 지만 '모든 파일 접근' 에서는 경로로 쓸 수 있다
         fun modelsRoot(context: Context): File =
-            File(context.getExternalFilesDir(null) ?: context.filesDir, "models")
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), MODELS_DIR_NAME)
 
         /** 목적: 모델 1개의 폴더. 입력: context, spec / 리턴: File */
         fun modelDir(context: Context, spec: SherpaModelSpec): File = File(modelsRoot(context), spec.dirName)

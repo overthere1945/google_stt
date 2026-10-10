@@ -4,9 +4,9 @@
 지연·자원을 계측하는 평가 앱입니다. 결과는 PC "STT 통합 실행기"와 같은 폴더·조건 이름 규칙으로 저장되어
 PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
-- 현재 판: **2.1.0** (2026-10-10) — 변경 내용은 [`docs/RELEASE_NOTES_v2.1.0.md`](docs/RELEASE_NOTES_v2.1.0.md) (이전: [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
+- 현재 판: **2.1.1** (2026-10-10) — 변경 내용은 [`docs/RELEASE_NOTES_v2.1.1.md`](docs/RELEASE_NOTES_v2.1.1.md) (이전: [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
 - 대상 기기: Galaxy S25 Ultra (arm64-v8a), minSdk 31 / targetSdk 35 — APK 는 **arm64-v8a 전용**(`abiFilters`, 에뮬레이터·32비트 기기 설치 불가)
-- 네트워크: **INTERNET 권한 없음**(온디바이스 실행 증명용). VAD·노이즈 저감 모델은 APK 에 넣고, STT 모델(sherpa-onnx)은 adb 로 휴대폰 앱 전용 폴더에 넣습니다.
+- 네트워크: **INTERNET 권한 없음**(온디바이스 실행 증명용). VAD·노이즈 저감 모델은 APK 에 넣고, STT 모델(sherpa-onnx)은 휴대폰 공용 폴더 `/sdcard/Documents/stt_models` 에 넣고 앱은 **'모든 파일 접근'** 권한으로 읽습니다(v2.1.1).
 
 ## 1. 처리 순서
 
@@ -63,7 +63,8 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 - 실행: 실시간 공급 없이 **최대 속도로 디코딩**한다. 모델은 배치 시작 때 1번 불러 끝에 해제한다(불러온 시간은 run_meta `stt_model_load_ms`).
 - 구간 처리: "엔진별 최대 길이" = 위 조각 상한으로 말 구간을 묶고 자른다. "10초 통일" = 10 s. Speech EPD 는 쓰지 않는다.
 - 결과 이름: `whisper-base_sherpa-int8_<조건>/…`, `whisper-base_<조건>_result.csv` (모델마다 CSV 가 따로 생긴다).
-- 모델 위치(휴대폰): `/sdcard/Android/data/com.example.google_stt/files/models/<패키지>/` — **앱을 지우면 함께 지워진다**(Run 으로 덮어 설치하면 남는다).
+- 모델 위치(휴대폰): `/sdcard/Documents/stt_models/<패키지>/` — 앱은 **'모든 파일 접근'(MANAGE_EXTERNAL_STORAGE)** 으로 읽는다. 앱을 지워도 모델은 남는다(v2.1.1, 사용자 결정 Q24).
+  - v2.1.0 의 앱 전용 폴더(`Android/data/…/files/models`)는 adb 가 만든 폴더를 앱이 읽지 못해(`canRead=false`) 바꿨다. 예전 폴더는 `adb shell rm -rf /sdcard/Android/data/com.example.google_stt/files/models` 로 지운다.
 
 ## 3. 처음 설정
 
@@ -81,12 +82,13 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
    bash tools/download_stt_models.sh aar             # app/libs/sherpa-onnx-static-link-onnxruntime-1.13.7.aar
    ```
 3. Android Studio 에서 Gradle Sync → Run(실기기). WebRTC VAD 는 JitPack 저장소에서 받습니다.
-4. 앱이 설치된 뒤(USB 디버깅 연결) STT 모델을 휴대폰에 넣기:
+4. USB 디버깅을 연결하고 STT 모델을 휴대폰 공용 폴더에 넣기(앱 설치 여부와 무관, MTP·파일 관리자로 `Documents/stt_models` 에 복사해도 된다):
    ```bash
    bash tools/download_stt_models.sh                 # 기본: whisper-base + qwen3asr-0.6b + omnilingual-300m (+aar)
    bash tools/download_stt_models.sh whisper-tiny whisper-small   # 고른 모델만 / all = 7종 전부(약 3.5 GB)
    ```
 5. 앱에서 입력 폴더·출력 폴더 선택 → 언어·Model·Feed·노이즈 저감·VAD 엔진·프리셋·구간 처리·EPD 선택 → START.
+   - sherpa 모델로 처음 START 하면 '모든 파일 접근 허용' 설정 화면이 열린다 → 이 앱을 켜고 돌아와 다시 START.
 6. 문제가 생기면 Android Studio **Logcat** 에서 `tag:GoogleStt` 로 봅니다. 화면 로그와 같은 줄(Log.i)에 더해 `[D]` 로 시작하는 디버그 줄(Log.d)이 함께 나옵니다(디버그 줄은 화면 로그창에는 나오지 않습니다).
    - 디버그 줄만: `tag:GoogleStt message:[D]` / sherpa 만: `tag:GoogleStt message:[D][sherpa]`
    - `[D][batch]` 배치 시작·끝·중단·warm-up, `[D][file]` 파일 시작·끝·디코딩 상세, `[D][stt]` STT 에 넣는 조각 길이·결과 요약, `[D][sherpa]` 모델 폴더 점검(있는지·읽을 수 있는지·크기)·설정 경로·불러오기 시간·조각별 디코딩 시간
@@ -124,7 +126,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 - ML Kit 은 공식 문서상 **실시간 속도 공급만 지원**합니다. WER/CER 확정 실행은 REALTIME 으로 하세요.
 - `com.google.android.tts`(SODA)는 약 **35세션**에서 응답을 멈춥니다. 10초 통일은 파일당 여러 세션을 써서 한도에 빨리 닿습니다.
 - pyannote / FSMN / FireRed 는 공식 PyTorch/C++ 구현을 Kotlin 으로 옮긴 것입니다. PC 결과와 프레임 단위로 다를 수 있으니 같은 음원으로 비교해 확인하세요.
-- 남은 STT 엔진(2-2: Nemotron 3.5 스트리밍·Cohere 2B, 2-3: Zipformer KO·SenseVoice·Moonshine(상업 조건부)·Vosk)은 다음 단계입니다. 결정 사항은 `docs/HANDOFF_20261010_v2.1.0.md`.
+- 남은 STT 엔진(2-2: Nemotron 3.5 스트리밍·Cohere 2B, 2-3: Zipformer KO·SenseVoice·Moonshine(상업 조건부)·Vosk)은 다음 단계입니다. 결정 사항은 `docs/HANDOFF_20261010_v2.1.1.md`.
 - sherpa 엔진의 실기기 속도·메모리·두 onnxruntime(앱 1.25.1 + sherpa 정적) 공존은 아직 실기기에서 확인하지 않았습니다.
 - APK 는 arm64-v8a 만 넣습니다(`app/build.gradle.kts` 의 `ndk.abiFilters`). 에뮬레이터용으로 x86_64 를 더할 수는 있지만(정적이라 충돌 없음), TEN VAD `.so` 는 x86_64 판이 없습니다.
 - sherpa 정적 AAR 은 x86 에서만 `libonnxruntime.so`(ORT 1.27.1)를 따로 넣어 앱의 onnxruntime-android 1.25.1 과 경로가 겹칩니다. 그래서 `packaging.jniLibs.excludes` 에 `lib/x86/libonnxruntime.so` 를 넣었습니다. **`abiFilters` 만으로는 풀리지 않습니다** — AGP 는 모든 ABI 를 먼저 합치면서 중복을 검사하고, `abiFilters` 는 APK 를 묶을 때만 적용하기 때문입니다.

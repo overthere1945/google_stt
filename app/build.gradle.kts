@@ -34,8 +34,10 @@ android {
         // change-hyungchul-20261009-1626 : SW 버전 규칙(Major.Minor.Patch) 적용 — ML Kit Advanced 제거(기능 삭제)와
         //   결과 폴더 규칙 변경이 있어 Major 를 올린다(1.0 → 2.0.0). 릴리스 노트: docs/RELEASE_NOTES_v2.0.0.md
         // change-hyungchul-20261010-1800 : 2.0.0 → 2.1.0 (Minor) — sherpa-onnx STT 엔진 추가(기존 결과·설정과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.1.0.md
-        versionCode = 3
-        versionName = "2.1.0"
+        // change-hyungchul-20261010-2238 : 2.1.0 → 2.1.1 (Patch) — sherpa 모델을 앱이 읽지 못하던 문제 수정(모델 위치를 공용 Documents/stt_models 로,
+        //   '모든 파일 접근' 확인) + Logcat 디버그 출력. 2.1.0 은 원격(feature/v2-vad-stt)에 이미 올라가 판을 올린다. 릴리스 노트: docs/RELEASE_NOTES_v2.1.1.md
+        versionCode = 4
+        versionName = "2.1.1"
 
         // add-hyungchul-20261010-1855 : APK 에 넣을 ABI 를 arm64-v8a 하나로 제한(사용자 결정 Q21)
         //   · 이유: sherpa-onnx 정적 링크 AAR 1.13.7 은 x86 에서만 libonnxruntime.so(ORT 1.27.1)를 따로 동적 링크해 넣는데,

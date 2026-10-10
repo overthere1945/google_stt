@@ -4,8 +4,10 @@
 #   1) sherpa-onnx 정적 링크 AAR(v1.13.7)을 app/libs/ 에 받는다 — 빌드에 꼭 필요하다
 #   2) 모델 패키지(tar.bz2, 공식 GitHub Releases "asr-models")를 받아 앱이 쓰는 파일만 stt_models/<패키지>/ 에 푼다
 #   3) 파일마다 sha256 을 SHA256SUMS.txt 로 남긴다(앱이 run_meta 에 그대로 기록 — 휴대폰에서 다시 해시하지 않기 위함)
-#   4) adb 로 휴대폰 앱 전용 폴더 /sdcard/Android/data/com.example.google_stt/files/models/<패키지>/ 에 넣는다
-#      (사용자 결정 2026-10-10: 앱 전용 폴더 + adb. 앱을 지우면 모델도 함께 지워진다)
+#   4) adb 로 휴대폰 공용 폴더 /sdcard/Documents/stt_models/<패키지>/ 에 넣는다
+#      change-hyungchul-20261010-2238 : 사용자 결정 Q24 — 예전(Q18) 앱 전용 폴더(Android/data)는 adb 가 만든 폴더를 앱이 읽지 못해 바꿨다.
+#      앱은 '모든 파일 접근' 권한으로 읽는다(처음 START 때 설정 화면이 열린다). 앱을 지워도 모델은 남는다.
+#      앱 설치 여부와 상관없이 넣을 수 있다(MTP/파일 관리자로 Documents/stt_models 에 복사해도 된다).
 # 사용법: 프로젝트 루트에서
 #   bash tools/download_stt_models.sh                 # 기본: aar + whisper-base + qwen3asr-0.6b + omnilingual-300m
 #   bash tools/download_stt_models.sh aar             # AAR 만
@@ -23,7 +25,7 @@ LIBS="$ROOT/app/libs"                                      # AAR 위치(app/buil
 LOCAL="$ROOT/stt_models"                                   # PC 쪽 모델 보관 위치(git 제외)
 DL="$LOCAL/_download"                                      # tar.bz2 임시 위치(풀고 나면 지운다)
 APP_ID="com.example.google_stt"                            # 앱 패키지 이름
-DEV_ROOT="/sdcard/Android/data/$APP_ID/files/models"       # 휴대폰 모델 폴더(앱 getExternalFilesDir(null)/models)
+DEV_ROOT="/sdcard/Documents/stt_models"                    # change-hyungchul-20261010-2238 : 휴대폰 모델 폴더(앱 SherpaOfflineTranscriber.modelsRoot 와 같게)
 SHERPA_VER="1.13.7"                                        # sherpa-onnx 판(app/build.gradle.kts 와 같게)
 AAR="sherpa-onnx-static-link-onnxruntime-$SHERPA_VER.aar"  # 정적 링크 AAR 이름
 AAR_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v$SHERPA_VER/$AAR"
@@ -98,7 +100,7 @@ fetch_model() {
   echo "  [완료] $pkg ($(du -sh "$LOCAL/$pkg" | cut -f1))"
 }
 
-# 목적: 모델 폴더를 휴대폰 앱 전용 폴더로 넣는다
+# 목적: 모델 폴더를 휴대폰 공용 모델 폴더로 넣는다(change-hyungchul-20261010-2238)
 # 입력: $1 = 모델 이름
 push_model() {
   local line pkg
@@ -129,8 +131,7 @@ if [ $PUSH -eq 1 ] && [ ${#MODELS[@]} -gt 0 ]; then
     echo "[건너뜀] adb 가 없습니다. Android SDK platform-tools 를 PATH 에 넣거나 --no-push 로 실행하세요." >&2; FAILED=1
   elif [ "$(adb get-state 2>/dev/null)" != "device" ]; then
     echo "[건너뜀] 휴대폰이 adb 에 연결되어 있지 않습니다(USB 디버깅 허용 확인)." >&2; FAILED=1
-  elif ! adb shell pm path "$APP_ID" > /dev/null 2>&1; then
-    echo "[건너뜀] 휴대폰에 앱($APP_ID)이 없습니다. Android Studio 에서 먼저 설치(Run)한 뒤 다시 실행하세요." >&2; FAILED=1
+  # change-hyungchul-20261010-2238 : 공용 폴더라 앱 설치 확인(pm path)을 하지 않는다(실기기에서 설치돼 있는데도 "없음" 으로 나온 적이 있다)
   else
     adb shell mkdir -p "$DEV_ROOT"
     for m in "${MODELS[@]}"; do push_model "$m"; done
@@ -141,4 +142,4 @@ echo
 if [ $FAILED -ne 0 ]; then
   echo "일부를 끝내지 못했습니다. 위 [실패]/[건너뜀] 줄을 확인하세요."; exit 1
 fi
-echo "완료. 앱에서 Model 을 고르고 START 하세요(AAR 을 새로 받았다면 Android Studio 에서 Gradle Sync → Rebuild → Run)."
+echo "완료. 앱에서 Model 을 고르고 START 하세요(처음 한 번은 '모든 파일 접근' 설정 화면이 열린다 — 켠 뒤 다시 START)."   # change-hyungchul-20261010-2238

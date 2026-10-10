@@ -17,6 +17,16 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!--
+      add-hyungchul-20261010-2238 : sherpa-onnx STT 모델 읽기용 '모든 파일 접근'(사용자 결정 Q24)
+        · 모델 위치: /sdcard/Documents/stt_models/<패키지>/ (PC 에서 adb push 또는 MTP 복사)
+        · sherpa-onnx 는 파일 경로로만 모델을 읽는다. .onnx 는 미디어 파일이 아니라 Android 13+ 에서는 이 권한 없이는 공용 폴더의 파일을 경로로 읽을 수 없다.
+        · 이전 방식(앱 전용 폴더 Android/data 에 adb 로 넣기)은 adb 가 만든 폴더를 앱이 읽지 못해(canRead=false) 바꿨다.
+        · 런타임 대화상자가 없는 특수 권한이다 → 앱이 설정 화면(ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)을 열어 사용자가 켠다.
+        · Google Play 배포 시 정책 심사 대상(내부 평가용 앱이라 해당 없음).
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <!--
       ★ 필수: Android 11(API 30)+ 의 패키지 가시성 제한 때문에
       이 <queries> 가 없으면 SpeechRecognizer 가 RecognitionService 를 찾지 못해
       ERROR_CLIENT / 서비스 바인딩 실패가 발생할 수 있다.

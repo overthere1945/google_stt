@@ -3,8 +3,9 @@
  * 목적 및 기능:
  * - sherpa-onnx(오프라인) STT 모델 목록과 모델별 파일·조각 상한·라이선스를 정의한다(2단계 2-1).
  * - 모델 파일은 APK 에 넣지 않는다. PC 에서 tools/download_stt_models.sh 로 받아 adb 로
- *   휴대폰 앱 전용 폴더  /sdcard/Android/data/com.example.google_stt/files/models/<dirName>/  에 넣는다
- *   (사용자 결정 2026-10-10: 앱 전용 폴더 + adb. sherpa-onnx 는 파일 경로로만 모델을 읽는다).
+ *   휴대폰 공용 폴더  /sdcard/Documents/stt_models/<dirName>/  에 넣는다(앱은 '모든 파일 접근' 권한으로 읽는다).
+ *   change-hyungchul-20261010-2238 : 사용자 결정 Q24 — 예전(Q18) 앱 전용 폴더 Android/data 는 adb 가 만든 폴더를 앱이 못 읽어 바꿨다.
+ *   (sherpa-onnx 는 파일 경로로만 모델을 읽는다).
  * - 파일 이름·폴더 이름은 sherpa-onnx v1.13.7 공식 배포본 그대로다
  *   (확인: kotlin-api/OfflineRecognizer.kt getOfflineModelConfig, Hugging Face csukuangfj/sherpa-onnx-whisper-*,
  *    k2-fsa.github.io/sherpa/onnx/qwen3-asr/pretrained.html, …/omnilingual-asr/models.html).
