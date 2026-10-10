@@ -36,6 +36,17 @@ android {
         // change-hyungchul-20261010-1800 : 2.0.0 → 2.1.0 (Minor) — sherpa-onnx STT 엔진 추가(기존 결과·설정과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.1.0.md
         versionCode = 3
         versionName = "2.1.0"
+
+        // add-hyungchul-20261010-1855 : APK 에 넣을 ABI 를 arm64-v8a 하나로 제한(사용자 결정 Q21)
+        //   · 이유: sherpa-onnx 정적 링크 AAR 1.13.7 은 x86 에서만 libonnxruntime.so(ORT 1.27.1)를 따로 동적 링크해 넣는데,
+        //     onnxruntime-android 1.25.1 도 같은 경로 lib/x86/libonnxruntime.so 를 넣어 mergeDebugNativeLibs 가
+        //     "2 files found with path 'lib/x86/libonnxruntime.so'" 로 실패했다.
+        //     (readelf 확인: arm64-v8a / armeabi-v7a / x86_64 의 libsherpa-onnx-jni.so 는 onnxruntime 을 정적으로 품어 충돌 없음)
+        //   · 대상 기기 S25 Ultra 는 arm64-v8a 다. 에뮬레이터(x86/x86_64)·32비트 기기에는 설치되지 않는다.
+        //   · 덤으로 APK 가 작아진다(sherpa 네이티브만 약 74 MB 빠짐).
+        ndk {
+            abiFilters += "arm64-v8a"   // 공식 DSL: Ndk.abiFilters 는 MutableSet<String> — 여기 적은 ABI 만 패키징된다
+        }
     }
 
     compileOptions {

@@ -5,7 +5,7 @@
 PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
 - 현재 판: **2.1.0** (2026-10-10) — 변경 내용은 [`docs/RELEASE_NOTES_v2.1.0.md`](docs/RELEASE_NOTES_v2.1.0.md) (이전: [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
-- 대상 기기: Galaxy S25 Ultra (arm64-v8a), minSdk 31 / targetSdk 35
+- 대상 기기: Galaxy S25 Ultra (arm64-v8a), minSdk 31 / targetSdk 35 — APK 는 **arm64-v8a 전용**(`abiFilters`, 에뮬레이터·32비트 기기 설치 불가)
 - 네트워크: **INTERNET 권한 없음**(온디바이스 실행 증명용). VAD·노이즈 저감 모델은 APK 에 넣고, STT 모델(sherpa-onnx)은 adb 로 휴대폰 앱 전용 폴더에 넣습니다.
 
 ## 1. 처리 순서
@@ -123,6 +123,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 - pyannote / FSMN / FireRed 는 공식 PyTorch/C++ 구현을 Kotlin 으로 옮긴 것입니다. PC 결과와 프레임 단위로 다를 수 있으니 같은 음원으로 비교해 확인하세요.
 - 남은 STT 엔진(2-2: Nemotron 3.5 스트리밍·Cohere 2B, 2-3: Zipformer KO·SenseVoice·Moonshine(상업 조건부)·Vosk)은 다음 단계입니다. 결정 사항은 `docs/HANDOFF_20261010_v2.1.0.md`.
 - sherpa 엔진의 실기기 속도·메모리·두 onnxruntime(앱 1.25.1 + sherpa 정적) 공존은 아직 실기기에서 확인하지 않았습니다.
+- APK 는 arm64-v8a 만 넣습니다. sherpa 정적 AAR 은 x86 에서만 `libonnxruntime.so`(ORT 1.27.1)를 따로 넣어 앱의 onnxruntime-android 1.25.1 과 경로가 겹치기 때문입니다(`app/build.gradle.kts` 의 `ndk.abiFilters`). 에뮬레이터용으로 x86_64 를 더할 수는 있지만(정적이라 충돌 없음), TEN VAD `.so` 는 x86_64 판이 없습니다.
 - USB(MTP)로 PC 에서 결과 폴더를 보면 앱이 막 쓴 파일이 0바이트로 보일 수 있습니다(휴대폰 미디어 색인 미갱신). `adb pull` 이나 USB 재연결로 확인하세요.
 
 ## 7. 라이선스 메모
