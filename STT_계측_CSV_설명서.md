@@ -519,3 +519,20 @@ result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). Nemotron 3.5 스�
 - 결과 글자는 sherpa `text` 가 아니라 **토큰을 이어 붙여** 만든다(sherpa 1.13.7 의 스트리밍 `text` 가 한국어 띄어쓰기를 지우기 때문 — 실측 확인).
 - run_meta: `stt_language` = `nemotron language=ko`, `stt_chunk_max_sec` = `none`("엔진별 최대 길이") 또는 `10.0`(SEG10), `stt_license` = `OpenMDW-1.1`.
 - 결과 파일: `output/nemotron3.5-560ms_sherpa-int8_<조건>/…`, `output/nemotron3.5-560ms_<조건>_result.csv`
+
+## 8. v2.3.0 — 상업 조건부 엔진 4종의 값 뜻 (add-hyungchul-20261011-0150)
+
+result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). 오프라인 3종은 6장, 스트리밍 1종은 7장과 같이 읽고, 다른 곳만 적는다.
+
+| 화면 Model | `engine` | `mode` | 조각 상한(`stt_chunk_max_sec`) | `stt_language` |
+|---|---|---|---|---|
+| Zipformer KO [상업 조건부] | `SHERPA_OFFLINE` | `zipformer-ko` | `15.0` / SEG10 `10.0` | `zipformer-ko (한국어 전용, 언어 지정 없음)` |
+| Zipformer KO streaming [상업 조건부] | `SHERPA_STREAMING` | `zipformer-ko-stream` | `none` / SEG10 `10.0` | 위와 같음 |
+| SenseVoice Small [상업 조건부] | `SHERPA_OFFLINE` | `sensevoice-small` | `30.0` / SEG10 `10.0` | `sensevoice language=ko itn=on` |
+| Moonshine tiny KO [상업 조건부] | `SHERPA_OFFLINE` | `moonshine-tiny-ko` | `9.0` / **SEG10 도 `9.0`** | `moonshine-tiny-ko (한국어 전용, 언어 지정 없음)` |
+
+- run_meta `stt_commercial` = `conditional`, `stt_license` = `Apache-2.0(icefall)/KsponSpeech` / `FunASR-MODEL-LICENSE` / `Moonshine-Community-License`.
+- **Moonshine 은 10초 통일(SEG10)에서도 9 s 조각**으로 나눈다 — sherpa 1.13.7 에서 9.3 s 이상 조각이 onnxruntime 오류로 빈 결과가 되기 때문(실측). 그래서 이 모델의 SEG10 행은 `seg_chunks` 가 다른 엔진보다 많을 수 있다. 실제로 쓴 상한은 `stt_chunk_max_sec` 로 확인한다.
+- Zipformer KO(오프라인·스트리밍)의 결과 글자는 sherpa `text` 가 아니라 **토큰을 이어 붙여** 만든다(두 경로 모두 `text` 에 한국어 띄어쓰기가 없다 — 실측).
+- Moonshine 결과 앞에 남는 `▁` 는 공백으로 바꾼다. SenseVoice 는 ITN 을 켜서 문장부호·숫자(아라비아 숫자)가 나온다(PC `sensevoice.py --use-itn` 기본과 같다).
+- 결과 파일: `output/zipformer-ko_sherpa-int8_<조건>/…`, `output/zipformer-ko_<조건>_result.csv` (다른 3종도 같은 규칙).

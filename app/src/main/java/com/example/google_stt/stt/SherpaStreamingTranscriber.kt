@@ -26,6 +26,10 @@
  *   OnlineStream.acceptWaveform(samples, sampleRate) / inputFinished() / setOption(key, value) / release()
  *
  * add-hyungchul-20261011-0031
+ *
+ * add-hyungchul-20261011-0150 — 2단계 2-3: Zipformer KO 스트리밍(transducer)도 이 전사기로 돌린다.
+ *   · 설정(encoder/decoder/joiner + tokens)·공급·계측은 Nemotron 과 같다. 언어 옵션은 Nemotron 에만 넣는다(Zipformer KO 는 한국어 전용).
+ *   · 결과 text 의 한글 띄어쓰기 삭제도 같아서(실측) 같은 textFromTokens 를 쓴다.
  */
 package com.example.google_stt.stt
 
@@ -47,6 +51,7 @@ import java.util.Locale
 class SherpaStreamingTranscriber(private val context: Context) : AutoCloseable {
 
     private var recognizer: OnlineRecognizer? = null      // 불러 둔 인식기(load 전에는 null)
+    private var family: SherpaFamily? = null              // add-hyungchul-20261011-0150 : 불러 둔 모델 계열(언어 옵션을 넣을지 정한다)
 
     /** 모델을 불러오는 데 걸린 시간(ms). load 전에는 -1 */
     var loadMs: Long = -1
@@ -71,7 +76,7 @@ class SherpaStreamingTranscriber(private val context: Context) : AutoCloseable {
      * 출력: 없음 / 리턴: 없음
      */
     internal fun loadFromDir(dir: File, spec: SherpaModelSpec, locale: Locale) {
-        require(spec.family == SherpaFamily.NEMOTRON_STREAMING) { "스트리밍 모델이 아닙니다: ${spec.family}" }
+        require(spec.family.streaming) { "스트리밍 모델이 아닙니다: ${spec.family}" }   // change-hyungchul-20261011-0150 : Nemotron 만 → streaming 계열 모두
         fun path(role: String): String = File(dir, spec.files.getValue(role)).absolutePath   // 역할 → 절대 경로
         val config = OnlineRecognizerConfig(
             modelConfig = OnlineModelConfig(
@@ -86,11 +91,12 @@ class SherpaStreamingTranscriber(private val context: Context) : AutoCloseable {
             ),
             enableEndpoint = false,                                                 // 파일을 끝까지 한 스트림으로 넣는다(끝점에서 끊지 않는다)
         )
-        dbg("load start: family=${spec.family} threads=${SherpaOfflineTranscriber.NUM_THREADS} lang=${nemotronLanguage(locale)} " +
+        dbg("load start: family=${spec.family} threads=${SherpaOfflineTranscriber.NUM_THREADS} lang='${streamLanguage(spec.family, locale)}' " +   // change-hyungchul-20261011-0150
             spec.files.keys.joinToString(" ") { "$it=${path(it)}" })               // 네이티브에 넘기는 경로(여기서 죽으면 마지막 줄)
         val t0 = System.nanoTime()                                                  // 불러오기 시작
         recognizer = OnlineRecognizer(config = config)                              // assetManager = null → 파일 경로
         loadMs = ms(t0, System.nanoTime())
+        family = spec.family                                                        // add-hyungchul-20261011-0150
         dbg("load done: ${loadMs}ms (${spec.dirName})")
     }
 
@@ -102,7 +108,7 @@ class SherpaStreamingTranscriber(private val context: Context) : AutoCloseable {
      */
     fun transcribe(chunks: List<ByteArray>, locale: Locale, feed: FeedConfig, onFed: (Double) -> Unit): SttOutcome {
         val rec = recognizer ?: throw IllegalStateException("sherpa 스트리밍 모델을 먼저 불러야 합니다(load).")
-        val lang = nemotronLanguage(locale)                                         // "ko" / "en"
+        val lang = streamLanguage(family, locale)                                   // change-hyungchul-20261011-0150 : Nemotron "ko" / "en", 그 밖 ""(옵션 안 넣음)
         val totalBytes = chunks.sumOf { it.size }.coerceAtLeast(1)                  // 진행률 분모
         val sb = StringBuilder()
         var doneBytes = 0
@@ -172,6 +178,7 @@ class SherpaStreamingTranscriber(private val context: Context) : AutoCloseable {
         dbg("close: recognizer=${if (recognizer != null) "loaded" else "null"}")
         recognizer?.release()
         recognizer = null
+        family = null                                                               // add-hyungchul-20261011-0150
     }
 
     companion object {
@@ -197,6 +204,14 @@ class SherpaStreamingTranscriber(private val context: Context) : AutoCloseable {
             tokens.joinToString("").replace(WHITESPACE, " ").trim()
 
         private val WHITESPACE = Regex("\\s+")                                      // 연속 공백(두 칸 이상 포함)
+
+        /**
+         * add-hyungchul-20261011-0150
+         * 목적: 스트림에 넣을 언어 옵션 값. 입력: family — 모델 계열(null 이면 불러오기 전), locale
+         * 리턴: Nemotron 이면 nemotronLanguage, 그 밖(Zipformer KO — 한국어 전용)은 ""(옵션을 넣지 않는다)
+         */
+        fun streamLanguage(family: SherpaFamily?, locale: Locale): String =
+            if (family == SherpaFamily.NEMOTRON_STREAMING) nemotronLanguage(locale) else ""
 
         /** 목적: Nemotron 스트림 언어 값. 입력: locale / 리턴: "ko" / "en" … (패키지 README 의 "en", "ja" 형식) */
         fun nemotronLanguage(locale: Locale): String = locale.language

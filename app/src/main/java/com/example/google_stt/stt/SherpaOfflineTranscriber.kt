@@ -25,6 +25,12 @@
  *   · 모델 폴더 점검(logDirReport), 설정 경로·불러오기 시간, 조각별 시작/끝(샘플 수·길이·디코딩 ms·글자 수), 전체 요약, 해제.
  *   · 조각 단위로만 남긴다(조각 1개 디코딩은 수백 ms 이상이라 Log.d 1줄의 비용은 계측에 무시할 수준).
  *   · Logcat 필터 예: tag:GoogleStt message:[D][sherpa]
+ *
+ * add-hyungchul-20261011-0150 — 2단계 2-3: Zipformer KO(오프라인 transducer) / SenseVoice Small / Moonshine v2 tiny KO
+ *   OfflineModelConfig(transducer = OfflineTransducerModelConfig(encoder, decoder, joiner), senseVoice = OfflineSenseVoiceModelConfig(model, language, useInverseTextNormalization),
+ *                      moonshine = OfflineMoonshineModelConfig(encoder, mergedDecoder)) — AAR classes.jar javap 로 매개변수 이름 확인
+ *   · 결과 글자(resultText): Zipformer KO 의 text 는 한글 띄어쓰기가 없어 tokens 로 만든다(스트리밍과 같은 문제, 실측).
+ *     Moonshine 은 text 앞에 "▁" 가 남는 경우가 있어 공백으로 바꾼다. 다른 계열은 예전처럼 text 를 쓴다.
  */
 package com.example.google_stt.stt
 
@@ -33,10 +39,13 @@ import android.os.Environment                             // add-hyungchul-20261
 import android.util.Log                                   // add-hyungchul-20261010-1951 : Logcat 디버그 출력
 import com.example.google_stt.vad.VadAudio
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig                 // add-hyungchul-20261011-0150 : Moonshine v2
 import com.k2fsa.sherpa.onnx.OfflineOmnilingualAsrCtcModelConfig
 import com.k2fsa.sherpa.onnx.OfflineQwen3AsrModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig                // add-hyungchul-20261011-0150 : SenseVoice
+import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig                // add-hyungchul-20261011-0150 : Zipformer KO(오프라인)
 import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
 import java.io.File
 import java.io.IOException
@@ -106,8 +115,44 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
                 provider = "cpu",
             )
 
+            // add-hyungchul-20261011-0150 : 2-3 — Zipformer KO 오프라인 transducer(한국어 전용, 언어 지정 없음)
+            SherpaFamily.ZIPFORMER -> OfflineModelConfig(
+                transducer = OfflineTransducerModelConfig(
+                    encoder = path(SherpaRole.ENCODER),
+                    decoder = path(SherpaRole.DECODER),
+                    joiner = path(SherpaRole.JOINER),
+                ),
+                tokens = path(SherpaRole.TOKENS),
+                numThreads = NUM_THREADS,
+                provider = "cpu",
+            )
+
+            // add-hyungchul-20261011-0150 : 2-3 — SenseVoice Small(언어 ko/en, ITN 켬 — PC sensevoice.py 기본과 같게)
+            SherpaFamily.SENSE_VOICE -> OfflineModelConfig(
+                senseVoice = OfflineSenseVoiceModelConfig(
+                    model = path(SherpaRole.MODEL),
+                    language = senseVoiceLanguage(locale),                          // "ko" / "en" / "auto"
+                    useInverseTextNormalization = true,                             // 문장부호·숫자 복원
+                ),
+                tokens = path(SherpaRole.TOKENS),
+                numThreads = NUM_THREADS,
+                provider = "cpu",
+            )
+
+            // add-hyungchul-20261011-0150 : 2-3 — Moonshine v2 tiny KO(ORT 형식 encoder + merged decoder, 언어 지정 없음)
+            SherpaFamily.MOONSHINE_V2 -> OfflineModelConfig(
+                moonshine = OfflineMoonshineModelConfig(
+                    encoder = path(SherpaRole.ENCODER),
+                    mergedDecoder = path(SherpaRole.DECODER),                       // decoder_model_merged.ort
+                ),
+                tokens = path(SherpaRole.TOKENS),
+                numThreads = NUM_THREADS,
+                provider = "cpu",
+            )
+
             // add-hyungchul-20261011-0031 : 스트리밍 모델은 SherpaStreamingTranscriber 가 맡는다(여기로 오면 호출부 오류)
-            SherpaFamily.NEMOTRON_STREAMING ->
+            // change-hyungchul-20261011-0150 : Zipformer KO 스트리밍도 같다
+            SherpaFamily.NEMOTRON_STREAMING, SherpaFamily.ZIPFORMER_STREAMING ->
                 throw IllegalArgumentException("${spec.displayName} 은 스트리밍 모델입니다 — SherpaStreamingTranscriber 를 쓰세요.")
         }
 
@@ -152,7 +197,8 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
                 val c0 = System.nanoTime()                                          // add-hyungchul-20261010-1951 : 조각 1개 디코딩 시작(디버그 표시용)
                 stream.acceptWaveform(samples, SAMPLE_RATE)
                 rec.decode(stream)
-                val t = rec.getResult(stream).text.trim()
+                val res = rec.getResult(stream)                                     // add-hyungchul-20261011-0150 : 결과 1번만 가져온다
+                val t = resultText(s.family, res.text, res.tokens)                  // change-hyungchul-20261011-0150 : 계열별 글자 만들기(예전: text.trim())
                 // add-hyungchul-20261010-1951 : 조각 끝 — 디코딩 시간과 글자 수(빈 결과면 chars=0 으로 바로 보인다)
                 dbg("chunk ${decoded + 1}/${chunks.size} done: decode=${ms(c0, System.nanoTime())}ms chars=${t.length}")
                 if (t.isNotEmpty()) {
@@ -296,6 +342,28 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
             return f.readLines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString(";")
         }
 
+        /**
+         * add-hyungchul-20261011-0150
+         * 목적: 오프라인 결과에서 저장할 글자를 만든다.
+         * 입력: family — 모델 계열, text — OfflineRecognizerResult.text, tokens — OfflineRecognizerResult.tokens
+         * 리턴: ZIPFORMER = 토큰 이어 붙이기("▁" → 공백, 한글 띄어쓰기 복원) / MOONSHINE_V2 = text 의 "▁" 를 공백으로 / 그 밖 = text.trim()(예전과 같다)
+         */
+        fun resultText(family: SherpaFamily, text: String, tokens: Array<String>): String = when (family) {
+            SherpaFamily.ZIPFORMER -> SherpaStreamingTranscriber.textFromTokens(tokens.map { it.replace('▁', ' ') }.toTypedArray())
+            SherpaFamily.MOONSHINE_V2 -> text.replace('▁', ' ').replace(WHITESPACE, " ").trim()
+            else -> text.trim()
+        }
+
+        private val WHITESPACE = Regex("\\s+")                                      // add-hyungchul-20261011-0150 : 연속 공백
+
+        /**
+         * add-hyungchul-20261011-0150
+         * 목적: SenseVoice 언어 값(지원: auto, zh, en, ko, ja, yue — sherpa sense-voice 문서).
+         * 입력: locale / 리턴: 지원하는 언어면 그 코드, 아니면 "auto"
+         */
+        fun senseVoiceLanguage(locale: Locale): String =
+            if (locale.language in setOf("zh", "en", "ko", "ja", "yue")) locale.language else "auto"
+
         /** 목적: Whisper 언어 코드. 입력: locale / 리턴: "ko" / "en" … */
         fun whisperLanguage(locale: Locale): String = locale.language
 
@@ -319,6 +387,10 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
             SherpaFamily.OMNILINGUAL -> "omnilingual (언어 지정 없음)"
             // add-hyungchul-20261011-0031 : Nemotron 스트리밍 — 스트림 옵션 language 값
             SherpaFamily.NEMOTRON_STREAMING -> "nemotron language=${SherpaStreamingTranscriber.nemotronLanguage(locale)}"
+            // add-hyungchul-20261011-0150 : 2-3
+            SherpaFamily.ZIPFORMER, SherpaFamily.ZIPFORMER_STREAMING -> "zipformer-ko (한국어 전용, 언어 지정 없음)"
+            SherpaFamily.SENSE_VOICE -> "sensevoice language=${senseVoiceLanguage(locale)} itn=on"
+            SherpaFamily.MOONSHINE_V2 -> "moonshine-tiny-ko (한국어 전용, 언어 지정 없음)"
         }
     }
 }

@@ -12,13 +12,15 @@
 #   bash tools/download_stt_models.sh                 # 기본: aar + whisper-base + qwen3asr-0.6b + omnilingual-300m + nemotron3.5-560ms
 #   bash tools/download_stt_models.sh aar             # AAR 만
 #   bash tools/download_stt_models.sh whisper-tiny whisper-small   # 고른 모델만
-#   bash tools/download_stt_models.sh all             # aar + 모델 9종 전부(약 5 GB)  (change-hyungchul-20261011-0150 : 12종 → 9종)
+#   bash tools/download_stt_models.sh all             # aar + 모델 13종 전부(약 5.5 GB)  (change-hyungchul-20261011-0150 : 12종 → 9종 → 2-3 4종 추가 13종)
 #   --no-push 를 붙이면 PC 에만 받고 휴대폰에는 넣지 않는다
 # 모델 이름: whisper-tiny / whisper-base / whisper-small / whisper-medium / whisper-turbo / qwen3asr-0.6b / omnilingual-300m
 #           nemotron3.5-320ms / nemotron3.5-560ms (스트리밍, 각 약 0.7 GB)
+#           [상업 조건부] zipformer-ko / zipformer-ko-stream / sensevoice-small / moonshine-tiny-ko (add-hyungchul-20261011-0150 : 2-3, 기본 묶음에는 넣지 않음)
 # add-hyungchul-20261010-1800
 # change-hyungchul-20261011-0031 : 2단계 2-2 — Nemotron 3.5 스트리밍 5종 추가(사용자 결정 Q26: 기본 받기는 560 ms)
 # change-hyungchul-20261011-0150 : Nemotron 은 320 / 560 ms 2종만(사용자 결정 Q28 — 80 / 160 / 1120 ms 삭제)
+# add-hyungchul-20261011-0150 : 2단계 2-3 — Zipformer KO(오프라인·스트리밍) / SenseVoice Small / Moonshine tiny KO
 
 set -u                                                     # 정의 안 된 변수를 쓰면 멈춘다
 
@@ -44,7 +46,8 @@ done
 [ ${#TARGETS[@]} -eq 0 ] && TARGETS=(aar whisper-base qwen3asr-0.6b omnilingual-300m nemotron3.5-560ms)   # 기본 묶음(change-hyungchul-20261011-0031 : 560 ms 추가)
 if [ "${TARGETS[0]}" = "all" ]; then
   TARGETS=(aar whisper-tiny whisper-base whisper-small whisper-medium whisper-turbo qwen3asr-0.6b omnilingual-300m \
-           nemotron3.5-320ms nemotron3.5-560ms)   # change-hyungchul-20261011-0150 : 80 / 160 / 1120 ms 삭제
+           nemotron3.5-320ms nemotron3.5-560ms \
+           zipformer-ko zipformer-ko-stream sensevoice-small moonshine-tiny-ko)   # change-hyungchul-20261011-0150 : 80 / 160 / 1120 ms 삭제, 2-3 4종 추가
 fi
 
 # 목적: 모델 이름 → "패키지 이름|앱이 쓰는 파일(공백 구분)" 을 출력한다(앱 stt/SherpaModels.kt 와 같은 값)
@@ -62,6 +65,15 @@ spec_of() {
     nemotron3.5-320ms|nemotron3.5-560ms)                     # change-hyungchul-20261011-0150 : 2종만
       local ms="${1#nemotron3.5-}"                           # 320ms / 560ms
       echo "sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-$ms-int8-2026-06-11|encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt" ;;
+    # add-hyungchul-20261011-0150 : 2-3 상업 조건부 엔진(앱 SherpaCatalog 와 같은 패키지·파일)
+    zipformer-ko)
+      echo "sherpa-onnx-zipformer-korean-2024-06-24|encoder-epoch-99-avg-1.int8.onnx decoder-epoch-99-avg-1.int8.onnx joiner-epoch-99-avg-1.int8.onnx tokens.txt" ;;
+    zipformer-ko-stream)
+      echo "sherpa-onnx-streaming-zipformer-korean-2024-06-16|encoder-epoch-99-avg-1.int8.onnx decoder-epoch-99-avg-1.int8.onnx joiner-epoch-99-avg-1.int8.onnx tokens.txt" ;;
+    sensevoice-small)
+      echo "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17|model.int8.onnx tokens.txt LICENSE" ;;
+    moonshine-tiny-ko)
+      echo "sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27|encoder_model.ort decoder_model_merged.ort tokens.txt LICENSE" ;;
     *) return 1 ;;
   esac
 }

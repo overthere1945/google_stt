@@ -16,12 +16,22 @@
  *   change-hyungchul-20261011-0150 : 2종(320 / 560 ms)으로 줄였다(사용자 결정 Q28 — 80 / 160 / 1120 ms 는 필요 없음)
  *   · 패키지 sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-<지연>-int8-2026-06-11 (encoder/decoder/joiner .int8.onnx + tokens.txt)
  *   · 스트리밍이라 조각 상한이 없다(maxChunkSec = null). 라이선스 OpenMDW-1.1("ready for commercial use", HF 모델 카드)
+ *
+ * add-hyungchul-20261011-0150 — 2단계 2-3: 상업 조건부 엔진(사용자 결정 Q5 "포함하되 commercial=conditional 표시") 4종
+ *   · Zipformer KO(오프라인 transducer) / Zipformer KO 스트리밍(transducer) — k2-fsa 공식 패키지, KsponSpeech 학습
+ *   · SenseVoice Small int8(2024-07-17, ITN 지원판) — FunASR MODEL_LICENSE
+ *   · Moonshine v2 tiny KO(quantized, .ort) — Moonshine AI Community License(연매출 100만 달러 이상이면 상업 사용 불가, 등록·표시 의무)
+ *   · 조각 상한은 이 작업 환경(sherpa 1.13.7 리눅스 JNI + 같은 Kotlin API)에서 휴대폰 kr 음원으로 실측해 정했다(각 정의의 주석)
  */
 package com.example.google_stt.stt
 
 /** sherpa-onnx 모델 계열(설정 방식이 계열마다 다르다) */
 // change-hyungchul-20261011-0031 : NEMOTRON_STREAMING(OnlineRecognizer · transducer) 추가
-enum class SherpaFamily { WHISPER, QWEN3_ASR, OMNILINGUAL, NEMOTRON_STREAMING }
+// change-hyungchul-20261011-0150 : 2-3 계열 4개 추가 + streaming 표시(true = OnlineRecognizer 로 Feed 간격 공급, SherpaStreamingTranscriber 가 맡는다)
+enum class SherpaFamily(val streaming: Boolean = false) {
+    WHISPER, QWEN3_ASR, OMNILINGUAL, NEMOTRON_STREAMING(true),
+    ZIPFORMER, ZIPFORMER_STREAMING(true), SENSE_VOICE, MOONSHINE_V2,      // add-hyungchul-20261011-0150
+}
 
 /**
  * 목적: sherpa-onnx 오프라인 모델 1개의 정의.
@@ -151,4 +161,87 @@ object SherpaCatalog {
     // change-hyungchul-20261011-0150 : 사용자 요청 — 320 / 560 ms 만 남기고 80 / 160 / 1120 ms 는 뺐다(Q28)
     val NEMOTRON_320MS = nemotron(320)        // add-hyungchul-20261011-0031
     val NEMOTRON_560MS = nemotron(560)
+
+    // ─────────── add-hyungchul-20261011-0150 : 2단계 2-3 — 상업 조건부 엔진(commercial = "conditional") ───────────
+
+    /**
+     * Zipformer 한국어 transducer 파일 이름(오프라인·스트리밍 패키지가 같은 규칙 — 공식 패키지 안 파일 이름 확인).
+     * int8 판을 쓴다(사용자 결정 Q20 "모델 = sherpa-int8").
+     */
+    private val ZIPFORMER_KO_FILES = mapOf(
+        SherpaRole.ENCODER to "encoder-epoch-99-avg-1.int8.onnx",
+        SherpaRole.DECODER to "decoder-epoch-99-avg-1.int8.onnx",
+        SherpaRole.JOINER to "joiner-epoch-99-avg-1.int8.onnx",
+        SherpaRole.TOKENS to "tokens.txt",
+    )
+
+    /** Zipformer KO 라이선스 표기 — 학습 코드(icefall) Apache-2.0, 학습 데이터 KsponSpeech(AI Hub) 약관 영향 미확인(조사 문서 5.2) */
+    private const val ZIPFORMER_KO_LICENSE = "Apache-2.0(icefall)/KsponSpeech"
+
+    /**
+     * Zipformer KO 오프라인(sherpa-onnx-zipformer-korean-2024-06-24). 한국어 전용, 언어 지정 없음.
+     * 조각 상한 15 초: 공식 수치가 없어 실측으로 정했다 — 20·30·84 초 조각은 앞 문장이 빠졌고(customer 01 "안녕하세요." 누락),
+     * 15 초는 빠짐없이 가장 길게 나왔다(12·10 초도 정상). 결과 text 는 띄어쓰기가 없어 토큰으로 글자를 만든다(SherpaOfflineTranscriber.resultText).
+     */
+    val ZIPFORMER_KO = SherpaModelSpec(
+        family = SherpaFamily.ZIPFORMER,
+        dirName = "sherpa-onnx-zipformer-korean-2024-06-24",
+        files = ZIPFORMER_KO_FILES,
+        maxChunkSec = 15.0,
+        license = ZIPFORMER_KO_LICENSE,
+        commercial = "conditional",
+        displayName = "Zipformer KO (sherpa-onnx int8) [상업 조건부]",
+    )
+
+    /**
+     * Zipformer KO 스트리밍(sherpa-onnx-streaming-zipformer-korean-2024-06-16). Nemotron 과 같은 transducer 스트리밍 경로(Feed 간격 공급).
+     * 결과 text 의 띄어쓰기 삭제도 같아서 토큰으로 글자를 만든다(실측: text 390자 / 토큰 480자, customer 01).
+     */
+    val ZIPFORMER_KO_STREAMING = SherpaModelSpec(
+        family = SherpaFamily.ZIPFORMER_STREAMING,
+        dirName = "sherpa-onnx-streaming-zipformer-korean-2024-06-16",
+        files = ZIPFORMER_KO_FILES,
+        maxChunkSec = null,                   // 조각 상한 없음(스트리밍)
+        license = ZIPFORMER_KO_LICENSE,
+        commercial = "conditional",
+        displayName = "Zipformer KO streaming (sherpa-onnx int8) [상업 조건부]",
+    )
+
+    /**
+     * SenseVoice Small int8(sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17 — ITN 으로 문장부호·숫자 복원 지원판).
+     * 언어 "ko" / "en"(지원: auto, zh, en, ko, ja, yue), ITN 켬(PC sensevoice.py --use-itn 기본과 같게).
+     * 조각 상한 30 초: PC 의 FunASR 내장 FSMN-VAD 단일 구간 최대 30 초와 같게(긴 입력은 내용이 빠진다 — 84 초 한 번에: 125자 / 30 초 조각: 337자, customer 01).
+     */
+    val SENSE_VOICE_SMALL = SherpaModelSpec(
+        family = SherpaFamily.SENSE_VOICE,
+        dirName = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17",
+        files = mapOf(
+            SherpaRole.MODEL to "model.int8.onnx",
+            SherpaRole.TOKENS to "tokens.txt",
+        ),
+        maxChunkSec = 30.0,
+        license = "FunASR-MODEL-LICENSE",
+        commercial = "conditional",
+        displayName = "SenseVoice Small (sherpa-onnx int8) [상업 조건부]",
+    )
+
+    /**
+     * Moonshine v2 tiny 한국어(sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27, ORT 형식 encoder + merged decoder).
+     * 조각 상한 9 초: 실측 — 9.3 초 이상 조각은 onnxruntime 오류("Attempting to broadcast an axis …")로 빈 결과가 나왔고
+     * 9.25 초 이하는 정상(customer·friend·vLog 01). SEG10(10 초)에서도 이 상한을 넘지 않게 BatchRunner 가 줄인다.
+     * 결과 text 앞에 "▁" 가 남는 경우가 있어 지운다(SherpaOfflineTranscriber.resultText). 언어 지정 없음(한국어 전용).
+     */
+    val MOONSHINE_TINY_KO = SherpaModelSpec(
+        family = SherpaFamily.MOONSHINE_V2,
+        dirName = "sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27",
+        files = mapOf(
+            SherpaRole.ENCODER to "encoder_model.ort",
+            SherpaRole.DECODER to "decoder_model_merged.ort",               // merged decoder(OfflineMoonshineModelConfig.mergedDecoder)
+            SherpaRole.TOKENS to "tokens.txt",
+        ),
+        maxChunkSec = 9.0,
+        license = "Moonshine-Community-License",
+        commercial = "conditional",
+        displayName = "Moonshine tiny KO (sherpa-onnx int8) [상업 조건부]",
+    )
 }

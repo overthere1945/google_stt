@@ -14,6 +14,7 @@ import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
 
 // change-hyungchul-20261010-1800 : 2단계 — sherpa-onnx 오프라인 엔진(SHERPA_OFFLINE) 추가
 // change-hyungchul-20261011-0031 : 2단계 2-2 — sherpa-onnx 스트리밍 엔진(SHERPA_STREAMING, Nemotron 3.5) 추가
+//   (add-hyungchul-20261011-0150 : 2-3 의 Zipformer KO 스트리밍도 SHERPA_STREAMING)
 enum class SttEngine { ML_KIT, ANDROID_PLATFORM_ON_DEVICE, SHERPA_OFFLINE, SHERPA_STREAMING }
 
 data class ModelConfig(
@@ -89,6 +90,12 @@ object SttCatalog {
         // change-hyungchul-20261011-0150 : 5종 → 320 / 560 ms 2종(사용자 결정 Q28 — 80 / 160 / 1120 ms 삭제)
         sherpaModel("nemotron3.5-320ms", SherpaCatalog.NEMOTRON_320MS, SttEngine.SHERPA_STREAMING),
         sherpaModel("nemotron3.5-560ms", SherpaCatalog.NEMOTRON_560MS, SttEngine.SHERPA_STREAMING),
+        // add-hyungchul-20261011-0150 : 2단계 2-3 — 상업 조건부 엔진 4종(사용자 결정 Q5: 포함하되 commercial=conditional 표시)
+        //   결과 이름(Q20 "엔진 = 계열-크기", '_' 금지): zipformer-ko / zipformer-ko-stream / sensevoice-small / moonshine-tiny-ko
+        sherpaModel("zipformer-ko", SherpaCatalog.ZIPFORMER_KO),
+        sherpaModel("zipformer-ko-stream", SherpaCatalog.ZIPFORMER_KO_STREAMING, SttEngine.SHERPA_STREAMING),
+        sherpaModel("sensevoice-small", SherpaCatalog.SENSE_VOICE_SMALL),
+        sherpaModel("moonshine-tiny-ko", SherpaCatalog.MOONSHINE_TINY_KO),
     )
 
     // change-hyungchul-20260824

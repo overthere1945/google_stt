@@ -44,6 +44,11 @@
  *   · SherpaStreamingTranscriber 로 100 ms 조각을 Feed 간격(REALTIME / D50 …)으로 넣는다 → feed_ms·feed_expected_ms·정체 판정이 Google 경로처럼 의미를 갖는다.
  *   · "엔진별 최대 길이" 면 조각을 나누지 않고 파일 전체(VAD 를 켰으면 이어 붙인 말 구간)를 스트림 하나로 넣는다. SEG10 이면 10초 조각마다 스트림.
  *   · Speech EPD·warm-up·SODA 할당량 안내는 쓰지 않는다(오프라인 sherpa 와 같음).
+ *
+ * add-hyungchul-20261011-0150 — 2단계 2-3: Zipformer KO(오프라인·스트리밍) / SenseVoice Small / Moonshine tiny KO (v2.3.0)
+ *   · 스트리밍 판정을 SherpaFamily.streaming 으로 바꿔 Zipformer KO 스트리밍도 SherpaStreamingTranscriber 로 돈다.
+ *   · 조각 상한 segCap = min(SEG10 10 초, 모델 상한) — Moonshine tiny KO(9 초)는 10 초 조각에서 빈 결과가 나와 SEG10 에서도 9 초로 줄인다.
+ *     run_meta stt_chunk_max_sec 에 실제로 쓴 값이 남는다. 다른 모델은 상한이 10 초 이상이라 예전과 같다.
  */
 package com.example.google_stt.batch
 
@@ -203,7 +208,14 @@ class BatchRunner(
         // change-hyungchul-20261009-1626 : 10초 통일(SEG10)에서는 EPD 를 쓰지 않으므로 CSV·run_meta·세션 예상치에도 OFF 로 남긴다(검토 지적 A)
         // change-hyungchul-20261010-1800 : sherpa-onnx 엔진도 조각을 모델 상한 이하로 나눠 넣으므로 EPD 를 쓰지 않는다
         val sherpaSpec = modelConfig.sherpa                       // add-hyungchul-20261010-1800 : sherpa 모델 정의(Google 엔진이면 null)
-        val sherpaStreaming = sherpaSpec?.family == SherpaFamily.NEMOTRON_STREAMING   // add-hyungchul-20261011-0031 : 스트리밍 sherpa(Nemotron) 여부
+        // change-hyungchul-20261011-0150 : Nemotron 만 → 스트리밍 계열 모두(Zipformer KO 스트리밍 포함)
+        val sherpaStreaming = sherpaSpec?.family?.streaming == true   // add-hyungchul-20261011-0031 : 스트리밍 sherpa 여부
+        // add-hyungchul-20261011-0150 : sherpa 조각 상한 — SEG10(10 초)이어도 모델 상한(Moonshine 9 초)을 넘지 않게 작은 쪽을 쓴다.
+        //   "엔진별 최대 길이" 면 모델 상한(스트리밍은 null = 나누지 않음). Google 엔진(sherpaSpec == null)은 예전처럼 segMode 값.
+        val segCap: Double? = vadSelection.segMode.maxSec.let { seg ->
+            val model = sherpaSpec?.maxChunkSec
+            if (seg != null && model != null) minOf(seg, model) else seg ?: model
+        }
         val epdSelection =
             if (req.vadSelection.segMode.maxSec != null || sherpaSpec != null) EpdSelection(EpdConfig(EpdMode.OFF), null) else req.epdSelection
         val noiseConfig = req.noiseConfig
@@ -410,7 +422,7 @@ class BatchRunner(
             }
             // add-hyungchul-20261010-1800 : sherpa 엔진의 조각 상한 안내(엔진별 최대 길이 모드)와 EPD 무시 안내
             if (sherpaSpec != null) {
-                val cap = vadSelection.segMode.maxSec ?: sherpaSpec.maxChunkSec
+                val cap = segCap                                    // change-hyungchul-20261011-0150 : SEG10 에서도 모델 상한 이하(예전: segMode.maxSec ?: maxChunkSec)
                 // change-hyungchul-20261011-0031 : 상한이 없으면(스트리밍 + 엔진별 최대 길이) 나누지 않는다
                 appendLog(
                     if (cap != null) "[seg] sherpa: 조각 상한 ${cap}s 로 나눠 조각마다 디코딩한다."
@@ -482,7 +494,7 @@ class BatchRunner(
                             "stt_num_threads" to (if (sherpaSpec != null) SherpaOfflineTranscriber.NUM_THREADS.toString() else ""),
                             // change-hyungchul-20261011-0031 : 스트리밍 전사기(sherpaS)의 불러오기 시간도 남긴다. 조각 상한이 없으면 "none"
                             "stt_model_load_ms" to ((sherpaT?.loadMs ?: sherpaS?.loadMs)?.toString() ?: ""),
-                            "stt_chunk_max_sec" to (if (sherpaSpec != null) ((vadSelection.segMode.maxSec ?: sherpaSpec.maxChunkSec)?.toString() ?: "none") else ""),
+                            "stt_chunk_max_sec" to (if (sherpaSpec != null) (segCap?.toString() ?: "none") else ""),   // change-hyungchul-20261011-0150 : segCap
                             "stt_language" to (if (sherpaSpec != null) SherpaOfflineTranscriber.languageLabel(sherpaSpec, locale) else ""),
                             "stt_license" to (sherpaSpec?.license ?: ""),
                             "stt_commercial" to (sherpaSpec?.commercial ?: ""),
@@ -778,7 +790,7 @@ class BatchRunner(
                 //   말 구간(또는 파일 전체)을 10초 이하 조각으로 묶는다. 조각마다 세션을 연다(transcribeChunks).
                 //   EPD 는 쓰지 않는다(조각이 61초 결함 경계보다 훨씬 짧다).
                 // change-hyungchul-20261010-1800 : sherpa 엔진은 "엔진별 최대 길이" 에서도 모델 상한(maxChunkSec)으로 조각을 만든다
-                val segMax = vadSelection.segMode.maxSec ?: sherpaSpec?.maxChunkSec
+                val segMax = segCap                                 // change-hyungchul-20261011-0150 : SEG10 에서도 모델 상한 이하(예전: segMode.maxSec ?: maxChunkSec)
                 if (segMax != null && sttPcm.isNotEmpty()) {
                     val packed = withContext(Dispatchers.Default) {
                         SegmentPacker.pack(stagePcm, vadSegmentsForSeg, segMax, vadSetting.joinMs)
