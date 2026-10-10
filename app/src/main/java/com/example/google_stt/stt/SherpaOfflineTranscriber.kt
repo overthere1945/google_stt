@@ -152,8 +152,9 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
 
             // add-hyungchul-20261011-0031 : 스트리밍 모델은 SherpaStreamingTranscriber 가 맡는다(여기로 오면 호출부 오류)
             // change-hyungchul-20261011-0150 : Zipformer KO 스트리밍도 같다
-            SherpaFamily.NEMOTRON_STREAMING, SherpaFamily.ZIPFORMER_STREAMING ->
-                throw IllegalArgumentException("${spec.displayName} 은 스트리밍 모델입니다 — SherpaStreamingTranscriber 를 쓰세요.")
+            // change-hyungchul-20261011-0301 : Vosk 는 VoskTranscriber 가 맡는다
+            SherpaFamily.NEMOTRON_STREAMING, SherpaFamily.ZIPFORMER_STREAMING, SherpaFamily.VOSK ->
+                throw IllegalArgumentException("${spec.displayName} 은 스트리밍 모델입니다 — SherpaStreamingTranscriber / VoskTranscriber 를 쓰세요.")
         }
 
         // add-hyungchul-20261010-1951 : 네이티브에 넘기는 경로·설정을 불러오기 직전에 남긴다(여기서 앱이 죽으면 마지막 줄이 이것이 된다)
@@ -391,6 +392,7 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
             SherpaFamily.ZIPFORMER, SherpaFamily.ZIPFORMER_STREAMING -> "zipformer-ko (한국어 전용, 언어 지정 없음)"
             SherpaFamily.SENSE_VOICE -> "sensevoice language=${senseVoiceLanguage(locale)} itn=on"
             SherpaFamily.MOONSHINE_V2 -> "moonshine-tiny-ko (한국어 전용, 언어 지정 없음)"
+            SherpaFamily.VOSK -> "vosk (언어별 모델 ${spec.dirName}, 언어 지정 없음)"   // add-hyungchul-20261011-0301
         }
     }
 }

@@ -80,6 +80,8 @@
  *
  * add-hyungchul-20261011-0150 — 2단계 2-3: 상업 조건부 엔진 4종(Zipformer KO 오프라인·스트리밍, SenseVoice Small, Moonshine tiny KO)
  *   · 스피너 목록은 SttCatalog.models 에서 자동으로 만들어지므로 이 파일의 코드는 바꾸지 않았다(Model 이름 끝에 "[상업 조건부]").
+ *
+ * add-hyungchul-20261011-0301 — 2단계 2-4: Vosk small KO / EN-US(stt/VoskTranscriber.kt). 이 파일의 코드는 바꾸지 않았다.
  *       stt/SherpaStreamingTranscriber.kt  스트리밍 불러오기·Feed 간격 공급·토큰으로 글자 만들기·해제
  *   · 스피너 목록은 SttCatalog.models 에서 자동으로 만들어지므로 이 파일의 코드는 바꾸지 않았다.
  *

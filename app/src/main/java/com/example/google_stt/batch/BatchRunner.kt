@@ -49,6 +49,10 @@
  *   · 스트리밍 판정을 SherpaFamily.streaming 으로 바꿔 Zipformer KO 스트리밍도 SherpaStreamingTranscriber 로 돈다.
  *   · 조각 상한 segCap = min(SEG10 10 초, 모델 상한) — Moonshine tiny KO(9 초)는 10 초 조각에서 빈 결과가 나와 SEG10 에서도 9 초로 줄인다.
  *     run_meta stt_chunk_max_sec 에 실제로 쓴 값이 남는다. 다른 모델은 상한이 10 초 이상이라 예전과 같다.
+ *
+ * add-hyungchul-20261011-0301 — 2단계 2-4: Vosk small ko / en-us (v2.4.0)
+ *   · 스트리밍 전사기를 공통 약속 StreamingSttTranscriber 로 받고, SherpaFamily.VOSK 면 VoskTranscriber, 그 밖은 SherpaStreamingTranscriber 를 만든다.
+ *   · Feed 공급·계측·EPD OFF·조각 상한(없음 / SEG10 10 초)은 sherpa 스트리밍과 같다. run_meta stt_runtime·stt_num_threads 만 Vosk 값으로 남긴다.
  */
 package com.example.google_stt.batch
 
@@ -96,6 +100,8 @@ import com.example.google_stt.stt.QUOTA_COOLDOWN_MS
 import com.example.google_stt.stt.SherpaOfflineTranscriber   // add-hyungchul-20261010-1800
 import com.example.google_stt.stt.SherpaFamily               // add-hyungchul-20261011-0031
 import com.example.google_stt.stt.SherpaStreamingTranscriber // add-hyungchul-20261011-0031
+import com.example.google_stt.stt.StreamingSttTranscriber    // add-hyungchul-20261011-0301 : 스트리밍 전사기 공통 약속
+import com.example.google_stt.stt.VoskTranscriber            // add-hyungchul-20261011-0301 : Vosk(Kaldi)
 import com.example.google_stt.stt.SttEngine
 import com.example.google_stt.stt.WARMUP_TIMEOUT_MS
 import com.example.google_stt.stt.describe
@@ -229,7 +235,10 @@ class BatchRunner(
         var vadProcessor: VadDetector? = null          // add-hyungchul-20260825-1430 / change-hyungchul-20261009-1530 : 엔진 공통 계약
         var noiseReducer: NoiseReducer? = null         // add-hyungchul-20260826-1100
         var sherpaT: SherpaOfflineTranscriber? = null  // add-hyungchul-20261010-1800 : sherpa-onnx 전사기(배치 1회에 1개, finally 에서 해제)
-        var sherpaS: SherpaStreamingTranscriber? = null   // add-hyungchul-20261011-0031 : sherpa-onnx 스트리밍 전사기(배치 1회에 1개, finally 에서 해제)
+        var sherpaS: StreamingSttTranscriber? = null   // add-hyungchul-20261011-0031 : 스트리밍 전사기(배치 1회에 1개, finally 에서 해제) / change-hyungchul-20261011-0301 : 타입 → 공통 약속(sherpa 또는 Vosk)
+        val isVosk = sherpaSpec?.family == SherpaFamily.VOSK      // add-hyungchul-20261011-0301 : Vosk(Kaldi) 여부
+        val sttRuntime = if (isVosk) VoskTranscriber.RUNTIME else SherpaOfflineTranscriber.RUNTIME                 // add-hyungchul-20261011-0301 : run_meta·로그 런타임 이름
+        val sttThreads = if (isVosk) VoskTranscriber.NUM_THREADS else SherpaOfflineTranscriber.NUM_THREADS         // add-hyungchul-20261011-0301 : 디코딩 스레드 수
         try {
             val inputRoot = DocumentFile.fromTreeUri(activity, inUri)
             val outputRoot = DocumentFile.fromTreeUri(activity, outUri)
@@ -404,13 +413,13 @@ class BatchRunner(
             }
             // add-hyungchul-20261011-0031 : 스트리밍 sherpa(Nemotron)도 배치 전체에서 1번만 불러 둔다
             if (sherpaSpec != null && sherpaStreaming) {
-                val t = SherpaStreamingTranscriber(appContext)
+                val t: StreamingSttTranscriber = if (isVosk) VoskTranscriber(appContext) else SherpaStreamingTranscriber(appContext)   // change-hyungchul-20261011-0301 : Vosk 면 VoskTranscriber
                 sherpaS = t                                   // finally 에서 해제(불러오다 실패해도 해제한다)
                 appendLog("[sherpa] ${sherpaSpec.displayName} 불러오는 중 — ${SherpaOfflineTranscriber.modelDir(appContext, sherpaSpec).absolutePath}")
                 withContext(Dispatchers.Default) { t.load(sherpaSpec, locale) }
                 appendLog(
-                    "[sherpa] model=${sherpaSpec.dirName}, runtime=${SherpaOfflineTranscriber.RUNTIME}, streaming, " +
-                        "threads=${SherpaOfflineTranscriber.NUM_THREADS}, load=${t.loadMs}ms, " +
+                    "[sherpa] model=${sherpaSpec.dirName}, runtime=$sttRuntime, streaming, " +           // change-hyungchul-20261011-0301 : Vosk 런타임 이름
+                        "threads=$sttThreads, load=${t.loadMs}ms, " +
                         "${SherpaOfflineTranscriber.languageLabel(sherpaSpec, locale)}, " +
                         "license=${sherpaSpec.license} (commercial=${sherpaSpec.commercial})",
                 )
@@ -487,11 +496,11 @@ class BatchRunner(
                             "epd_config" to epdSelection.config.summary(),
                             "engine_warmup" to warmUpStatus,
                             // add-hyungchul-20261010-1800 : sherpa-onnx 엔진 정보(Google 엔진이면 빈 칸)
-                            "stt_runtime" to (if (sherpaSpec != null) SherpaOfflineTranscriber.RUNTIME else ""),
+                            "stt_runtime" to (if (sherpaSpec != null) sttRuntime else ""),   // change-hyungchul-20261011-0301 : Vosk 면 vosk-android
                             "stt_model_dir" to (if (sherpaSpec != null) SherpaOfflineTranscriber.modelDir(appContext, sherpaSpec).absolutePath else ""),
                             "stt_model_files" to (if (sherpaSpec != null) SherpaOfflineTranscriber.filesSummary(appContext, sherpaSpec) else ""),
                             "stt_model_sha256" to (if (sherpaSpec != null) SherpaOfflineTranscriber.sha256Summary(appContext, sherpaSpec) else ""),
-                            "stt_num_threads" to (if (sherpaSpec != null) SherpaOfflineTranscriber.NUM_THREADS.toString() else ""),
+                            "stt_num_threads" to (if (sherpaSpec != null) sttThreads.toString() else ""),   // change-hyungchul-20261011-0301 : Vosk 면 1
                             // change-hyungchul-20261011-0031 : 스트리밍 전사기(sherpaS)의 불러오기 시간도 남긴다. 조각 상한이 없으면 "none"
                             "stt_model_load_ms" to ((sherpaT?.loadMs ?: sherpaS?.loadMs)?.toString() ?: ""),
                             "stt_chunk_max_sec" to (if (sherpaSpec != null) (segCap?.toString() ?: "none") else ""),   // change-hyungchul-20261011-0150 : segCap
@@ -1125,6 +1134,10 @@ class BatchRunner(
         // add-hyungchul-20261011-0031 : sherpa-onnx 스트리밍(앱 안에서 직접 추론)
         SttEngine.SHERPA_STREAMING ->
             "ON_DEVICE(${SherpaOfflineTranscriber.RUNTIME}, streaming, cpu, threads=${SherpaOfflineTranscriber.NUM_THREADS})"
+
+        // add-hyungchul-20261011-0301 : Vosk(Kaldi) 스트리밍(앱 안에서 직접 추론)
+        SttEngine.VOSK ->
+            "ON_DEVICE(${VoskTranscriber.RUNTIME}, streaming, cpu, threads=${VoskTranscriber.NUM_THREADS})"
     }
 
     /** 배치 시작 전 1회 가용성 점검. 로그에 남기고 run_meta.csv 용 문자열도 돌려준다. */
@@ -1176,7 +1189,7 @@ class BatchRunner(
 
             // add-hyungchul-20261010-1800 : sherpa-onnx — 모델 파일이 휴대폰 모델 폴더에 있는지 본다
             //   (change-hyungchul-20261010-2238 : 앱 전용 폴더 → 공용 /sdcard/Documents/stt_models, 사용자 결정 Q24)
-            SttEngine.SHERPA_OFFLINE, SttEngine.SHERPA_STREAMING -> {    // change-hyungchul-20261011-0031 : 스트리밍도 같은 점검
+            SttEngine.SHERPA_OFFLINE, SttEngine.SHERPA_STREAMING, SttEngine.VOSK -> {    // change-hyungchul-20261011-0031 : 스트리밍도 같은 점검 / change-hyungchul-20261011-0301 : Vosk 도
                 val spec = config.sherpa
                 val line = if (spec == null) {
                     "sherpa model spec 없음"

@@ -15,7 +15,8 @@ import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
 // change-hyungchul-20261010-1800 : 2단계 — sherpa-onnx 오프라인 엔진(SHERPA_OFFLINE) 추가
 // change-hyungchul-20261011-0031 : 2단계 2-2 — sherpa-onnx 스트리밍 엔진(SHERPA_STREAMING, Nemotron 3.5) 추가
 //   (add-hyungchul-20261011-0150 : 2-3 의 Zipformer KO 스트리밍도 SHERPA_STREAMING)
-enum class SttEngine { ML_KIT, ANDROID_PLATFORM_ON_DEVICE, SHERPA_OFFLINE, SHERPA_STREAMING }
+// change-hyungchul-20261011-0301 : 2단계 2-4 — Vosk(Kaldi) 엔진(VOSK) 추가
+enum class SttEngine { ML_KIT, ANDROID_PLATFORM_ON_DEVICE, SHERPA_OFFLINE, SHERPA_STREAMING, VOSK }
 
 data class ModelConfig(
     val folder: String,
@@ -96,6 +97,10 @@ object SttCatalog {
         sherpaModel("zipformer-ko-stream", SherpaCatalog.ZIPFORMER_KO_STREAMING, SttEngine.SHERPA_STREAMING),
         sherpaModel("sensevoice-small", SherpaCatalog.SENSE_VOICE_SMALL),
         sherpaModel("moonshine-tiny-ko", SherpaCatalog.MOONSHINE_TINY_KO),
+        // add-hyungchul-20261011-0301 : 2단계 2-4 — Vosk small(한국어 / 영어 — 모델이 언어별이라 Language 와 맞는 쪽을 고른다)
+        //   결과 이름(Q20 "엔진 = 계열-크기"): vosk-small-ko / vosk-small-en, <모델> = vosk → vosk-small-ko_vosk_<조건>/
+        ModelConfig("vosk-small-ko", SttEngine.VOSK, null, "vosk-small-ko", "vosk", SherpaCatalog.VOSK_SMALL_KO),
+        ModelConfig("vosk-small-en", SttEngine.VOSK, null, "vosk-small-en", "vosk", SherpaCatalog.VOSK_SMALL_EN),
     )
 
     // change-hyungchul-20260824

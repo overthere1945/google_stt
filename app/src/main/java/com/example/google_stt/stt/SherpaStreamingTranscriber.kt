@@ -30,6 +30,9 @@
  * add-hyungchul-20261011-0150 — 2단계 2-3: Zipformer KO 스트리밍(transducer)도 이 전사기로 돌린다.
  *   · 설정(encoder/decoder/joiner + tokens)·공급·계측은 Nemotron 과 같다. 언어 옵션은 Nemotron 에만 넣는다(Zipformer KO 는 한국어 전용).
  *   · 결과 text 의 한글 띄어쓰기 삭제도 같아서(실측) 같은 textFromTokens 를 쓴다.
+ *
+ * add-hyungchul-20261011-0301 — 2단계 2-4: 공통 약속 StreamingSttTranscriber 를 구현한다(VoskTranscriber 와 같은 자리에서 쓰기 위함).
+ *   동작은 바뀌지 않았다(선언에 override 만 붙였다).
  */
 package com.example.google_stt.stt
 
@@ -48,13 +51,13 @@ import java.util.Locale
  * 목적: sherpa-onnx 스트리밍 전사기(배치 1회에 1개).
  * 입력(생성자): context — 모델 폴더 위치를 얻는 함수(SherpaOfflineTranscriber.modelDir 등)에 넘긴다
  */
-class SherpaStreamingTranscriber(private val context: Context) : AutoCloseable {
+class SherpaStreamingTranscriber(private val context: Context) : StreamingSttTranscriber {   // change-hyungchul-20261011-0301 : AutoCloseable → StreamingSttTranscriber(AutoCloseable 포함)
 
     private var recognizer: OnlineRecognizer? = null      // 불러 둔 인식기(load 전에는 null)
     private var family: SherpaFamily? = null              // add-hyungchul-20261011-0150 : 불러 둔 모델 계열(언어 옵션을 넣을지 정한다)
 
     /** 모델을 불러오는 데 걸린 시간(ms). load 전에는 -1 */
-    var loadMs: Long = -1
+    override var loadMs: Long = -1                        // change-hyungchul-20261011-0301 : override
         private set
 
     /**
@@ -63,7 +66,7 @@ class SherpaStreamingTranscriber(private val context: Context) : AutoCloseable {
      * 출력: 없음 / 리턴: 없음
      * 예외: 파일이 없으면 IOException(없는 파일로 네이티브를 부르면 앱이 통째로 죽으므로 먼저 확인한다)
      */
-    fun load(spec: SherpaModelSpec, locale: Locale) {
+    override fun load(spec: SherpaModelSpec, locale: Locale) {   // change-hyungchul-20261011-0301 : override
         SherpaOfflineTranscriber.logDirReport(context, spec)                       // 모델 폴더 상태를 Logcat 에 먼저 남긴다
         val missing = SherpaOfflineTranscriber.missingFiles(context, spec)          // 빠진 파일 목록
         if (missing.isNotEmpty()) throw IOException(SherpaOfflineTranscriber.missingMessage(context, spec, missing))
@@ -106,7 +109,7 @@ class SherpaStreamingTranscriber(private val context: Context) : AutoCloseable {
      *       locale — 인식 언어, feed — 공급 간격(100 ms 조각마다 delayMs), onFed — 진행률(0.0~1.0, 바이트 기준)
      * 리턴: SttOutcome(text, first_result_ms, feed_ms, tail_ms, stt_wall_ms, segments)
      */
-    fun transcribe(chunks: List<ByteArray>, locale: Locale, feed: FeedConfig, onFed: (Double) -> Unit): SttOutcome {
+    override fun transcribe(chunks: List<ByteArray>, locale: Locale, feed: FeedConfig, onFed: (Double) -> Unit): SttOutcome {   // change-hyungchul-20261011-0301 : override
         val rec = recognizer ?: throw IllegalStateException("sherpa 스트리밍 모델을 먼저 불러야 합니다(load).")
         val lang = streamLanguage(family, locale)                                   // change-hyungchul-20261011-0150 : Nemotron "ko" / "en", 그 밖 ""(옵션 안 넣음)
         val totalBytes = chunks.sumOf { it.size }.coerceAtLeast(1)                  // 진행률 분모

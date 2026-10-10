@@ -4,7 +4,7 @@
 지연·자원을 계측하는 평가 앱입니다. 결과는 PC "STT 통합 실행기"와 같은 폴더·조건 이름 규칙으로 저장되어
 PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
-- 현재 판: **2.3.0** (2026-10-11) — 변경 내용은 [`docs/RELEASE_NOTES_v2.3.0.md`](docs/RELEASE_NOTES_v2.3.0.md) (이전: [`v2.2.0`](docs/RELEASE_NOTES_v2.2.0.md), [`v2.1.1`](docs/RELEASE_NOTES_v2.1.1.md), [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
+- 현재 판: **2.4.0** (2026-10-11) — 변경 내용은 [`docs/RELEASE_NOTES_v2.4.0.md`](docs/RELEASE_NOTES_v2.4.0.md) (이전: [`v2.3.0`](docs/RELEASE_NOTES_v2.3.0.md), [`v2.2.0`](docs/RELEASE_NOTES_v2.2.0.md), [`v2.1.1`](docs/RELEASE_NOTES_v2.1.1.md), [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
 - 대상 기기: Galaxy S25 Ultra (arm64-v8a), minSdk 31 / targetSdk 35 — APK 는 **arm64-v8a 전용**(`abiFilters`, 에뮬레이터·32비트 기기 설치 불가)
 - 네트워크: **INTERNET 권한 없음**(온디바이스 실행 증명용). VAD·노이즈 저감 모델은 APK 에 넣고, STT 모델(sherpa-onnx)은 휴대폰 공용 폴더 `/sdcard/Documents/stt_models` 에 넣고 앱은 **'모든 파일 접근'** 권한으로 읽습니다(v2.1.1).
 
@@ -16,7 +16,7 @@ PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
 | 단계 | 선택지 |
 |---|---|
-| STT | ML Kit GenAI Speech Recognition **Basic**(API 31+), Android 플랫폼 on-device(API 33+), **sherpa-onnx 오프라인**: Whisper tiny/base/small/medium/turbo, Qwen3-ASR 0.6B, Omnilingual 300M, **sherpa-onnx 스트리밍**: Nemotron 3.5 0.6B(지연 320 / 560 ms), **상업 조건부(v2.3.0)**: Zipformer KO(오프라인·스트리밍), SenseVoice Small, Moonshine tiny KO |
+| STT | ML Kit GenAI Speech Recognition **Basic**(API 31+), Android 플랫폼 on-device(API 33+), **sherpa-onnx 오프라인**: Whisper tiny/base/small/medium/turbo, Qwen3-ASR 0.6B, Omnilingual 300M, **sherpa-onnx 스트리밍**: Nemotron 3.5 0.6B(지연 320 / 560 ms), **상업 조건부(v2.3.0)**: Zipformer KO(오프라인·스트리밍), SenseVoice Small, Moonshine tiny KO, **Vosk(v2.4.0)**: small KO 0.22 / EN-US 0.15 |
 | 노이즈 저감 | 사용 안 함 / GTCRN / DPDFNet / NSNet2 / MMSE-STSA / Wiener / Spectral Subtraction |
 | VAD 엔진 | 사용 안 함 / **Silero** / **WebRTC** / **pyannote** / **FSMN** / **FireRed** / **TEN** |
 | 구간 처리 | **엔진별 최대 길이**(Google = 기존: 이어 붙여 1세션 + EPD) / **모든 엔진 10초 통일**(SEG10) |
@@ -62,6 +62,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 | Zipformer KO (v2.3.0) | `zipformer-ko` | Apache-2.0(icefall) / KsponSpeech 학습 (**conditional**) | 15 s (실측) | 없음(한국어 전용) | 약 0.08 GB |
 | Zipformer KO 스트리밍 (v2.3.0) | `zipformer-ko-stream` | 위와 같음 (**conditional**) | 없음(스트리밍) | 없음(한국어 전용) | 약 0.13 GB |
 | SenseVoice Small (v2.3.0) | `sensevoice-small` | FunASR MODEL_LICENSE (**conditional**) | 30 s (PC FSMN-VAD 최대 구간과 같게) | `ko` / `en`, ITN 켬 | 약 0.24 GB |
+| Vosk small KO 0.22 / EN-US 0.15 (v2.4.0, vosk-android 0.3.75) | `vosk-small-ko` / `vosk-small-en` (모델 이름 `vosk`) | Apache-2.0 (allowed) | 없음(스트리밍, Feed 설정) | 없음(언어별 모델 — Language 와 맞는 쪽을 고른다) | 82 MB / 40 MB |
 | Moonshine tiny KO (v2.3.0) | `moonshine-tiny-ko` | Moonshine Community License (**conditional** — 연매출 100만 달러 이상 상업 사용 불가) | **9 s** (실측: 9.3 s 이상 빈 결과) | 없음(한국어 전용) | 약 0.07 GB |
 
 - 런타임: sherpa-onnx **1.13.7 정적 링크 AAR**(onnxruntime 내장 — 앱의 onnxruntime-android 1.25.1 과 따로 돈다), CPU 4 스레드.
@@ -93,7 +94,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 4. USB 디버깅을 연결하고 STT 모델을 휴대폰 공용 폴더에 넣기(앱 설치 여부와 무관, MTP·파일 관리자로 `Documents/stt_models` 에 복사해도 된다):
    ```bash
    bash tools/download_stt_models.sh                 # 기본: whisper-base + qwen3asr-0.6b + omnilingual-300m + nemotron3.5-560ms (+aar)
-   bash tools/download_stt_models.sh whisper-tiny zipformer-ko   # 고른 모델만 / all = 13종 전부(약 5.5 GB)
+   bash tools/download_stt_models.sh whisper-tiny zipformer-ko vosk-small-ko   # 고른 모델만 / all = 15종 전부(약 5.6 GB)
    ```
 5. 앱에서 입력 폴더·출력 폴더 선택 → 언어·Model·Feed·노이즈 저감·VAD 엔진·프리셋·구간 처리·EPD 선택 → START.
    - sherpa 모델로 처음 START 하면 '모든 파일 접근 허용' 설정 화면이 열린다 → 이 앱을 켜고 돌아와 다시 START.
@@ -134,7 +135,8 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 - ML Kit 은 공식 문서상 **실시간 속도 공급만 지원**합니다. WER/CER 확정 실행은 REALTIME 으로 하세요.
 - `com.google.android.tts`(SODA)는 약 **35세션**에서 응답을 멈춥니다. 10초 통일은 파일당 여러 세션을 써서 한도에 빨리 닿습니다.
 - pyannote / FSMN / FireRed 는 공식 PyTorch/C++ 구현을 Kotlin 으로 옮긴 것입니다. PC 결과와 프레임 단위로 다를 수 있으니 같은 음원으로 비교해 확인하세요.
-- 남은 STT 엔진(Vosk small ko / en-us, 보류: Cohere 2B)은 다음 단계입니다. 결정 사항은 `docs/HANDOFF_20261011_v2.3.0.md`.
+- 2단계 엔진은 Vosk(v2.4.0)까지 넣었습니다(보류: Cohere 2B). 결정 사항은 `docs/HANDOFF_20261011_v2.4.0.md`.
+- Vosk 는 이 작업 환경에서 모델을 받을 수 없어(alphacephei.com 접속 차단) 실음성 실행을 확인하지 못했습니다. 컴파일은 vosk-api 0.3.75 공식 소스로 확인했습니다.
 - sherpa 엔진의 실기기 속도·메모리·두 onnxruntime(앱 1.25.1 + sherpa 정적) 공존은 아직 실기기에서 확인하지 않았습니다.
 - APK 는 arm64-v8a 만 넣습니다(`app/build.gradle.kts` 의 `ndk.abiFilters`). 에뮬레이터용으로 x86_64 를 더할 수는 있지만(정적이라 충돌 없음), TEN VAD `.so` 는 x86_64 판이 없습니다.
 - sherpa 정적 AAR 은 x86 에서만 `libonnxruntime.so`(ORT 1.27.1)를 따로 넣어 앱의 onnxruntime-android 1.25.1 과 경로가 겹칩니다. 그래서 `packaging.jniLibs.excludes` 에 `lib/x86/libonnxruntime.so` 를 넣었습니다. **`abiFilters` 만으로는 풀리지 않습니다** — AGP 는 모든 ABI 를 먼저 합치면서 중복을 검사하고, `abiFilters` 는 APK 를 묶을 때만 적용하기 때문입니다.
@@ -145,6 +147,6 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 앱 코드에서 쓰는 외부 모델·라이브러리의 라이선스는 각 원본을 따릅니다(Silero MIT, android-vad MIT/WebRTC BSD-3,
 pyannote segmentation-3.0 MIT(HF 동의), FunASR 모델 Apache-2.0 + 출처·모델명 표기, FireRedVAD Apache-2.0,
 TEN VAD Apache-2.0 + 추가 조건("Powered by ten-vad" 표기 권장, Agora 경쟁 배포 금지), ONNX Runtime MIT, JNA Apache-2.0/LGPL,
-sherpa-onnx Apache-2.0, Whisper 가중치 MIT, Qwen3-ASR 가중치 Apache-2.0, Omnilingual ASR 가중치 Apache-2.0,
+sherpa-onnx Apache-2.0, vosk-android·Vosk 모델 Apache-2.0, Whisper 가중치 MIT, Qwen3-ASR 가중치 Apache-2.0, Omnilingual ASR 가중치 Apache-2.0,
 Nemotron 3.5 OpenMDW-1.1, 상업 조건부: Zipformer KO(icefall Apache-2.0 / KsponSpeech 약관 미확인), SenseVoice(FunASR MODEL_LICENSE — 출처·모델명 유지, "reference and learning purposes only" 문구),
 Moonshine 한국어(Moonshine AI Community License — 상업 사용 시 등록, 연매출 100만 달러 이상이면 종료, "Powered by Moonshine AI" 표시)).

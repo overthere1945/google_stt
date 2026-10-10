@@ -536,3 +536,25 @@ result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). 오프라인 3종
 - Zipformer KO(오프라인·스트리밍)의 결과 글자는 sherpa `text` 가 아니라 **토큰을 이어 붙여** 만든다(두 경로 모두 `text` 에 한국어 띄어쓰기가 없다 — 실측).
 - Moonshine 결과 앞에 남는 `▁` 는 공백으로 바꾼다. SenseVoice 는 ITN 을 켜서 문장부호·숫자(아라비아 숫자)가 나온다(PC `sensevoice.py --use-itn` 기본과 같다).
 - 결과 파일: `output/zipformer-ko_sherpa-int8_<조건>/…`, `output/zipformer-ko_<조건>_result.csv` (다른 3종도 같은 규칙).
+
+## 9. v2.4.0 — Vosk 엔진의 값 뜻 (add-hyungchul-20261011-0301)
+
+result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). Vosk 는 7장(스트리밍 sherpa)과 같이 읽고, 다른 곳만 적는다.
+
+| 컬럼 / run_meta 키 | Vosk 에서의 값 |
+|---|---|
+| `engine` | `VOSK` |
+| `mode` | `vosk-small-ko` / `vosk-small-en` |
+| `execution` | `ON_DEVICE(vosk-android 0.3.75 (Kaldi), streaming, cpu, threads=1)` |
+| `feed_mode` / `feed_delay_ms` | **실제로 쓴다** — 100 ms 조각을 이 간격으로 넣는다(7장과 같음) |
+| `first_result_ms` | 공급 시작 → 중간 결과(`partial`) 또는 확정 문장이 처음 비지 않은 순간 |
+| `tail_ms` | 마지막 조각 공급 끝 → `getFinalResult`(남은 오디오 처리) 끝. 꼬리 무음은 넣지 않는다 |
+| `segments` | 조각(인식기) 수 — "엔진별 최대 길이" 면 1, SEG10 이면 10초 조각 수. 한 조각 안의 문장 수(Vosk 내부 끝점)는 Logcat `utterances` 로 본다 |
+| run_meta `stt_runtime` / `stt_num_threads` | `vosk-android 0.3.75 (Kaldi)` / `1` |
+| run_meta `stt_language` | `vosk (언어별 모델 vosk-model-small-ko-0.22, 언어 지정 없음)` |
+| run_meta `stt_chunk_max_sec` | `none`("엔진별 최대 길이") 또는 `10.0`(SEG10) |
+| run_meta `stt_model_files` / `stt_model_sha256` | 필수 파일 2개(am/final.mdl, conf/model.conf) 크기 / **모델 폴더 전체** 해시(스크립트가 만든 SHA256SUMS.txt) |
+| run_meta `stt_license` / `stt_commercial` | `Apache-2.0` / `allowed` |
+
+- 결과 파일: `output/vosk-small-ko_vosk_<조건>/…`, `output/vosk-small-ko_<조건>_result.csv`
+- Vosk 모델은 언어별이다. Language 를 ko 로 두고 `vosk-small-en` 을 고르면 영어 모델로 한국어를 받아 쓰게 되니 맞는 쪽을 고른다.

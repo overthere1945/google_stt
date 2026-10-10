@@ -38,8 +38,9 @@ android {
         //   '모든 파일 접근' 확인) + Logcat 디버그 출력. 2.1.0 은 원격(feature/v2-vad-stt)에 이미 올라가 판을 올린다. 릴리스 노트: docs/RELEASE_NOTES_v2.1.1.md
         // change-hyungchul-20261011-0031 : 2.1.1 → 2.2.0 (Minor) — sherpa-onnx 스트리밍 엔진(Nemotron 3.5 5종) 추가(기존 결과·설정과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.2.0.md
         // change-hyungchul-20261011-0150 : 2.2.0 → 2.3.0 (Minor) — 2단계 2-3 상업 조건부 엔진 4종(Zipformer KO 오프라인·스트리밍, SenseVoice Small, Moonshine tiny KO) 추가(기존 결과·설정과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.3.0.md
-        versionCode = 6
-        versionName = "2.3.0"
+        // change-hyungchul-20261011-0301 : 2.3.0 → 2.4.0 (Minor) — 2단계 2-4 Vosk small ko / en-us 추가(기존 결과·설정과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.4.0.md
+        versionCode = 7
+        versionName = "2.4.0"
 
         // add-hyungchul-20261010-1855 : APK 에 넣을 ABI 를 arm64-v8a 하나로 제한(사용자 결정 Q21)
         //   · 이유: sherpa-onnx 정적 링크 AAR 1.13.7 은 x86 에서만 libonnxruntime.so(ORT 1.27.1)를 따로 동적 링크해 넣는데,
@@ -121,7 +122,9 @@ dependencies {
     //   · TEN VAD — 공식 libten_vad.so(C API)를 부르기 위한 JNA. 공식 Java 래퍼(TenVad.java)도 JNA 를 쓴다.
     //     Android 16 KB 페이지 대응(libjnidispatch.so)은 5.16.0 이상에서 들어갔다 → 5.17.0 으로 고정.
     //     @aar 를 붙여야 Android 용 libjnidispatch.so 가 함께 들어온다.
-    implementation("net.java.dev.jna:jna:5.17.0@aar")
+    // change-hyungchul-20261011-0301 : 5.17.0 → 5.18.1 — vosk-android 0.3.75 의 POM 이 jna 5.18.1@aar 를 요구한다.
+    //   적지 않아도 Gradle 이 높은 판(5.18.1)을 고르지만, TEN VAD 가 쓰는 판이 바뀌는 것을 여기서 드러내려고 같은 판으로 맞췄다.
+    implementation("net.java.dev.jna:jna:5.18.1@aar")
     //   · pyannote / FSMN / FireRed VAD 는 위 onnxruntime-android 1.25.1 로 직접 실행한다(추가 의존성 없음).
 
     // ★ add-hyungchul-20261010-1800 : 2단계 2-1 — sherpa-onnx 오프라인 STT(Whisper / Qwen3-ASR / Omnilingual)
@@ -131,6 +134,12 @@ dependencies {
     //   · Maven 배포가 없어 파일로 넣는다. 받기: bash tools/download_stt_models.sh aar  → app/libs/ (git 에는 넣지 않음)
     //   · 판을 바꾸면 stt/SherpaOfflineTranscriber.kt 의 RUNTIME 문자열도 같이 바꿀 것.
     implementation(files("libs/sherpa-onnx-static-link-onnxruntime-1.13.7.aar"))
+
+    // ★ add-hyungchul-20261011-0301 : 2단계 2-4 — Vosk(Kaldi) 온디바이스 STT
+    //   · Maven Central com.alphacephei:vosk-android:0.3.75 (Apache-2.0). libvosk.so(arm64-v8a 포함, NDK 28.2 빌드)와 org.vosk Java API.
+    //   · 의존성: net.java.dev.jna:jna:5.18.1@aar(위 JNA 줄과 같은 판). 모델은 APK 에 넣지 않고 tools/download_stt_models.sh 로 받는다.
+    //   · 판을 바꾸면 stt/VoskTranscriber.kt 의 RUNTIME 문자열도 같이 바꿀 것.
+    implementation("com.alphacephei:vosk-android:0.3.75")
 
     // ※ Google Cloud STT 관련 의존성(google-cloud-speech, grpc, 서비스계정 JSON 등)은
     //    이 앱에 필요 없다. 세 경로 모두 온디바이스이며 네트워크 자격증명을 쓰지 않는다.

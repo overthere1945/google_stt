@@ -22,6 +22,10 @@
  *   · SenseVoice Small int8(2024-07-17, ITN 지원판) — FunASR MODEL_LICENSE
  *   · Moonshine v2 tiny KO(quantized, .ort) — Moonshine AI Community License(연매출 100만 달러 이상이면 상업 사용 불가, 등록·표시 의무)
  *   · 조각 상한은 이 작업 환경(sherpa 1.13.7 리눅스 JNI + 같은 Kotlin API)에서 휴대폰 kr 음원으로 실측해 정했다(각 정의의 주석)
+ *
+ * add-hyungchul-20261011-0301 — 2단계 2-4: Vosk small ko 0.22 / en-us 0.15 (SherpaFamily.VOSK)
+ *   · 런타임은 sherpa 가 아니라 vosk-android(Kaldi)지만, 모델 폴더 위치·필수 파일 점검·run_meta 기록 규칙이 같아 이 정의를 함께 쓴다.
+ *   · 모델은 폴더째로 쓰며 필수 파일은 am/final.mdl + conf/model.conf(vosk-api src/model.cc 의 v2 배치 확인 규칙). Apache-2.0(commercial=allowed)
  */
 package com.example.google_stt.stt
 
@@ -31,6 +35,7 @@ package com.example.google_stt.stt
 enum class SherpaFamily(val streaming: Boolean = false) {
     WHISPER, QWEN3_ASR, OMNILINGUAL, NEMOTRON_STREAMING(true),
     ZIPFORMER, ZIPFORMER_STREAMING(true), SENSE_VOICE, MOONSHINE_V2,      // add-hyungchul-20261011-0150
+    VOSK(true),                                                           // add-hyungchul-20261011-0301 : Vosk(Kaldi) — VoskTranscriber 가 맡는다
 }
 
 /**
@@ -61,6 +66,7 @@ object SherpaRole {
     const val CONV_FRONTEND = "conv_frontend"
     const val TOKENIZER = "tokenizer"       // Qwen3-ASR 토크나이저 폴더(merges.txt / vocab.json / tokenizer_config.json)
     const val JOINER = "joiner"             // add-hyungchul-20261011-0031 : transducer(Nemotron) joiner
+    const val CONF = "conf"                 // add-hyungchul-20261011-0301 : Vosk conf/model.conf(필수 파일 점검용)
 }
 
 /** 모델 목록 */
@@ -244,4 +250,29 @@ object SherpaCatalog {
         commercial = "conditional",
         displayName = "Moonshine tiny KO (sherpa-onnx int8) [상업 조건부]",
     )
+
+    // ─────────── add-hyungchul-20261011-0301 : 2단계 2-4 — Vosk(Kaldi) small 모델 ───────────
+
+    /**
+     * 목적: Vosk small 모델 정의를 만든다(공식 모델 이름 그대로, alphacephei.com/vosk/models).
+     * 입력: dirName — 모델 폴더 이름(zip 이름에서 확장자 뺀 것), displayName — 화면 이름
+     * 리턴: SherpaModelSpec(family = VOSK, maxChunkSec = null — 스트리밍이라 파일 전체를 한 번에 넣는다)
+     */
+    private fun vosk(dirName: String, displayName: String) = SherpaModelSpec(
+        family = SherpaFamily.VOSK,
+        dirName = dirName,
+        files = mapOf(
+            SherpaRole.MODEL to "am/final.mdl",                             // 음향 모델(v2 배치)
+            SherpaRole.CONF to "conf/model.conf",                           // 모델 설정(v2 배치)
+        ),
+        maxChunkSec = null,                   // 조각 상한 없음(스트리밍)
+        license = "Apache-2.0",
+        commercial = "allowed",
+        displayName = displayName,
+    )
+
+    /** 한국어 small 0.22 (82 MB, 공식 WER 28.1 — Zeroth test) */
+    val VOSK_SMALL_KO = vosk("vosk-model-small-ko-0.22", "Vosk small KO 0.22 (Kaldi)")
+    /** 영어(미국) small 0.15 (40 MB, 공식 WER 9.85 — LibriSpeech test-clean) */
+    val VOSK_SMALL_EN = vosk("vosk-model-small-en-us-0.15", "Vosk small EN-US 0.15 (Kaldi)")
 }

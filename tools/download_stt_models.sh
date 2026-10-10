@@ -12,15 +12,17 @@
 #   bash tools/download_stt_models.sh                 # 기본: aar + whisper-base + qwen3asr-0.6b + omnilingual-300m + nemotron3.5-560ms
 #   bash tools/download_stt_models.sh aar             # AAR 만
 #   bash tools/download_stt_models.sh whisper-tiny whisper-small   # 고른 모델만
-#   bash tools/download_stt_models.sh all             # aar + 모델 13종 전부(약 5.5 GB)  (change-hyungchul-20261011-0150 : 12종 → 9종 → 2-3 4종 추가 13종)
+#   bash tools/download_stt_models.sh all             # aar + 모델 15종 전부(약 5.6 GB)  (change-hyungchul-20261011-0150 : 12종 → 9종 → 2-3 4종 추가 13종 / change-hyungchul-20261011-0301 : Vosk 2종 추가 15종)
 #   --no-push 를 붙이면 PC 에만 받고 휴대폰에는 넣지 않는다
 # 모델 이름: whisper-tiny / whisper-base / whisper-small / whisper-medium / whisper-turbo / qwen3asr-0.6b / omnilingual-300m
 #           nemotron3.5-320ms / nemotron3.5-560ms (스트리밍, 각 약 0.7 GB)
 #           [상업 조건부] zipformer-ko / zipformer-ko-stream / sensevoice-small / moonshine-tiny-ko (add-hyungchul-20261011-0150 : 2-3, 기본 묶음에는 넣지 않음)
+#           vosk-small-ko / vosk-small-en (add-hyungchul-20261011-0301 : 2-4, alphacephei.com zip 을 폴더째 푼다, 기본 묶음에는 넣지 않음)
 # add-hyungchul-20261010-1800
 # change-hyungchul-20261011-0031 : 2단계 2-2 — Nemotron 3.5 스트리밍 5종 추가(사용자 결정 Q26: 기본 받기는 560 ms)
 # change-hyungchul-20261011-0150 : Nemotron 은 320 / 560 ms 2종만(사용자 결정 Q28 — 80 / 160 / 1120 ms 삭제)
 # add-hyungchul-20261011-0150 : 2단계 2-3 — Zipformer KO(오프라인·스트리밍) / SenseVoice Small / Moonshine tiny KO
+# add-hyungchul-20261011-0301 : 2단계 2-4 — Vosk small ko 0.22 / en-us 0.15
 
 set -u                                                     # 정의 안 된 변수를 쓰면 멈춘다
 
@@ -35,6 +37,7 @@ SHERPA_VER="1.13.7"                                        # sherpa-onnx 판(app
 AAR="sherpa-onnx-static-link-onnxruntime-$SHERPA_VER.aar"  # 정적 링크 AAR 이름
 AAR_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v$SHERPA_VER/$AAR"
 MODELS_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"   # 모델 패키지 위치
+VOSK_URL="https://alphacephei.com/vosk/models"              # add-hyungchul-20261011-0301 : Vosk 모델 zip 위치(공식 모델 목록 페이지와 같은 곳)
 FAILED=0                                                   # 실패가 하나라도 있으면 1
 PUSH=1                                                     # 휴대폰에 넣을지
 
@@ -47,7 +50,8 @@ done
 if [ "${TARGETS[0]}" = "all" ]; then
   TARGETS=(aar whisper-tiny whisper-base whisper-small whisper-medium whisper-turbo qwen3asr-0.6b omnilingual-300m \
            nemotron3.5-320ms nemotron3.5-560ms \
-           zipformer-ko zipformer-ko-stream sensevoice-small moonshine-tiny-ko)   # change-hyungchul-20261011-0150 : 80 / 160 / 1120 ms 삭제, 2-3 4종 추가
+           zipformer-ko zipformer-ko-stream sensevoice-small moonshine-tiny-ko \
+           vosk-small-ko vosk-small-en)   # change-hyungchul-20261011-0150 : 80 / 160 / 1120 ms 삭제, 2-3 4종 추가 / change-hyungchul-20261011-0301 : Vosk 2종
 fi
 
 # 목적: 모델 이름 → "패키지 이름|앱이 쓰는 파일(공백 구분)" 을 출력한다(앱 stt/SherpaModels.kt 와 같은 값)
@@ -74,6 +78,11 @@ spec_of() {
       echo "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17|model.int8.onnx tokens.txt LICENSE" ;;
     moonshine-tiny-ko)
       echo "sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27|encoder_model.ort decoder_model_merged.ort tokens.txt LICENSE" ;;
+    # add-hyungchul-20261011-0301 : 2-4 Vosk(앱 SherpaCatalog.vosk 와 같은 폴더·필수 파일). zip 을 폴더째 푼다(fetch_model 의 vosk 분기)
+    vosk-small-ko)
+      echo "vosk-model-small-ko-0.22|am/final.mdl conf/model.conf" ;;
+    vosk-small-en)
+      echo "vosk-model-small-en-us-0.15|am/final.mdl conf/model.conf" ;;
     *) return 1 ;;
   esac
 }
@@ -102,6 +111,19 @@ fetch_model() {
     echo "  [건너뜀] $pkg — 이미 풀어 둠"
   else
     mkdir -p "$DL" "$LOCAL"
+    # add-hyungchul-20261011-0301 : Vosk 모델은 zip(alphacephei.com) — 폴더째 풀고 필수 파일만 확인한다
+    if [ "${pkg#vosk-model-}" != "$pkg" ]; then
+      echo "  [받는 중] $pkg.zip"
+      if ! curl -fL --retry 3 -o "$DL/$pkg.zip.tmp" "$VOSK_URL/$pkg.zip"; then
+        rm -f "$DL/$pkg.zip.tmp"; echo "  [실패] $VOSK_URL/$pkg.zip" >&2; FAILED=1; return 1
+      fi
+      mv -f "$DL/$pkg.zip.tmp" "$DL/$pkg.zip"
+      if ! unzip -q -o "$DL/$pkg.zip" -d "$LOCAL"; then
+        echo "  [실패] 압축 풀기(unzip 이 없으면 sudo apt install unzip)" >&2; FAILED=1; return 1
+      fi
+      rm -f "$DL/$pkg.zip"                                   # 디스크 절약
+      for f in $files; do [ -e "$LOCAL/$pkg/$f" ] || { echo "  [실패] $pkg/$f 가 없습니다(모델 배치가 다름)" >&2; FAILED=1; return 1; }; done
+    else                                                     # sherpa-onnx 모델(tar.bz2)은 예전 그대로
     echo "  [받는 중] $pkg.tar.bz2"
     if ! curl -fL --retry 3 -o "$DL/$pkg.tar.bz2.tmp" "$MODELS_URL/$pkg.tar.bz2"; then
       rm -f "$DL/$pkg.tar.bz2.tmp"; echo "  [실패] $MODELS_URL/$pkg.tar.bz2" >&2; FAILED=1; return 1
@@ -114,9 +136,14 @@ fetch_model() {
       echo "  [실패] 압축 풀기 — tar 안에 위 파일이 없을 수 있습니다." >&2; FAILED=1; return 1
     fi
     rm -f "$DL/$pkg.tar.bz2"                               # 디스크 절약(수백 MB~GB)
+    fi                                                       # add-hyungchul-20261011-0301 : vosk / tar 분기 끝
   fi
   # 해시 목록(폴더는 안의 파일까지) — 앱이 run_meta 의 stt_model_sha256 으로 기록한다
+  if [ "${pkg#vosk-model-}" != "$pkg" ]; then              # add-hyungchul-20261011-0301 : Vosk 는 폴더 전체를 쓰므로 전체 해시
+    (cd "$LOCAL/$pkg" && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+  else
   (cd "$LOCAL/$pkg" && find $files -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+  fi
   echo "  [완료] $pkg ($(du -sh "$LOCAL/$pkg" | cut -f1))"
 }
 
