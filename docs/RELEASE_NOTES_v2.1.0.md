@@ -27,7 +27,8 @@
 - sherpa 엔진은 실시간 공급 없이 최대 속도로 디코딩한다: `feed_ms = -1`, `tail_ms = stt_wall_ms`, `stt_timeout_sec = -1`, `stt_session_index = -1`.
 - result.csv 컬럼(99열)은 바뀌지 않았다. 값 뜻은 `STT_계측_CSV_설명서.md` 6장.
 - Google 엔진(ML Kit Basic / Android 플랫폼)의 동작·결과 이름은 그대로다.
-- APK 에 넣는 ABI 를 **arm64-v8a 하나**로 제한했다(`app/build.gradle.kts` 의 `ndk.abiFilters`). sherpa 정적 링크 AAR 은 x86 에서만 `libonnxruntime.so`(ORT 1.27.1)를 따로 넣어, 앱의 onnxruntime-android 1.25.1 과 `lib/x86/libonnxruntime.so` 경로가 겹쳐 빌드(`mergeDebugNativeLibs`)가 실패했기 때문이다. 에뮬레이터·32비트 기기에는 설치되지 않는다.
+- APK 에 넣는 ABI 를 **arm64-v8a 하나**로 제한했다(`app/build.gradle.kts` 의 `ndk.abiFilters`). 에뮬레이터·32비트 기기에는 설치되지 않는다.
+- 네이티브 합치기 중복 해결: `packaging.jniLibs.excludes += "lib/x86/libonnxruntime.so"`. sherpa 정적 링크 AAR 은 x86 에서만 `libonnxruntime.so`(ORT 1.27.1)를 따로 넣어, 앱의 onnxruntime-android 1.25.1 과 경로가 겹쳐 빌드(`mergeDebugNativeLibs`)가 실패했다. `abiFilters` 는 합치기(중복 검사) 뒤 APK 패키징 단계에서만 적용되어 이 오류를 막지 못한다(2차 빌드에서 확인).
 
 ## 3. 의존성
 
@@ -45,7 +46,7 @@
 | 1차 정적 검증 | 완료 — 공식 kotlin-api 시그니처를 흉내 낸 스텁 + PC 의 android-35·R.jar·의존성으로 전체 컴파일 오류 0건. 모델 파일 이름·조각 상한은 공식 소스(sherpa-onnx v1.13.7, Hugging Face, omnilingual-asr README)로 확인 |
 | 다운로드 스크립트 | 가짜 패키지로 받기·부분 풀기·해시·재실행 건너뛰기·잘못된 이름 거부 확인 |
 | 실제 AAR 로 컴파일 | 완료(2026-10-10) — PC 에서 받은 AAR(sha256 `220d7cb2…`)의 classes.jar 로 앱 소스 37개 전체 컴파일 오류 0건. readelf 로 ABI 별 네이티브 의존성 확인(arm64-v8a·armeabi-v7a·x86_64 는 onnxruntime 정적 포함, x86 만 `libonnxruntime.so` 동적 링크) |
-| Gradle 빌드 | 1차 실패(x86 `libonnxruntime.so` 중복) → `abiFilters` 로 arm64-v8a 만 남기도록 수정, 다시 빌드 확인 필요 |
+| Gradle 빌드 | 1차·2차 실패(x86 `libonnxruntime.so` 중복, 2차는 `abiFilters` 만 넣은 상태) → `packaging.jniLibs.excludes` 추가. AGP 공식 소스의 합치기 규칙을 그대로 옮긴 모의 실행에 PC 의 실제 AAR 7개 + jniLibs 를 넣어 1·2차 실패를 똑같이 재현하고, 수정안은 통과(APK lib 6개, 모두 arm64-v8a) 확인. 실제 Gradle 빌드 확인 필요 |
 | 실기기(S25 Ultra) | **미실행** |
 
 ## 5. 알려진 문제·확인 필요

@@ -44,6 +44,10 @@ android {
         //     (readelf 확인: arm64-v8a / armeabi-v7a / x86_64 의 libsherpa-onnx-jni.so 는 onnxruntime 을 정적으로 품어 충돌 없음)
         //   · 대상 기기 S25 Ultra 는 arm64-v8a 다. 에뮬레이터(x86/x86_64)·32비트 기기에는 설치되지 않는다.
         //   · 덤으로 APK 가 작아진다(sherpa 네이티브만 약 74 MB 빠짐).
+        // change-hyungchul-20261010-1926 : ★ 정정 — abiFilters 만으로는 위 빌드 오류가 풀리지 않는다(2차 빌드도 같은 오류).
+        //   AGP 의 MergeNativeLibsTask 는 abiFilters 를 보지 않고 모든 ABI 를 먼저 합치며(중복 검사도 이때),
+        //   abiFilters 는 그 뒤 APK 패키징(PackageAndroidArtifact) 단계에서만 적용된다.
+        //   → 실제 해결은 아래 android { packaging { jniLibs { excludes } } } 에서 한다. abiFilters 는 APK 크기·대상 ABI 용으로 유지.
         ndk {
             abiFilters += "arm64-v8a"   // 공식 DSL: Ndk.abiFilters 는 MutableSet<String> — 여기 적은 ABI 만 패키징된다
         }
@@ -52,6 +56,20 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    // add-hyungchul-20261010-1926 : 네이티브 라이브러리 합치기(mergeDebugNativeLibs) 중복 해결
+    //   · 중복 경로: lib/x86/libonnxruntime.so
+    //       - sherpa-onnx-static-link-onnxruntime-1.13.7.aar (x86 만 ORT 1.27.1 을 따로 넣음)
+    //       - onnxruntime-android-1.25.1.aar
+    //   · excludes 에 걸린 파일은 합치기 대상에서 통째로 빠져 중복 검사에도 들어가지 않는다(AGP MergeNativeLibsTask 소스 확인).
+    //     x86 은 위 abiFilters(arm64-v8a 만) 때문에 APK 에 어차피 들어가지 않으므로 잃는 것이 없다.
+    //   · pickFirsts 대신 excludes 를 쓴 이유: 두 판(1.27.1 / 1.25.1) 중 하나를 임의로 고르지 않기 위함.
+    //   · 패턴은 'lib/<abi>/<파일>' 형식(AGP 가 앞에 '/' 를 붙여 비교한다).
+    packaging {
+        jniLibs {
+            excludes += "lib/x86/libonnxruntime.so"   // 공식 DSL: JniLibsPackaging.excludes(MutableSet<String>)
+        }
     }
 }
 
