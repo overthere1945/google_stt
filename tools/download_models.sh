@@ -60,7 +60,10 @@ SILERO="https://raw.githubusercontent.com/snakers4/silero-vad/master/src/silero_
 # ── add-hyungchul-20261009-1530 : VAD 엔진 추가분 ──
 PYANNOTE_TAR="https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"
 FSMN_MS="https://www.modelscope.cn/models/iic/speech_fsmn_vad_zh-cn-16k-common-onnx/resolve/master"
-FIRERED="https://raw.githubusercontent.com/FireRedTeam/FireRedVAD/c30ec49e8cc69642b0ee65362eba11b9d11c6e54/examples/pretrained_models/onnx_models"
+# change-hyungchul-20261010-1715 : 경로 수정(examples/pretrained_models → pretrained_models). 저장소 루트의
+#   pretrained_models/onnx_models 에 있다(GitHub API 확인: fireredvad_vad.onnx 2,388,488 B, cmvn.ark 1,311 B,
+#   2026-03-12 커밋 71352f2 "update README and reorg" 이후 같은 파일). 고정 커밋 c30ec49(2026-05-06)는 그대로.
+FIRERED="https://raw.githubusercontent.com/FireRedTeam/FireRedVAD/c30ec49e8cc69642b0ee65362eba11b9d11c6e54/pretrained_models/onnx_models"
 TENVAD="https://raw.githubusercontent.com/TEN-framework/ten-vad/22a3bcd4509d0faaa8eef4881e8af5f39c178950/lib/Android"
 
 # 인자: URL, 저장 경로(절대), 최소 크기, 설명 — fetch() 와 같지만 assets 밖(jniLibs)에도 쓴다

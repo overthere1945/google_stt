@@ -9,7 +9,8 @@
  *     → _merge_short_silence_segments → _extend_speech_segments → _split_long_speech_segments → decision_to_segment
  * - 긴 입력은 공식과 같이 chunk_max_frame(30000 프레임 = 300 s)씩 따로 추론해 이어 붙인다.
  *
- * 모델 파일(assets, tools/download_models.sh 가 받는다 — 저장소 examples/pretrained_models/onnx_models):
+ * 모델 파일(assets, tools/download_models.sh 가 받는다 — 저장소 pretrained_models/onnx_models):
+ *   change-hyungchul-20261010-1715 : 저장소 경로 표기 수정(examples/ 아래가 아니라 저장소 루트)
  *   fireredvad_vad.onnx  ← fireredvad_vad.onnx
  *   fireredvad_cmvn.ark  ← cmvn.ark (Kaldi 이진 double 행렬 2 × 81)
  *

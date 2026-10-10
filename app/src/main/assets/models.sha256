@@ -9,9 +9,13 @@ e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534  gtcrn_simple.o
 debaf0e8893479fca91b8b4c1eae8db195aa8980ccc9012f5809fde2b738151a  dpdfnet_baseline.onnx
 7ed98ddbad84ccac4cd0aeb3099049280713df825c610a8ed34543318f1b2c49  silero_vad_16k_op15.onnx
 # add-hyungchul-20261009-1530 : VAD 엔진 추가분(FireRedVAD 커밋 c30ec49, ten-vad 커밋 22a3bcd 기준)
-#   pyannote_seg3.onnx / fsmn_vad_quant.onnx / fsmn_vad_am.mvn 은 PC 에서 처음 받은 뒤 값을 채운다.
 #   libten_vad.so 는 jniLibs 에 있으므로: cd app/src/main/jniLibs && sha256sum arm64-v8a/libten_vad.so
 a226e68e695548754a9ab5480a55bbcb8522aa69111cb97e4f093ddce63ad5dc  fireredvad_vad.onnx
 c87f6f13edf0f0ec7535ddfc9cc3387d9268cb234b70182d566c5e2edf3ca473  fireredvad_cmvn.ark
+# change-hyungchul-20261010-1715 : PC 에서 처음 받은 값(2026-10-10 download_models.sh vads 출력)으로 채웠다.
+#   pyannote = sherpa-onnx-pyannote-segmentation-3-0 의 model.onnx(5,992,913 B), FSMN = ModelScope iic/speech_fsmn_vad_zh-cn-16k-common-onnx
+220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079  pyannote_seg3.onnx
+5289eb2aa3c9af2d7a4284bcfa7c3ceb81d360814ed4203239b6c5d0569da8a1  fsmn_vad_quant.onnx
+6820fef9687708c4fc3fab2530179c8fcea6262daa25514380056cd8f6eb1754  fsmn_vad_am.mvn
 # 6bc63b352ff5d0752b7c90ca7eb0b23189d5e9cbea9979f82fac962d2ac3c5a5  arm64-v8a/libten_vad.so
 # ab44fcf66569989635fd7466596912ec70ab6271f53a7102fa2e6f801d27d386  armeabi-v7a/libten_vad.so
