@@ -7,18 +7,19 @@
 
 ## 1. 새 기능 (Added)
 
-1. **Nemotron 3.5 ASR 스트리밍 0.6B (int8)** — 2단계 2-2(사용자 결정 Q25~Q27)
+1. **Nemotron 3.5 ASR 스트리밍 0.6B (int8)** — 2단계 2-2(사용자 결정 Q25~Q28)
 
    | Model(화면) | 결과 엔진 이름 | 패키지 | 라이선스 |
    |---|---|---|---|
-   | Nemotron 3.5 streaming 80 / 160 / 320 / 560 / 1120 ms | `nemotron3.5-80ms` … `nemotron3.5-1120ms` | `sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-<지연>-int8-2026-06-11` | OpenMDW-1.1 (commercial=allowed) |
+   | Nemotron 3.5 streaming 320 / 560 ms | `nemotron3.5-320ms` / `nemotron3.5-560ms` | `sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-<지연>-int8-2026-06-11` | OpenMDW-1.1 (commercial=allowed) |
 
    - 런타임: sherpa-onnx 1.13.7 `OnlineRecognizer`(transducer encoder/decoder/joiner + tokens), CPU 4 스레드, 언어는 스트림 옵션 `language=ko/en`.
    - 공급: **Feed 설정을 따른다** — 100 ms 조각을 `feed_delay_ms` 간격(시작 시각 기준)으로 넣고, 조각마다 디코딩한다. 끝에 0.5 s 무음 + `inputFinished`.
    - "엔진별 최대 길이" 면 조각을 나누지 않고 파일 전체(VAD 를 켰으면 이어 붙인 말 구간)를 스트림 하나로 넣는다. SEG10 이면 10 s 조각마다 스트림.
    - 계측: `first_result_ms`(첫 글자), `feed_ms`·`feed_expected_ms`·`feed_stall_ratio`(Google 경로와 같은 식), `tail_ms`(공급 끝 → 최종 결과). 값 뜻은 `STT_계측_CSV_설명서.md` 7장.
 2. 새 파일 `stt/SherpaStreamingTranscriber.kt`. Logcat 디버그 접두어 `[D][sherpa-stream]`.
-3. `tools/download_stt_models.sh` — `nemotron3.5-80ms` … `nemotron3.5-1120ms` 추가, 기본 받기에 `nemotron3.5-560ms` 추가.
+3. `tools/download_stt_models.sh` — `nemotron3.5-320ms` / `nemotron3.5-560ms` 추가, 기본 받기에 `nemotron3.5-560ms` 추가.
+4. (2026-10-11, 배포 전 조정 — 사용자 결정 Q28) 처음에는 지연 5종(80 / 160 / 320 / 560 / 1120 ms)을 등록했으나 **320 / 560 ms 2종만** 남겼다. 공식 패키지는 5종이 그대로 있다.
 
 ## 2. 바뀐 점 (Changed)
 

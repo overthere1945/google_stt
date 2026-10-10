@@ -84,13 +84,11 @@ object SttCatalog {
         sherpaModel("whisper-turbo", SherpaCatalog.WHISPER_TURBO),
         sherpaModel("qwen3asr-0.6b", SherpaCatalog.QWEN3_ASR_06B),
         sherpaModel("omnilingual-300m", SherpaCatalog.OMNILINGUAL_300M),
-        // add-hyungchul-20261011-0031 : 2단계 2-2 — Nemotron 3.5 스트리밍 5종(사용자 결정 Q26: 5종 등록, 기본 받기는 560 ms)
+        // add-hyungchul-20261011-0031 : 2단계 2-2 — Nemotron 3.5 스트리밍(사용자 결정 Q26: 기본 받기는 560 ms)
         //   결과 이름: <엔진>=nemotron3.5-<지연>ms, <모델>=sherpa-int8 → nemotron3.5-560ms_sherpa-int8_<조건>/
-        sherpaModel("nemotron3.5-80ms", SherpaCatalog.NEMOTRON_80MS, SttEngine.SHERPA_STREAMING),
-        sherpaModel("nemotron3.5-160ms", SherpaCatalog.NEMOTRON_160MS, SttEngine.SHERPA_STREAMING),
+        // change-hyungchul-20261011-0150 : 5종 → 320 / 560 ms 2종(사용자 결정 Q28 — 80 / 160 / 1120 ms 삭제)
         sherpaModel("nemotron3.5-320ms", SherpaCatalog.NEMOTRON_320MS, SttEngine.SHERPA_STREAMING),
         sherpaModel("nemotron3.5-560ms", SherpaCatalog.NEMOTRON_560MS, SttEngine.SHERPA_STREAMING),
-        sherpaModel("nemotron3.5-1120ms", SherpaCatalog.NEMOTRON_1120MS, SttEngine.SHERPA_STREAMING),
     )
 
     // change-hyungchul-20260824

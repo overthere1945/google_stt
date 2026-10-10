@@ -502,7 +502,7 @@ result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). Nemotron 3.5 스�
 | 컬럼 | 스트리밍 sherpa 에서의 값 |
 |---|---|
 | `engine` | `SHERPA_STREAMING` |
-| `mode` | `nemotron3.5-80ms` / `-160ms` / `-320ms` / `-560ms` / `-1120ms` |
+| `mode` | `nemotron3.5-320ms` / `nemotron3.5-560ms` (change-hyungchul-20261011-0150 : 80 / 160 / 1120 ms 삭제) |
 | `execution` | `ON_DEVICE(sherpa-onnx 1.13.7 (static-link onnxruntime), streaming, cpu, threads=4)` |
 | `feed_mode` / `feed_delay_ms` | **실제로 쓴다** — 100 ms 조각을 이 간격으로 넣는다(REALTIME = 실시간, D50 = 2배속 …) |
 | `feed_ms` | 공급에 걸린 시간 합. 디코딩이 공급을 못 따라가면 `feed_expected_ms` 보다 길어진다 |

@@ -12,12 +12,13 @@
 #   bash tools/download_stt_models.sh                 # 기본: aar + whisper-base + qwen3asr-0.6b + omnilingual-300m + nemotron3.5-560ms
 #   bash tools/download_stt_models.sh aar             # AAR 만
 #   bash tools/download_stt_models.sh whisper-tiny whisper-small   # 고른 모델만
-#   bash tools/download_stt_models.sh all             # aar + 모델 12종 전부(약 7 GB)
+#   bash tools/download_stt_models.sh all             # aar + 모델 9종 전부(약 5 GB)  (change-hyungchul-20261011-0150 : 12종 → 9종)
 #   --no-push 를 붙이면 PC 에만 받고 휴대폰에는 넣지 않는다
 # 모델 이름: whisper-tiny / whisper-base / whisper-small / whisper-medium / whisper-turbo / qwen3asr-0.6b / omnilingual-300m
-#           nemotron3.5-80ms / nemotron3.5-160ms / nemotron3.5-320ms / nemotron3.5-560ms / nemotron3.5-1120ms (스트리밍, 각 약 0.7 GB)
+#           nemotron3.5-320ms / nemotron3.5-560ms (스트리밍, 각 약 0.7 GB)
 # add-hyungchul-20261010-1800
 # change-hyungchul-20261011-0031 : 2단계 2-2 — Nemotron 3.5 스트리밍 5종 추가(사용자 결정 Q26: 기본 받기는 560 ms)
+# change-hyungchul-20261011-0150 : Nemotron 은 320 / 560 ms 2종만(사용자 결정 Q28 — 80 / 160 / 1120 ms 삭제)
 
 set -u                                                     # 정의 안 된 변수를 쓰면 멈춘다
 
@@ -43,7 +44,7 @@ done
 [ ${#TARGETS[@]} -eq 0 ] && TARGETS=(aar whisper-base qwen3asr-0.6b omnilingual-300m nemotron3.5-560ms)   # 기본 묶음(change-hyungchul-20261011-0031 : 560 ms 추가)
 if [ "${TARGETS[0]}" = "all" ]; then
   TARGETS=(aar whisper-tiny whisper-base whisper-small whisper-medium whisper-turbo qwen3asr-0.6b omnilingual-300m \
-           nemotron3.5-80ms nemotron3.5-160ms nemotron3.5-320ms nemotron3.5-560ms nemotron3.5-1120ms)   # change-hyungchul-20261011-0031
+           nemotron3.5-320ms nemotron3.5-560ms)   # change-hyungchul-20261011-0150 : 80 / 160 / 1120 ms 삭제
 fi
 
 # 목적: 모델 이름 → "패키지 이름|앱이 쓰는 파일(공백 구분)" 을 출력한다(앱 stt/SherpaModels.kt 와 같은 값)
@@ -58,8 +59,8 @@ spec_of() {
     omnilingual-300m)
       echo "sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12|model.int8.onnx tokens.txt LICENSE" ;;
     # add-hyungchul-20261011-0031 : Nemotron 3.5 스트리밍(앱 SherpaCatalog.nemotron 과 같은 패키지·파일)
-    nemotron3.5-80ms|nemotron3.5-160ms|nemotron3.5-320ms|nemotron3.5-560ms|nemotron3.5-1120ms)
-      local ms="${1#nemotron3.5-}"                           # 80ms / 160ms / …
+    nemotron3.5-320ms|nemotron3.5-560ms)                     # change-hyungchul-20261011-0150 : 2종만
+      local ms="${1#nemotron3.5-}"                           # 320ms / 560ms
       echo "sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-$ms-int8-2026-06-11|encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt" ;;
     *) return 1 ;;
   esac

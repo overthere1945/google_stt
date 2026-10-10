@@ -76,6 +76,7 @@
  *   · Model 스피너에 Google 2개 뒤로 sherpa 모델을 붙인다. 조건 이름에는 EPD 를 넣지 않는다(sherpa 는 EPD 를 쓰지 않음).
  *
  * add-hyungchul-20261011-0031 — 2단계 2-2: sherpa-onnx 스트리밍(Nemotron 3.5, 지연 5종)
+ *   change-hyungchul-20261011-0150 : Nemotron 은 320 / 560 ms 2종만 남겼다(사용자 결정 Q28)
  *       stt/SherpaStreamingTranscriber.kt  스트리밍 불러오기·Feed 간격 공급·토큰으로 글자 만들기·해제
  *   · 스피너 목록은 SttCatalog.models 에서 자동으로 만들어지므로 이 파일의 코드는 바꾸지 않았다.
  *

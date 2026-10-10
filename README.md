@@ -16,7 +16,7 @@ PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
 | 단계 | 선택지 |
 |---|---|
-| STT | ML Kit GenAI Speech Recognition **Basic**(API 31+), Android 플랫폼 on-device(API 33+), **sherpa-onnx 오프라인**: Whisper tiny/base/small/medium/turbo, Qwen3-ASR 0.6B, Omnilingual 300M, **sherpa-onnx 스트리밍**: Nemotron 3.5 0.6B(지연 80~1120 ms) |
+| STT | ML Kit GenAI Speech Recognition **Basic**(API 31+), Android 플랫폼 on-device(API 33+), **sherpa-onnx 오프라인**: Whisper tiny/base/small/medium/turbo, Qwen3-ASR 0.6B, Omnilingual 300M, **sherpa-onnx 스트리밍**: Nemotron 3.5 0.6B(지연 320 / 560 ms) |
 | 노이즈 저감 | 사용 안 함 / GTCRN / DPDFNet / NSNet2 / MMSE-STSA / Wiener / Spectral Subtraction |
 | VAD 엔진 | 사용 안 함 / **Silero** / **WebRTC** / **pyannote** / **FSMN** / **FireRed** / **TEN** |
 | 구간 처리 | **엔진별 최대 길이**(Google = 기존: 이어 붙여 1세션 + EPD) / **모든 엔진 10초 통일**(SEG10) |
@@ -58,7 +58,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 | Whisper tiny / base / small / medium / turbo | `whisper-tiny` … `whisper-turbo` | MIT (allowed) | 29 s (sherpa 가 2950 프레임에서 자름) | `ko` / `en` | 약 0.1 / 0.16 / 0.37 / 0.95 / 1.04 GB |
 | Qwen3-ASR 0.6B | `qwen3asr-0.6b` | Apache-2.0 (allowed) | 30 s | `Korean` / `English`(스트림 옵션) | 약 0.94 GB |
 | Omnilingual ASR 300M CTC | `omnilingual-300m` | Apache-2.0 (allowed) | 39 s (공식: 40초 미만) | 없음(CTC) | 약 0.35 GB |
-| **Nemotron 3.5 스트리밍 0.6B** (v2.2.0) — 지연 80 / 160 / 320 / 560 / 1120 ms | `nemotron3.5-560ms` 등 | OpenMDW-1.1 (allowed) | 없음(스트리밍, 파일 전체를 한 스트림) | `ko` / `en`(스트림 옵션) | 각 약 0.68 GB |
+| **Nemotron 3.5 스트리밍 0.6B** (v2.2.0) — 지연 320 / 560 ms | `nemotron3.5-320ms` / `nemotron3.5-560ms` | OpenMDW-1.1 (allowed) | 없음(스트리밍, 파일 전체를 한 스트림) | `ko` / `en`(스트림 옵션) | 각 약 0.68 GB |
 
 - 런타임: sherpa-onnx **1.13.7 정적 링크 AAR**(onnxruntime 내장 — 앱의 onnxruntime-android 1.25.1 과 따로 돈다), CPU 4 스레드.
 - 실행: 실시간 공급 없이 **최대 속도로 디코딩**한다. 모델은 배치 시작 때 1번 불러 끝에 해제한다(불러온 시간은 run_meta `stt_model_load_ms`).
@@ -88,7 +88,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 4. USB 디버깅을 연결하고 STT 모델을 휴대폰 공용 폴더에 넣기(앱 설치 여부와 무관, MTP·파일 관리자로 `Documents/stt_models` 에 복사해도 된다):
    ```bash
    bash tools/download_stt_models.sh                 # 기본: whisper-base + qwen3asr-0.6b + omnilingual-300m + nemotron3.5-560ms (+aar)
-   bash tools/download_stt_models.sh whisper-tiny nemotron3.5-80ms   # 고른 모델만 / all = 12종 전부(약 7 GB)
+   bash tools/download_stt_models.sh whisper-tiny nemotron3.5-320ms   # 고른 모델만 / all = 9종 전부(약 5 GB)
    ```
 5. 앱에서 입력 폴더·출력 폴더 선택 → 언어·Model·Feed·노이즈 저감·VAD 엔진·프리셋·구간 처리·EPD 선택 → START.
    - sherpa 모델로 처음 START 하면 '모든 파일 접근 허용' 설정 화면이 열린다 → 이 앱을 켜고 돌아와 다시 START.

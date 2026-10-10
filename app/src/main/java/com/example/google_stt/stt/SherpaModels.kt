@@ -13,6 +13,7 @@
  * add-hyungchul-20261010-1800
  *
  * add-hyungchul-20261011-0031 — 2단계 2-2: Nemotron 3.5 ASR 스트리밍 0.6B(int8) 5종(80/160/320/560/1120 ms) 추가(사용자 결정 Q25·Q26)
+ *   change-hyungchul-20261011-0150 : 2종(320 / 560 ms)으로 줄였다(사용자 결정 Q28 — 80 / 160 / 1120 ms 는 필요 없음)
  *   · 패키지 sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-<지연>-int8-2026-06-11 (encoder/decoder/joiner .int8.onnx + tokens.txt)
  *   · 스트리밍이라 조각 상한이 없다(maxChunkSec = null). 라이선스 OpenMDW-1.1("ready for commercial use", HF 모델 카드)
  */
@@ -126,7 +127,7 @@ object SherpaCatalog {
     /**
      * add-hyungchul-20261011-0031
      * 목적: Nemotron 3.5 ASR 스트리밍 0.6B int8 모델 정의를 만든다(공식 패키지 이름 규칙 그대로).
-     * 입력: chunkMs — 지연(청크) 80 / 160 / 320 / 560 / 1120
+     * 입력: chunkMs — 지연(청크) 320 / 560 (change-hyungchul-20261011-0150 : 공식 패키지는 80 / 160 / 320 / 560 / 1120 이 있고 앱은 2종만 쓴다)
      * 리턴: SherpaModelSpec(maxChunkSec = null — 스트리밍이라 파일 전체를 한 스트림으로 넣는다)
      * 근거: k2-fsa/sherpa-onnx PR #3671(다국어 Nemotron 3.5, 언어는 스트림 옵션 "language"),
      *       패키지 README "Use per-stream language strings such as "en", "ja", or "auto"",
@@ -147,9 +148,7 @@ object SherpaCatalog {
         displayName = "Nemotron 3.5 streaming ${chunkMs}ms (sherpa-onnx int8)",
     )
 
-    val NEMOTRON_80MS = nemotron(80)          // add-hyungchul-20261011-0031
-    val NEMOTRON_160MS = nemotron(160)
-    val NEMOTRON_320MS = nemotron(320)
+    // change-hyungchul-20261011-0150 : 사용자 요청 — 320 / 560 ms 만 남기고 80 / 160 / 1120 ms 는 뺐다(Q28)
+    val NEMOTRON_320MS = nemotron(320)        // add-hyungchul-20261011-0031
     val NEMOTRON_560MS = nemotron(560)
-    val NEMOTRON_1120MS = nemotron(1120)
 }

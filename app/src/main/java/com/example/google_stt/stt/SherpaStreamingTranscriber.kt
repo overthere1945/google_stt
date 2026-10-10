@@ -3,6 +3,7 @@
  * 목적 및 기능:
  * - sherpa-onnx(정적 링크 AAR 1.13.7) 스트리밍 인식기(OnlineRecognizer, transducer)로 Nemotron 3.5 ASR 스트리밍 0.6B 를 돌린다
  *   (2단계 2-2, 사용자 결정 Q25: Nemotron 먼저 / Cohere 보류, Q26: 지연 5종 등록).
+ *   change-hyungchul-20261011-0150 : 등록은 320 / 560 ms 2종으로 줄였다(사용자 결정 Q28).
  * - 모델은 배치 시작 때 1번만 불러(load) 배치 끝에 해제한다(close) — 불러오는 시간이 파일별 계측에 섞이지 않게.
  * - 공급(사용자 결정 Q19·Q27 "Feed 설정을 따른다"):
  *     · 100 ms(CHUNK_BYTES = 3,200 바이트) 조각을 FeedConfig.delayMs 간격으로 넣는다(REALTIME = 실시간, D50 = 2배속 …).
