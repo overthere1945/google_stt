@@ -105,6 +105,10 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
                 numThreads = NUM_THREADS,
                 provider = "cpu",
             )
+
+            // add-hyungchul-20261011-0031 : 스트리밍 모델은 SherpaStreamingTranscriber 가 맡는다(여기로 오면 호출부 오류)
+            SherpaFamily.NEMOTRON_STREAMING ->
+                throw IllegalArgumentException("${spec.displayName} 은 스트리밍 모델입니다 — SherpaStreamingTranscriber 를 쓰세요.")
         }
 
         // add-hyungchul-20261010-1951 : 네이티브에 넘기는 경로·설정을 불러오기 직전에 남긴다(여기서 앱이 죽으면 마지막 줄이 이것이 된다)
@@ -313,6 +317,8 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
             SherpaFamily.WHISPER -> "whisper language=${whisperLanguage(locale)}"
             SherpaFamily.QWEN3_ASR -> "qwen3 language=${qwen3Language(locale).ifEmpty { "auto" }}"
             SherpaFamily.OMNILINGUAL -> "omnilingual (언어 지정 없음)"
+            // add-hyungchul-20261011-0031 : Nemotron 스트리밍 — 스트림 옵션 language 값
+            SherpaFamily.NEMOTRON_STREAMING -> "nemotron language=${SherpaStreamingTranscriber.nemotronLanguage(locale)}"
         }
     }
 }

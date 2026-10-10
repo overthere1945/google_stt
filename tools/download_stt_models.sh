@@ -9,13 +9,15 @@
 #      앱은 '모든 파일 접근' 권한으로 읽는다(처음 START 때 설정 화면이 열린다). 앱을 지워도 모델은 남는다.
 #      앱 설치 여부와 상관없이 넣을 수 있다(MTP/파일 관리자로 Documents/stt_models 에 복사해도 된다).
 # 사용법: 프로젝트 루트에서
-#   bash tools/download_stt_models.sh                 # 기본: aar + whisper-base + qwen3asr-0.6b + omnilingual-300m
+#   bash tools/download_stt_models.sh                 # 기본: aar + whisper-base + qwen3asr-0.6b + omnilingual-300m + nemotron3.5-560ms
 #   bash tools/download_stt_models.sh aar             # AAR 만
 #   bash tools/download_stt_models.sh whisper-tiny whisper-small   # 고른 모델만
-#   bash tools/download_stt_models.sh all             # aar + 모델 7종 전부(약 3.5 GB)
+#   bash tools/download_stt_models.sh all             # aar + 모델 12종 전부(약 7 GB)
 #   --no-push 를 붙이면 PC 에만 받고 휴대폰에는 넣지 않는다
 # 모델 이름: whisper-tiny / whisper-base / whisper-small / whisper-medium / whisper-turbo / qwen3asr-0.6b / omnilingual-300m
+#           nemotron3.5-80ms / nemotron3.5-160ms / nemotron3.5-320ms / nemotron3.5-560ms / nemotron3.5-1120ms (스트리밍, 각 약 0.7 GB)
 # add-hyungchul-20261010-1800
+# change-hyungchul-20261011-0031 : 2단계 2-2 — Nemotron 3.5 스트리밍 5종 추가(사용자 결정 Q26: 기본 받기는 560 ms)
 
 set -u                                                     # 정의 안 된 변수를 쓰면 멈춘다
 
@@ -38,9 +40,10 @@ TARGETS=()
 for a in "$@"; do
   if [ "$a" = "--no-push" ]; then PUSH=0; else TARGETS+=("$a"); fi
 done
-[ ${#TARGETS[@]} -eq 0 ] && TARGETS=(aar whisper-base qwen3asr-0.6b omnilingual-300m)   # 기본 묶음
+[ ${#TARGETS[@]} -eq 0 ] && TARGETS=(aar whisper-base qwen3asr-0.6b omnilingual-300m nemotron3.5-560ms)   # 기본 묶음(change-hyungchul-20261011-0031 : 560 ms 추가)
 if [ "${TARGETS[0]}" = "all" ]; then
-  TARGETS=(aar whisper-tiny whisper-base whisper-small whisper-medium whisper-turbo qwen3asr-0.6b omnilingual-300m)
+  TARGETS=(aar whisper-tiny whisper-base whisper-small whisper-medium whisper-turbo qwen3asr-0.6b omnilingual-300m \
+           nemotron3.5-80ms nemotron3.5-160ms nemotron3.5-320ms nemotron3.5-560ms nemotron3.5-1120ms)   # change-hyungchul-20261011-0031
 fi
 
 # 목적: 모델 이름 → "패키지 이름|앱이 쓰는 파일(공백 구분)" 을 출력한다(앱 stt/SherpaModels.kt 와 같은 값)
@@ -54,6 +57,10 @@ spec_of() {
       echo "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25|conv_frontend.onnx encoder.int8.onnx decoder.int8.onnx tokenizer" ;;
     omnilingual-300m)
       echo "sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12|model.int8.onnx tokens.txt LICENSE" ;;
+    # add-hyungchul-20261011-0031 : Nemotron 3.5 스트리밍(앱 SherpaCatalog.nemotron 과 같은 패키지·파일)
+    nemotron3.5-80ms|nemotron3.5-160ms|nemotron3.5-320ms|nemotron3.5-560ms|nemotron3.5-1120ms)
+      local ms="${1#nemotron3.5-}"                           # 80ms / 160ms / …
+      echo "sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-$ms-int8-2026-06-11|encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt" ;;
     *) return 1 ;;
   esac
 }

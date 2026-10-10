@@ -13,7 +13,8 @@ package com.example.google_stt.stt
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
 
 // change-hyungchul-20261010-1800 : 2단계 — sherpa-onnx 오프라인 엔진(SHERPA_OFFLINE) 추가
-enum class SttEngine { ML_KIT, ANDROID_PLATFORM_ON_DEVICE, SHERPA_OFFLINE }
+// change-hyungchul-20261011-0031 : 2단계 2-2 — sherpa-onnx 스트리밍 엔진(SHERPA_STREAMING, Nemotron 3.5) 추가
+enum class SttEngine { ML_KIT, ANDROID_PLATFORM_ON_DEVICE, SHERPA_OFFLINE, SHERPA_STREAMING }
 
 data class ModelConfig(
     val folder: String,
@@ -83,6 +84,13 @@ object SttCatalog {
         sherpaModel("whisper-turbo", SherpaCatalog.WHISPER_TURBO),
         sherpaModel("qwen3asr-0.6b", SherpaCatalog.QWEN3_ASR_06B),
         sherpaModel("omnilingual-300m", SherpaCatalog.OMNILINGUAL_300M),
+        // add-hyungchul-20261011-0031 : 2단계 2-2 — Nemotron 3.5 스트리밍 5종(사용자 결정 Q26: 5종 등록, 기본 받기는 560 ms)
+        //   결과 이름: <엔진>=nemotron3.5-<지연>ms, <모델>=sherpa-int8 → nemotron3.5-560ms_sherpa-int8_<조건>/
+        sherpaModel("nemotron3.5-80ms", SherpaCatalog.NEMOTRON_80MS, SttEngine.SHERPA_STREAMING),
+        sherpaModel("nemotron3.5-160ms", SherpaCatalog.NEMOTRON_160MS, SttEngine.SHERPA_STREAMING),
+        sherpaModel("nemotron3.5-320ms", SherpaCatalog.NEMOTRON_320MS, SttEngine.SHERPA_STREAMING),
+        sherpaModel("nemotron3.5-560ms", SherpaCatalog.NEMOTRON_560MS, SttEngine.SHERPA_STREAMING),
+        sherpaModel("nemotron3.5-1120ms", SherpaCatalog.NEMOTRON_1120MS, SttEngine.SHERPA_STREAMING),
     )
 
     // change-hyungchul-20260824
@@ -107,12 +115,13 @@ object SttCatalog {
     /**
      * add-hyungchul-20261010-1800
      * 목적: sherpa-onnx 모델의 ModelConfig 를 만든다.
-     * 입력: name — 결과 엔진 이름이자 mode 컬럼 값("계열-크기", '_' 금지), spec — 모델 정의
-     * 리턴: ModelConfig(engine = SHERPA_OFFLINE, resultModel = "sherpa-int8")
+     * 입력: name — 결과 엔진 이름이자 mode 컬럼 값("계열-크기", '_' 금지), spec — 모델 정의,
+     *       engine — SHERPA_OFFLINE(기본) / SHERPA_STREAMING (change-hyungchul-20261011-0031 : 인자 추가)
+     * 리턴: ModelConfig(engine = engine, resultModel = "sherpa-int8")
      */
-    private fun sherpaModel(name: String, spec: SherpaModelSpec) = ModelConfig(
+    private fun sherpaModel(name: String, spec: SherpaModelSpec, engine: SttEngine = SttEngine.SHERPA_OFFLINE) = ModelConfig(
         folder = name,                       // 로그 "모델/경로" · CSV mode 컬럼
-        engine = SttEngine.SHERPA_OFFLINE,
+        engine = engine,                     // change-hyungchul-20261011-0031 : SHERPA_OFFLINE 고정 → 인자
         resultEngine = name,                 // 결과 폴더 <엔진>
         resultModel = "sherpa-int8",         // 결과 폴더 <모델> = 런타임-정밀도
         sherpa = spec,

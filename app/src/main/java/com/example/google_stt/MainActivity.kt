@@ -75,6 +75,10 @@
  *       stt/SherpaOfflineTranscriber.kt  모델 불러오기·조각 디코딩·해제
  *   · Model 스피너에 Google 2개 뒤로 sherpa 모델을 붙인다. 조건 이름에는 EPD 를 넣지 않는다(sherpa 는 EPD 를 쓰지 않음).
  *
+ * add-hyungchul-20261011-0031 — 2단계 2-2: sherpa-onnx 스트리밍(Nemotron 3.5, 지연 5종)
+ *       stt/SherpaStreamingTranscriber.kt  스트리밍 불러오기·Feed 간격 공급·토큰으로 글자 만들기·해제
+ *   · 스피너 목록은 SttCatalog.models 에서 자동으로 만들어지므로 이 파일의 코드는 바꾸지 않았다.
+ *
  * ※ 이 3개 경로 중 어느 것도 Google Cloud 인증(서비스 계정 JSON, API Key, OAuth 토큰)을 사용하지 않는다.
  */
 package com.example.google_stt

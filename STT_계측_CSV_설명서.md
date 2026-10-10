@@ -494,3 +494,28 @@ run_meta 새 키(sherpa 엔진일 때만 채움):
 - `output/whisper-base_sherpa-int8_<조건>/<하위>/<파일>.txt`
 - `output/whisper-base_<조건>_result.csv`, `output/whisper-base_<조건>_run_meta.csv` (모델마다 CSV 가 따로 생긴다)
 - 조건 이름에는 EPD 부분이 붙지 않는다(예: `SILERO`, `NS_GTCRN_SILERO_SAFE`, `PYANNOTE_S500_SEG10`).
+
+## 7. v2.2.0 — sherpa-onnx 스트리밍(Nemotron 3.5) 엔진의 값 뜻 (add-hyungchul-20261011-0031)
+
+result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). Nemotron 3.5 스트리밍 행에서는 아래처럼 읽는다(6장 오프라인 sherpa 와 다른 곳만).
+
+| 컬럼 | 스트리밍 sherpa 에서의 값 |
+|---|---|
+| `engine` | `SHERPA_STREAMING` |
+| `mode` | `nemotron3.5-80ms` / `-160ms` / `-320ms` / `-560ms` / `-1120ms` |
+| `execution` | `ON_DEVICE(sherpa-onnx 1.13.7 (static-link onnxruntime), streaming, cpu, threads=4)` |
+| `feed_mode` / `feed_delay_ms` | **실제로 쓴다** — 100 ms 조각을 이 간격으로 넣는다(REALTIME = 실시간, D50 = 2배속 …) |
+| `feed_ms` | 공급에 걸린 시간 합. 디코딩이 공급을 못 따라가면 `feed_expected_ms` 보다 길어진다 |
+| `feed_expected_ms`, `feed_stall_ratio` | Google 경로와 같은 식(이론 공급시간 / 실제 ÷ 이론). 정체 경고도 같은 기준 |
+| `first_result_ms` | 공급 시작 → **첫 글자**(스트리밍 체감 응답성) |
+| `tail_ms` | ★ 마지막 조각 공급 끝 → 최종 결과(조각이 여러 개면 합). 0.5 s 꼬리 무음 처리 포함 |
+| `stt_wall_ms` | 공급 시작 → 끝(REALTIME 이면 ≈ STT 입력 길이) |
+| `segments` | 스트림 수 — "엔진별 최대 길이" 면 1(파일 전체를 스트림 하나로), SEG10 이면 10초 조각 수 |
+| `seg_chunks` / `seg_splits` | "엔진별 최대 길이" 면 1 / 0(나누지 않는다). SEG10 이면 오프라인과 같다 |
+| `epd_mode` | 항상 `OFF` |
+| `stt_timeout_sec`, `stt_session_index` | `-1` |
+
+- 엔진 속도 비교는 **`tail_ms`**(공급과 무관한 처리 지연)와 `first_result_ms` 로 한다. REALTIME 에서 `rtf` 는 1 근처가 정상이다.
+- 결과 글자는 sherpa `text` 가 아니라 **토큰을 이어 붙여** 만든다(sherpa 1.13.7 의 스트리밍 `text` 가 한국어 띄어쓰기를 지우기 때문 — 실측 확인).
+- run_meta: `stt_language` = `nemotron language=ko`, `stt_chunk_max_sec` = `none`("엔진별 최대 길이") 또는 `10.0`(SEG10), `stt_license` = `OpenMDW-1.1`.
+- 결과 파일: `output/nemotron3.5-560ms_sherpa-int8_<조건>/…`, `output/nemotron3.5-560ms_<조건>_result.csv`

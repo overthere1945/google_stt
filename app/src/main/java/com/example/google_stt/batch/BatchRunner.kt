@@ -39,6 +39,11 @@
  * add-hyungchul-20261010-2238 — sherpa 모델 위치 변경(사용자 결정 Q24, v2.1.1)
  *   · 모델 폴더: 앱 전용 Android/data/…/files/models → 공용 /sdcard/Documents/stt_models (adb 가 만든 앱 전용 폴더를 앱이 못 읽었다).
  *   · 배치 시작 전에 '모든 파일 접근'(Environment.isExternalStorageManager) 을 확인하고, 꺼져 있으면 설정 화면을 열고 시작하지 않는다.
+ *
+ * add-hyungchul-20261011-0031 — 2단계 2-2: sherpa-onnx 스트리밍(Nemotron 3.5, SHERPA_STREAMING) (사용자 결정 Q25~Q27, v2.2.0)
+ *   · SherpaStreamingTranscriber 로 100 ms 조각을 Feed 간격(REALTIME / D50 …)으로 넣는다 → feed_ms·feed_expected_ms·정체 판정이 Google 경로처럼 의미를 갖는다.
+ *   · "엔진별 최대 길이" 면 조각을 나누지 않고 파일 전체(VAD 를 켰으면 이어 붙인 말 구간)를 스트림 하나로 넣는다. SEG10 이면 10초 조각마다 스트림.
+ *   · Speech EPD·warm-up·SODA 할당량 안내는 쓰지 않는다(오프라인 sherpa 와 같음).
  */
 package com.example.google_stt.batch
 
@@ -84,6 +89,8 @@ import com.example.google_stt.stt.PlatformOnDeviceTranscriber
 import com.example.google_stt.stt.QUOTA_BUDGET_SESSIONS
 import com.example.google_stt.stt.QUOTA_COOLDOWN_MS
 import com.example.google_stt.stt.SherpaOfflineTranscriber   // add-hyungchul-20261010-1800
+import com.example.google_stt.stt.SherpaFamily               // add-hyungchul-20261011-0031
+import com.example.google_stt.stt.SherpaStreamingTranscriber // add-hyungchul-20261011-0031
 import com.example.google_stt.stt.SttEngine
 import com.example.google_stt.stt.WARMUP_TIMEOUT_MS
 import com.example.google_stt.stt.describe
@@ -196,6 +203,7 @@ class BatchRunner(
         // change-hyungchul-20261009-1626 : 10초 통일(SEG10)에서는 EPD 를 쓰지 않으므로 CSV·run_meta·세션 예상치에도 OFF 로 남긴다(검토 지적 A)
         // change-hyungchul-20261010-1800 : sherpa-onnx 엔진도 조각을 모델 상한 이하로 나눠 넣으므로 EPD 를 쓰지 않는다
         val sherpaSpec = modelConfig.sherpa                       // add-hyungchul-20261010-1800 : sherpa 모델 정의(Google 엔진이면 null)
+        val sherpaStreaming = sherpaSpec?.family == SherpaFamily.NEMOTRON_STREAMING   // add-hyungchul-20261011-0031 : 스트리밍 sherpa(Nemotron) 여부
         val epdSelection =
             if (req.vadSelection.segMode.maxSec != null || sherpaSpec != null) EpdSelection(EpdConfig(EpdMode.OFF), null) else req.epdSelection
         val noiseConfig = req.noiseConfig
@@ -209,6 +217,7 @@ class BatchRunner(
         var vadProcessor: VadDetector? = null          // add-hyungchul-20260825-1430 / change-hyungchul-20261009-1530 : 엔진 공통 계약
         var noiseReducer: NoiseReducer? = null         // add-hyungchul-20260826-1100
         var sherpaT: SherpaOfflineTranscriber? = null  // add-hyungchul-20261010-1800 : sherpa-onnx 전사기(배치 1회에 1개, finally 에서 해제)
+        var sherpaS: SherpaStreamingTranscriber? = null   // add-hyungchul-20261011-0031 : sherpa-onnx 스트리밍 전사기(배치 1회에 1개, finally 에서 해제)
         try {
             val inputRoot = DocumentFile.fromTreeUri(activity, inUri)
             val outputRoot = DocumentFile.fromTreeUri(activity, outUri)
@@ -234,8 +243,12 @@ class BatchRunner(
             appendLog(activity.getString(R.string.log_model, modelFolder))
             appendLog("[feed] ${feed.name} (chunk delay ${feed.delayMs} ms)")
             // add-hyungchul-20261010-1800 : 오프라인 엔진은 실시간 공급을 하지 않는다(사용자 결정: 최대 속도)
-            if (sherpaSpec != null) {
+            if (sherpaSpec != null && !sherpaStreaming) {        // change-hyungchul-20261011-0031 : 오프라인 sherpa 만
                 appendLog("[feed] sherpa-onnx 오프라인 엔진은 공급 속도 설정을 쓰지 않는다 — 조각을 받자마자 최대 속도로 디코딩한다.")
+            }
+            // add-hyungchul-20261011-0031 : 스트리밍 sherpa 는 Feed 설정을 따른다(사용자 결정 Q27)
+            if (sherpaStreaming) {
+                appendLog("[feed] sherpa-onnx 스트리밍: 100 ms 조각을 ${feed.delayMs} ms 간격으로 넣는다(실시간 ×${"%.1f".format(Locale.US, 100.0 / feed.delayMs)}).")
             }
             // add-hyungchul-20260825-1430
             appendLog(
@@ -365,13 +378,26 @@ class BatchRunner(
                 )
             }
             // add-hyungchul-20261010-1800 : sherpa-onnx 모델을 배치 전체에서 1번만 불러 둔다(불러오는 시간이 파일별 계측에 섞이지 않게)
-            if (sherpaSpec != null) {
+            if (sherpaSpec != null && !sherpaStreaming) {        // change-hyungchul-20261011-0031 : 오프라인 sherpa 만
                 val t = SherpaOfflineTranscriber(appContext)
                 sherpaT = t                                   // finally 에서 해제(불러오다 실패해도 해제한다)
                 appendLog("[sherpa] ${sherpaSpec.displayName} 불러오는 중 — ${SherpaOfflineTranscriber.modelDir(appContext, sherpaSpec).absolutePath}")
                 withContext(Dispatchers.Default) { t.load(sherpaSpec, locale) }
                 appendLog(
                     "[sherpa] model=${sherpaSpec.dirName}, runtime=${SherpaOfflineTranscriber.RUNTIME}, " +
+                        "threads=${SherpaOfflineTranscriber.NUM_THREADS}, load=${t.loadMs}ms, " +
+                        "${SherpaOfflineTranscriber.languageLabel(sherpaSpec, locale)}, " +
+                        "license=${sherpaSpec.license} (commercial=${sherpaSpec.commercial})",
+                )
+            }
+            // add-hyungchul-20261011-0031 : 스트리밍 sherpa(Nemotron)도 배치 전체에서 1번만 불러 둔다
+            if (sherpaSpec != null && sherpaStreaming) {
+                val t = SherpaStreamingTranscriber(appContext)
+                sherpaS = t                                   // finally 에서 해제(불러오다 실패해도 해제한다)
+                appendLog("[sherpa] ${sherpaSpec.displayName} 불러오는 중 — ${SherpaOfflineTranscriber.modelDir(appContext, sherpaSpec).absolutePath}")
+                withContext(Dispatchers.Default) { t.load(sherpaSpec, locale) }
+                appendLog(
+                    "[sherpa] model=${sherpaSpec.dirName}, runtime=${SherpaOfflineTranscriber.RUNTIME}, streaming, " +
                         "threads=${SherpaOfflineTranscriber.NUM_THREADS}, load=${t.loadMs}ms, " +
                         "${SherpaOfflineTranscriber.languageLabel(sherpaSpec, locale)}, " +
                         "license=${sherpaSpec.license} (commercial=${sherpaSpec.commercial})",
@@ -385,7 +411,11 @@ class BatchRunner(
             // add-hyungchul-20261010-1800 : sherpa 엔진의 조각 상한 안내(엔진별 최대 길이 모드)와 EPD 무시 안내
             if (sherpaSpec != null) {
                 val cap = vadSelection.segMode.maxSec ?: sherpaSpec.maxChunkSec
-                appendLog("[seg] sherpa: 조각 상한 ${cap}s 로 나눠 조각마다 디코딩한다.")
+                // change-hyungchul-20261011-0031 : 상한이 없으면(스트리밍 + 엔진별 최대 길이) 나누지 않는다
+                appendLog(
+                    if (cap != null) "[seg] sherpa: 조각 상한 ${cap}s 로 나눠 조각마다 디코딩한다."
+                    else "[seg] sherpa 스트리밍: 조각을 나누지 않고 파일 전체를 스트림 하나로 넣는다.",
+                )
                 if (vadSelection.segMode != SegMode.SEG10 && req.epdSelection.enabled) {
                     appendLog("[seg] sherpa 엔진은 Speech EPD 를 쓰지 않는다(설정은 무시된다).")
                 }
@@ -450,8 +480,9 @@ class BatchRunner(
                             "stt_model_files" to (if (sherpaSpec != null) SherpaOfflineTranscriber.filesSummary(appContext, sherpaSpec) else ""),
                             "stt_model_sha256" to (if (sherpaSpec != null) SherpaOfflineTranscriber.sha256Summary(appContext, sherpaSpec) else ""),
                             "stt_num_threads" to (if (sherpaSpec != null) SherpaOfflineTranscriber.NUM_THREADS.toString() else ""),
-                            "stt_model_load_ms" to (sherpaT?.loadMs?.toString() ?: ""),
-                            "stt_chunk_max_sec" to (if (sherpaSpec != null) (vadSelection.segMode.maxSec ?: sherpaSpec.maxChunkSec).toString() else ""),
+                            // change-hyungchul-20261011-0031 : 스트리밍 전사기(sherpaS)의 불러오기 시간도 남긴다. 조각 상한이 없으면 "none"
+                            "stt_model_load_ms" to ((sherpaT?.loadMs ?: sherpaS?.loadMs)?.toString() ?: ""),
+                            "stt_chunk_max_sec" to (if (sherpaSpec != null) ((vadSelection.segMode.maxSec ?: sherpaSpec.maxChunkSec)?.toString() ?: "none") else ""),
                             "stt_language" to (if (sherpaSpec != null) SherpaOfflineTranscriber.languageLabel(sherpaSpec, locale) else ""),
                             "stt_license" to (sherpaSpec?.license ?: ""),
                             "stt_commercial" to (sherpaSpec?.commercial ?: ""),
@@ -838,7 +869,15 @@ class BatchRunner(
                     //   정작 원인을 알고 싶은 실패 행의 stt_session_index 가 -1 로 남았다.
                     // change-hyungchul-20261010-1800 : sherpa 엔진이면 SherpaOfflineTranscriber 로 조각을 차례로 디코딩한다(세션 번호는 -1 그대로)
                     val sherpaRunner = sherpaT
-                    val outcome = if (sherpaRunner != null) {
+                    val streamRunner = sherpaS                         // add-hyungchul-20261011-0031 : 스트리밍 sherpa
+                    val outcome = if (streamRunner != null) {
+                        // add-hyungchul-20261011-0031 : Feed 간격으로 넣으며 기다리므로(Thread.sleep) IO 디스패처에서 돈다
+                        withContext(Dispatchers.IO) {
+                            streamRunner.transcribe(sttChunks, locale, feed) { fed ->
+                                updateProgress((baseUnits + fed) / totalUnits.toDouble())
+                            }
+                        }
+                    } else if (sherpaRunner != null) {
                         withContext(Dispatchers.Default) {
                             sherpaRunner.transcribe(sttChunks, locale) { fed ->
                                 updateProgress((baseUnits + fed) / totalUnits.toDouble())
@@ -910,7 +949,8 @@ class BatchRunner(
 
                     // add-hyungchul-20260914-1500 : 공급 정체 계측
                     // change-hyungchul-20261010-1800 : sherpa 엔진은 공급을 하지 않으므로 이론 공급시간도 -1(정체 판정도 하지 않는다)
-                    row.feedExpectedMs = if (sherpaSpec != null) -1 else expectedFeedMs(sttPcm.size, feed.delayMs)
+                    // change-hyungchul-20261011-0031 : 스트리밍 sherpa 는 Feed 간격으로 넣으므로 이론 공급시간·정체 판정을 Google 경로와 같게 한다
+                    row.feedExpectedMs = if (sherpaSpec != null && !sherpaStreaming) -1 else expectedFeedMs(sttPcm.size, feed.delayMs)
                     row.feedStallRatio =
                         if (row.feedExpectedMs > 0 && row.feedMs >= 0) {
                             row.feedMs.toDouble() / row.feedExpectedMs
@@ -1050,6 +1090,7 @@ class BatchRunner(
             runCatching { vadProcessor?.close() }   // add-hyungchul-20260825-1430
             runCatching { noiseReducer?.close() }   // add-hyungchul-20260826-1100
             runCatching { sherpaT?.close() }        // add-hyungchul-20261010-1800 : sherpa 인식기 해제(네이티브 메모리)
+            runCatching { sherpaS?.close() }        // add-hyungchul-20261011-0031 : sherpa 스트리밍 인식기 해제
             dbg("batch", "finally: vad/ns/sherpa released -> onBatchFinished")   // add-hyungchul-20261010-1951 : 어떤 경로로 끝나도 남는 마지막 줄
             host.onBatchFinished()   // change-hyungchul-20261009-1514 : running=false / START 버튼 복구를 MainActivity 에 맡긴다
         }
@@ -1068,6 +1109,10 @@ class BatchRunner(
         // add-hyungchul-20261010-1800 : sherpa-onnx 오프라인(앱 안에서 직접 추론)
         SttEngine.SHERPA_OFFLINE ->
             "ON_DEVICE(${SherpaOfflineTranscriber.RUNTIME}, cpu, threads=${SherpaOfflineTranscriber.NUM_THREADS})"
+
+        // add-hyungchul-20261011-0031 : sherpa-onnx 스트리밍(앱 안에서 직접 추론)
+        SttEngine.SHERPA_STREAMING ->
+            "ON_DEVICE(${SherpaOfflineTranscriber.RUNTIME}, streaming, cpu, threads=${SherpaOfflineTranscriber.NUM_THREADS})"
     }
 
     /** 배치 시작 전 1회 가용성 점검. 로그에 남기고 run_meta.csv 용 문자열도 돌려준다. */
@@ -1119,7 +1164,7 @@ class BatchRunner(
 
             // add-hyungchul-20261010-1800 : sherpa-onnx — 모델 파일이 휴대폰 모델 폴더에 있는지 본다
             //   (change-hyungchul-20261010-2238 : 앱 전용 폴더 → 공용 /sdcard/Documents/stt_models, 사용자 결정 Q24)
-            SttEngine.SHERPA_OFFLINE -> {
+            SttEngine.SHERPA_OFFLINE, SttEngine.SHERPA_STREAMING -> {    // change-hyungchul-20261011-0031 : 스트리밍도 같은 점검
                 val spec = config.sherpa
                 val line = if (spec == null) {
                     "sherpa model spec 없음"

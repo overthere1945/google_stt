@@ -11,17 +11,23 @@
  *    k2-fsa.github.io/sherpa/onnx/qwen3-asr/pretrained.html, …/omnilingual-asr/models.html).
  *
  * add-hyungchul-20261010-1800
+ *
+ * add-hyungchul-20261011-0031 — 2단계 2-2: Nemotron 3.5 ASR 스트리밍 0.6B(int8) 5종(80/160/320/560/1120 ms) 추가(사용자 결정 Q25·Q26)
+ *   · 패키지 sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-<지연>-int8-2026-06-11 (encoder/decoder/joiner .int8.onnx + tokens.txt)
+ *   · 스트리밍이라 조각 상한이 없다(maxChunkSec = null). 라이선스 OpenMDW-1.1("ready for commercial use", HF 모델 카드)
  */
 package com.example.google_stt.stt
 
 /** sherpa-onnx 모델 계열(설정 방식이 계열마다 다르다) */
-enum class SherpaFamily { WHISPER, QWEN3_ASR, OMNILINGUAL }
+// change-hyungchul-20261011-0031 : NEMOTRON_STREAMING(OnlineRecognizer · transducer) 추가
+enum class SherpaFamily { WHISPER, QWEN3_ASR, OMNILINGUAL, NEMOTRON_STREAMING }
 
 /**
  * 목적: sherpa-onnx 오프라인 모델 1개의 정의.
  * - dirName     : 휴대폰 models/ 아래 폴더 이름 = 공식 배포 패키지 이름(tar.bz2 이름에서 확장자 뺀 것)
  * - files       : 역할 → 폴더 안 상대 경로(encoder / decoder / tokens / model / tokenizer …)
  * - maxChunkSec : "엔진별 최대 길이" 모드에서 한 번에 넣는 조각 상한(초)
+ *                 (change-hyungchul-20261011-0031 : null = 상한 없음 — 스트리밍 모델은 파일 전체를 스트림 하나로 넣는다)
  * - license / commercial : 결과 CSV·run_meta 에 남기는 가중치 라이선스와 상업 사용 판정
  * - displayName : 화면 Model 스피너 표시 이름
  */
@@ -29,7 +35,7 @@ data class SherpaModelSpec(
     val family: SherpaFamily,
     val dirName: String,
     val files: Map<String, String>,
-    val maxChunkSec: Double,
+    val maxChunkSec: Double?,                 // change-hyungchul-20261011-0031 : Double → Double?(스트리밍은 null)
     val license: String,
     val commercial: String,
     val displayName: String,
@@ -43,6 +49,7 @@ object SherpaRole {
     const val MODEL = "model"
     const val CONV_FRONTEND = "conv_frontend"
     const val TOKENIZER = "tokenizer"       // Qwen3-ASR 토크나이저 폴더(merges.txt / vocab.json / tokenizer_config.json)
+    const val JOINER = "joiner"             // add-hyungchul-20261011-0031 : transducer(Nemotron) joiner
 }
 
 /** 모델 목록 */
@@ -115,4 +122,34 @@ object SherpaCatalog {
         commercial = "allowed",
         displayName = "Omnilingual ASR 300M CTC (sherpa-onnx int8)",
     )
+
+    /**
+     * add-hyungchul-20261011-0031
+     * 목적: Nemotron 3.5 ASR 스트리밍 0.6B int8 모델 정의를 만든다(공식 패키지 이름 규칙 그대로).
+     * 입력: chunkMs — 지연(청크) 80 / 160 / 320 / 560 / 1120
+     * 리턴: SherpaModelSpec(maxChunkSec = null — 스트리밍이라 파일 전체를 한 스트림으로 넣는다)
+     * 근거: k2-fsa/sherpa-onnx PR #3671(다국어 Nemotron 3.5, 언어는 스트림 옵션 "language"),
+     *       패키지 README "Use per-stream language strings such as "en", "ja", or "auto"",
+     *       HF nvidia/nemotron-3.5-asr-streaming-0.6b(OpenMDW-1.1, ko-KR transcription-ready, 지연 5단계)
+     */
+    private fun nemotron(chunkMs: Int) = SherpaModelSpec(
+        family = SherpaFamily.NEMOTRON_STREAMING,
+        dirName = "sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-${chunkMs}ms-int8-2026-06-11",
+        files = mapOf(
+            SherpaRole.ENCODER to "encoder.int8.onnx",
+            SherpaRole.DECODER to "decoder.int8.onnx",
+            SherpaRole.JOINER to "joiner.int8.onnx",
+            SherpaRole.TOKENS to "tokens.txt",
+        ),
+        maxChunkSec = null,                   // 조각 상한 없음(스트리밍)
+        license = "OpenMDW-1.1",
+        commercial = "allowed",
+        displayName = "Nemotron 3.5 streaming ${chunkMs}ms (sherpa-onnx int8)",
+    )
+
+    val NEMOTRON_80MS = nemotron(80)          // add-hyungchul-20261011-0031
+    val NEMOTRON_160MS = nemotron(160)
+    val NEMOTRON_320MS = nemotron(320)
+    val NEMOTRON_560MS = nemotron(560)
+    val NEMOTRON_1120MS = nemotron(1120)
 }

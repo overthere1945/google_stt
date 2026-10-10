@@ -77,7 +77,8 @@ class GoogleSttSession(
                 platform.transcribeAndroidOnDevice(pcm, locale, feed, onFed)
 
             // add-hyungchul-20261010-1800 : sherpa-onnx 는 Google 세션(SODA 할당량)을 쓰지 않는다 — BatchRunner 가 SherpaOfflineTranscriber 로 직접 부른다
-            SttEngine.SHERPA_OFFLINE ->
+            // change-hyungchul-20261011-0031 : 스트리밍(SHERPA_STREAMING, Nemotron)도 같다 — BatchRunner 가 SherpaStreamingTranscriber 로 직접 부른다
+            SttEngine.SHERPA_OFFLINE, SttEngine.SHERPA_STREAMING ->
                 throw IllegalStateException("sherpa-onnx 엔진은 Google 세션 관리자를 거치지 않습니다.")
         }
     }
