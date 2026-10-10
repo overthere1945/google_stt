@@ -30,6 +30,11 @@
  *   · 실시간 공급 없이 최대 속도로 디코딩한다(4 스레드). feed_ms = -1, tail_ms = stt_wall_ms.
  *   · run_meta 에 stt_runtime / stt_model_dir / stt_model_files / stt_model_sha256 / stt_num_threads / stt_model_load_ms /
  *     stt_chunk_max_sec / stt_language / stt_license / stt_commercial 키를 추가했다(result.csv 컬럼은 그대로).
+ *
+ * add-hyungchul-20261010-1951 — Logcat 디버그 출력(사용자 결정 Q22·Q23)
+ *   · 태그 "GoogleStt" + 접두어 "[D][batch]/[D][file]/[D][stt]" 로 Log.d 만 쓴다(화면 로그창에는 넣지 않는다).
+ *   · 화면 로그(appendLog)는 원래부터 같은 태그로 Logcat 에 Log.i 로 나간다 → NS/VAD/seg 결과 줄은 중복해서 넣지 않았다.
+ *   · 넣은 곳: 배치 시작/끝/중단, warm-up 결과, 파일 시작/끝, 디코딩 상세, STT 입력 조각·결과, finally. 프레임 단위 출력은 없다.
  */
 package com.example.google_stt.batch
 
@@ -151,6 +156,16 @@ class BatchRunner(
     private fun toast(msg: String) = host.toast(msg)
     private fun updateProgress(fraction: Double) = host.updateProgress(fraction)
     private fun openSpeechServiceSettings() = host.openSpeechServiceSettings()
+
+    /**
+     * add-hyungchul-20261010-1951
+     * 목적: Logcat 전용 디버그 한 줄(화면 로그창에는 넣지 않는다).
+     * 입력: stage — 단계 이름(batch / file / stt), msg — 내용
+     * 출력: Logcat "GoogleStt" 태그, "[D][단계] " 접두어 / 리턴: 없음
+     */
+    private fun dbg(stage: String, msg: String) {
+        Log.d(logTag, "[D][$stage] $msg")                  // 디버그 수준으로 출력
+    }
     // change-hyungchul-20261009-1530 : 결과 저장 위치를 v7.7 평탄화 규칙으로 바꾸며 인자가 (modelFolder, variant 목록) → (modelConfig, condition) 로 바뀌었다
     private fun writeCsv(outputRoot: DocumentFile, model: ModelConfig, condition: String, body: String) =
         store.writeCsv(outputRoot, model, condition, body)
@@ -191,6 +206,7 @@ class BatchRunner(
             val inputRoot = DocumentFile.fromTreeUri(activity, inUri)
             val outputRoot = DocumentFile.fromTreeUri(activity, outUri)
             if (inputRoot == null || outputRoot == null) {
+                dbg("batch", "abort: folder open fail (input=${inputRoot != null}, output=${outputRoot != null})")   // add-hyungchul-20261010-1951
                 toast(activity.getString(R.string.msg_folder_open_fail)); return
             }
 
@@ -200,8 +216,13 @@ class BatchRunner(
                 acc.sortedBy { displayRel(it) }
             }
             if (items.isEmpty()) {
+                dbg("batch", "abort: no audio files in input folder")              // add-hyungchul-20261010-1951
                 toast(activity.getString(R.string.msg_no_audio)); return
             }
+            // add-hyungchul-20261010-1951 : 배치 시작 — 이번 실행 조건을 한 줄로 남긴다
+            dbg("batch", "start: files=${items.size} engine=${modelConfig.engine} model=$modelFolder lang=${locale.toLanguageTag()} " +
+                "feed=${feed.name} vad=${if (vadSelection.enabled) vadSelection.conditionToken else "OFF"} ns=${noiseConfig.algorithm} " +
+                "seg=${vadSelection.segMode} epd=${epdSelection.config.mode} sherpa=${sherpaSpec?.dirName ?: "-"} condition=$condition")
             appendLog(activity.getString(R.string.log_found, items.size))
             appendLog(activity.getString(R.string.log_model, modelFolder))
             appendLog("[feed] ${feed.name} (chunk delay ${feed.delayMs} ms)")
@@ -253,6 +274,8 @@ class BatchRunner(
             if (sherpaSpec != null) {
                 val missing = SherpaOfflineTranscriber.missingFiles(appContext, sherpaSpec)
                 if (missing.isNotEmpty()) {
+                    SherpaOfflineTranscriber.logDirReport(appContext, sherpaSpec)   // add-hyungchul-20261010-1951 : 폴더·파일 상태를 Logcat 에 자세히
+                    dbg("batch", "abort: sherpa model missing=$missing")            // add-hyungchul-20261010-1951
                     appendLog("[sherpa][중단] " + SherpaOfflineTranscriber.missingMessage(appContext, sherpaSpec, missing))
                     toast("${sherpaSpec.displayName} 모델 파일이 없어 배치를 시작하지 않았습니다.")
                     return
@@ -265,6 +288,7 @@ class BatchRunner(
             session.sttSessionCount = 0                       // add-hyungchul-20260915-2200 : 배치마다 초기화
             // change-hyungchul-20261010-1800 : sherpa-onnx 는 SODA 세션이 없어 warm-up 을 하지 않는다(모델은 아래에서 1번 불러 둔다)
             val warmUpStatus = if (sherpaSpec != null) "N/A(sherpa)" else session.warmUpEngine(modelConfig, locale)
+            dbg("batch", "warmUp=$warmUpStatus")                    // add-hyungchul-20261010-1951
             if (warmUpStatus == "OK") {
                 appendLog("[warmup] 엔진 응답 확인 — 배치를 시작한다.")
             } else if (sherpaSpec == null) {                  // change-hyungchul-20261010-1800 : Google 엔진일 때만 중단
@@ -474,6 +498,7 @@ class BatchRunner(
 
             for ((index, item) in items.withIndex()) {
                 val relName = displayRel(item)
+                dbg("file", "${index + 1}/${items.size} start: $relName (${item.sizeBytes} bytes)")   // add-hyungchul-20261010-1951 : 파일 시작
 
                 // ── 파일 1건의 계측 행 준비 ──
                 val row = SttRow(
@@ -527,6 +552,9 @@ class BatchRunner(
                 row.srcRate = decoded.srcRate
                 row.srcCh = decoded.srcChannels
                 row.vadOriginalSec = decoded.durationSec   // add-hyungchul-20260825-1430
+                // add-hyungchul-20261010-1951 : 디코딩 결과(원본 형식 → 16 kHz mono PCM16 바이트 수·길이·소요 시간)
+                dbg("file", "decoded: pcm=${decoded.pcm.size}B ${"%.2f".format(Locale.US, decoded.durationSec)}s " +
+                    "src=${decoded.srcMime} ${decoded.srcRate}Hz ch=${decoded.srcChannels} decode=${decoded.decodeMs}ms")
 
                 // ── add-hyungchul-20260826-1100 : 2) Noise Reduction (선택) ──
                 // stagePcm 은 노이즈 저감까지 끝난 PCM 이다. 미사용이면 decoded.pcm 과 같은 객체다.
@@ -773,6 +801,10 @@ class BatchRunner(
                 // change-hyungchul-20260914-2350 : 조각별 타임아웃의 합(= 이 파일 1건의 최악 대기시간)
                 // change-hyungchul-20261010-1800 : sherpa 엔진은 시간 제한 없이 디코딩하므로 -1(해당 없음)
                 row.sttTimeoutSec = if (sherpaSpec != null) -1 else sttChunks.sumOf { sttTimeoutSec(it.size, feed) }
+                // add-hyungchul-20261010-1951 : STT 에 실제로 들어가는 조각(NS·VAD·구간 처리·EPD 를 모두 거친 결과)
+                dbg("stt", "call: engine=${modelConfig.engine} chunks=${sttChunks.size} " +
+                    "[${sttChunks.joinToString(",") { "%.1f".format(Locale.US, it.size / BYTES_PER_SEC.toDouble()) }}]s " +
+                    "total=${"%.2f".format(Locale.US, sttPcm.size / BYTES_PER_SEC.toDouble())}s timeout=${row.sttTimeoutSec}s")
                 try {
                     // change-hyungchul-20260914-2350
                     // 조각이 1개면 예전과 완전히 같은 경로다. 2개 이상이면 세션을 나눠 돌리고 합친다.
@@ -810,6 +842,9 @@ class BatchRunner(
                     row.chars = outcome.text.length
                     row.words = SttTelemetry.wordCount(outcome.text)
                     row.status = if (outcome.text.isBlank()) "NO_MATCH" else "OK"
+                    // add-hyungchul-20261010-1951 : STT 결과 요약(글자 수 0 이면 NO_MATCH)
+                    dbg("stt", "done: status=${row.status} chars=${row.chars} segments=${outcome.segments} " +
+                        "first=${outcome.firstResultMs}ms tail=${outcome.tailMs}ms wall=${outcome.sttWallMs}ms note='${outcome.engineNote}'")
 
                     // add-hyungchul-20260914-2130 : ML Kit segments 결함 자동 표시
                     // change-hyungchul-20260914-2350 : "글자 밀도" 조건을 추가해 오탐을 없앴다.
@@ -924,6 +959,7 @@ class BatchRunner(
 
                 snap.fillDelta(appContext, row)
                 csv.append(row.toCsvLine())
+                dbg("file", "${index + 1}/${items.size} end: status=${row.status} error='${row.error}'")   // add-hyungchul-20261010-1951 : 파일 끝
 
                 completedUnits++
                 updateProgress(completedUnits.toDouble() / totalUnits)
@@ -946,6 +982,7 @@ class BatchRunner(
             }
 
             updateProgress(1.0)
+            dbg("batch", "end: ok=$ok fail=$fail abortedByWedge=$abortedByWedge")   // add-hyungchul-20261010-1951 : 배치 끝
             // add-hyungchul-20260914-2350 : 먹통으로 끊긴 배치인지 결과 요약에 분명히 남긴다.
             if (abortedByWedge) {
                 appendLog(
@@ -989,6 +1026,7 @@ class BatchRunner(
             runCatching { vadProcessor?.close() }   // add-hyungchul-20260825-1430
             runCatching { noiseReducer?.close() }   // add-hyungchul-20260826-1100
             runCatching { sherpaT?.close() }        // add-hyungchul-20261010-1800 : sherpa 인식기 해제(네이티브 메모리)
+            dbg("batch", "finally: vad/ns/sherpa released -> onBatchFinished")   // add-hyungchul-20261010-1951 : 어떤 경로로 끝나도 남는 마지막 줄
             host.onBatchFinished()   // change-hyungchul-20261009-1514 : running=false / START 버튼 복구를 MainActivity 에 맡긴다
         }
     }

@@ -87,6 +87,9 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
    bash tools/download_stt_models.sh whisper-tiny whisper-small   # 고른 모델만 / all = 7종 전부(약 3.5 GB)
    ```
 5. 앱에서 입력 폴더·출력 폴더 선택 → 언어·Model·Feed·노이즈 저감·VAD 엔진·프리셋·구간 처리·EPD 선택 → START.
+6. 문제가 생기면 Android Studio **Logcat** 에서 `tag:GoogleStt` 로 봅니다. 화면 로그와 같은 줄(Log.i)에 더해 `[D]` 로 시작하는 디버그 줄(Log.d)이 함께 나옵니다(디버그 줄은 화면 로그창에는 나오지 않습니다).
+   - 디버그 줄만: `tag:GoogleStt message:[D]` / sherpa 만: `tag:GoogleStt message:[D][sherpa]`
+   - `[D][batch]` 배치 시작·끝·중단·warm-up, `[D][file]` 파일 시작·끝·디코딩 상세, `[D][stt]` STT 에 넣는 조각 길이·결과 요약, `[D][sherpa]` 모델 폴더 점검(있는지·읽을 수 있는지·크기)·설정 경로·불러오기 시간·조각별 디코딩 시간
 
 ## 4. 결과 폴더 (PC GUI v7.7 평탄화 규칙)
 

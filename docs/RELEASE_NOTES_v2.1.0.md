@@ -19,6 +19,7 @@
 3. `tools/download_stt_models.sh` — AAR 을 `app/libs/` 에 받고, 모델을 받아 필요한 파일만 풀고, SHA256SUMS.txt 를 만들고, adb 로 휴대폰 앱 전용 폴더에 넣는다.
 4. 결과 이름 "엔진 = 계열-크기": `whisper-base_sherpa-int8_<조건>/…`, `whisper-base_<조건>_result.csv`(모델마다 CSV 가 따로 생긴다).
 5. run_meta 키 추가: `stt_runtime, stt_model_dir, stt_model_files, stt_model_sha256, stt_num_threads, stt_model_load_ms, stt_chunk_max_sec, stt_language, stt_license, stt_commercial`.
+6. Logcat 디버그 출력(태그 `GoogleStt`, 접두어 `[D][batch]` / `[D][file]` / `[D][stt]` / `[D][sherpa]`, Log.d). 화면 로그창에는 넣지 않는다. 파일·단계·조각 단위로만 남기고 프레임 단위 출력은 없다. 필터 예: `tag:GoogleStt message:[D]`.
 
 ## 2. 바뀐 점 (Changed)
 
@@ -46,8 +47,10 @@
 | 1차 정적 검증 | 완료 — 공식 kotlin-api 시그니처를 흉내 낸 스텁 + PC 의 android-35·R.jar·의존성으로 전체 컴파일 오류 0건. 모델 파일 이름·조각 상한은 공식 소스(sherpa-onnx v1.13.7, Hugging Face, omnilingual-asr README)로 확인 |
 | 다운로드 스크립트 | 가짜 패키지로 받기·부분 풀기·해시·재실행 건너뛰기·잘못된 이름 거부 확인 |
 | 실제 AAR 로 컴파일 | 완료(2026-10-10) — PC 에서 받은 AAR(sha256 `220d7cb2…`)의 classes.jar 로 앱 소스 37개 전체 컴파일 오류 0건. readelf 로 ABI 별 네이티브 의존성 확인(arm64-v8a·armeabi-v7a·x86_64 는 onnxruntime 정적 포함, x86 만 `libonnxruntime.so` 동적 링크) |
-| Gradle 빌드 | 1차·2차 실패(x86 `libonnxruntime.so` 중복, 2차는 `abiFilters` 만 넣은 상태) → `packaging.jniLibs.excludes` 추가. AGP 공식 소스의 합치기 규칙을 그대로 옮긴 모의 실행에 PC 의 실제 AAR 7개 + jniLibs 를 넣어 1·2차 실패를 똑같이 재현하고, 수정안은 통과(APK lib 6개, 모두 arm64-v8a) 확인. 실제 Gradle 빌드 확인 필요 |
-| 실기기(S25 Ultra) | **미실행** |
+| Gradle 빌드 | 1차·2차 실패(x86 `libonnxruntime.so` 중복, 2차는 `abiFilters` 만 넣은 상태) → `packaging.jniLibs.excludes` 추가. AGP 공식 소스의 합치기 규칙을 그대로 옮긴 모의 실행에 PC 의 실제 AAR 7개 + jniLibs 를 넣어 1·2차 실패를 똑같이 재현하고, 수정안은 통과(APK lib 6개, 모두 arm64-v8a) 확인 → 3차 빌드에서 실제로 해결 확인 |
+| Gradle 빌드(3차) | 성공 — 앱 설치·실행 확인(2026-10-10). sherpa 배치는 휴대폰 모델 미설치로 `MISSING` 중단(앱 동작은 정상) |
+| Logcat 디버그 출력 | 실제 AAR classes.jar 로 앱 소스 전체 컴파일 오류 0건(추가만 93줄, 삭제 0줄) |
+| 실기기(S25 Ultra) STT | **미실행** — 모델을 휴대폰에 넣은 뒤 확인 |
 
 ## 5. 알려진 문제·확인 필요
 

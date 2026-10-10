@@ -18,10 +18,17 @@
  *   Qwen3-ASR 언어: 스트림 옵션 "language" (offline-recognizer-qwen3-asr-impl.cc: stream->GetOption("language"))
  *
  * add-hyungchul-20261010-1800
+ *
+ * add-hyungchul-20261010-1951 — Logcat 디버그 출력(사용자 결정 Q22·Q23)
+ *   · 태그 "GoogleStt" + 접두어 "[D][sherpa]" 로 Log.d 만 쓴다(화면 로그창에는 넣지 않는다).
+ *   · 모델 폴더 점검(logDirReport), 설정 경로·불러오기 시간, 조각별 시작/끝(샘플 수·길이·디코딩 ms·글자 수), 전체 요약, 해제.
+ *   · 조각 단위로만 남긴다(조각 1개 디코딩은 수백 ms 이상이라 Log.d 1줄의 비용은 계측에 무시할 수준).
+ *   · Logcat 필터 예: tag:GoogleStt message:[D][sherpa]
  */
 package com.example.google_stt.stt
 
 import android.content.Context
+import android.util.Log                                   // add-hyungchul-20261010-1951 : Logcat 디버그 출력
 import com.example.google_stt.vad.VadAudio
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineOmnilingualAsrCtcModelConfig
@@ -54,6 +61,7 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
      * 예외: 파일이 없으면 IOException(받는 방법 포함). 없는 파일로 네이티브를 부르면 앱이 통째로 죽으므로 먼저 확인한다.
      */
     fun load(spec: SherpaModelSpec, locale: Locale) {
+        logDirReport(context, spec)                                                 // add-hyungchul-20261010-1951 : 모델 폴더 상태를 Logcat 에 먼저 남긴다
         val missing = missingFiles(context, spec)                                   // 빠진 파일 목록
         if (missing.isNotEmpty()) throw IOException(missingMessage(context, spec, missing))
         val dir = modelDir(context, spec)                                           // 모델 폴더
@@ -97,10 +105,14 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
             )
         }
 
+        // add-hyungchul-20261010-1951 : 네이티브에 넘기는 경로·설정을 불러오기 직전에 남긴다(여기서 앱이 죽으면 마지막 줄이 이것이 된다)
+        dbg("load start: family=${spec.family} threads=$NUM_THREADS provider=cpu lang=${languageLabel(spec, locale)} " +
+            spec.files.keys.joinToString(" ") { "$it=${path(it)}" })                // 역할=절대 경로 목록
         val t0 = System.nanoTime()                                                  // 불러오기 시작
         recognizer = OfflineRecognizer(config = OfflineRecognizerConfig(modelConfig = modelConfig))   // assetManager = null → 파일 경로
         loadMs = ms(t0, System.nanoTime())
         this.spec = spec
+        dbg("load done: ${loadMs}ms (${spec.dirName})")                             // add-hyungchul-20261010-1951 : 불러오기 완료
     }
 
     /**
@@ -121,15 +133,22 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
         for (c in chunks) {
             if (c.isEmpty()) continue                                               // 빈 조각은 넣지 않는다
             val samples = VadAudio.toFloat(c)                                       // PCM16 → float(-1~1)
+            // add-hyungchul-20261010-1951 : 조각 시작(번호 = 지금까지 디코딩한 수 + 1). 네이티브에서 죽으면 이 줄이 마지막이 된다
+            dbg("chunk ${decoded + 1}/${chunks.size} start: samples=${samples.size} " +
+                "(${"%.2f".format(Locale.US, samples.size / SAMPLE_RATE.toDouble())}s)")
             val stream = rec.createStream()                                         // 조각마다 새 스트림(앞 조각 문맥 없음)
             try {
                 if (s.family == SherpaFamily.QWEN3_ASR) {
                     val lang = qwen3Language(locale)
                     if (lang.isNotEmpty()) stream.setOption("language", lang)       // "Korean" / "English"
+                    dbg("qwen3 stream option language='$lang'")                     // add-hyungchul-20261010-1951 : 실제로 넣은 언어 값
                 }
+                val c0 = System.nanoTime()                                          // add-hyungchul-20261010-1951 : 조각 1개 디코딩 시작(디버그 표시용)
                 stream.acceptWaveform(samples, SAMPLE_RATE)
                 rec.decode(stream)
                 val t = rec.getResult(stream).text.trim()
+                // add-hyungchul-20261010-1951 : 조각 끝 — 디코딩 시간과 글자 수(빈 결과면 chars=0 으로 바로 보인다)
+                dbg("chunk ${decoded + 1}/${chunks.size} done: decode=${ms(c0, System.nanoTime())}ms chars=${t.length}")
                 if (t.isNotEmpty()) {
                     if (sb.isNotEmpty()) sb.append(' ')                             // 조각 결과는 공백 하나로 잇는다
                     sb.append(t)
@@ -144,6 +163,9 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
         }
         val endNs = System.nanoTime()
         val wall = ms(startNs, endNs)
+        // add-hyungchul-20261010-1951 : 파일 1건 요약(디코딩한 조각 수 / 첫 결과 / 전체 시간 / 글자 수)
+        dbg("transcribe done: decoded=$decoded/${chunks.size} first=${if (firstNs != 0L) ms(startNs, firstNs) else -1}ms " +
+            "wall=${wall}ms chars=${sb.length}")
         return SttOutcome(
             text = sb.toString().trim(),
             firstResultMs = if (firstNs != 0L) ms(startNs, firstNs) else -1,
@@ -159,6 +181,7 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
      * 입력: 없음 / 출력: 없음 / 리턴: 없음
      */
     override fun close() {
+        dbg("close: recognizer=${if (recognizer != null) "loaded" else "null"}")    // add-hyungchul-20261010-1951 : 해제 시점 확인
         recognizer?.release()
         recognizer = null
         spec = null
@@ -176,6 +199,38 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
         /** 휴대폰 모델 폴더 아래에 둘 해시 목록 파일(PC 스크립트가 만든다) */
         const val SHA256_FILE = "SHA256SUMS.txt"
         private const val SAMPLE_RATE = 16_000
+        /** add-hyungchul-20261010-1951 : Logcat 태그(MainActivity / BatchRunner 의 logTag 와 같은 값) */
+        private const val TAG = "GoogleStt"
+
+        /**
+         * add-hyungchul-20261010-1951
+         * 목적: Logcat 전용 디버그 한 줄을 남긴다(화면 로그창에는 넣지 않는다).
+         * 입력: msg — 내용 / 출력: Logcat "GoogleStt" 태그, "[D][sherpa] " 접두어 / 리턴: 없음
+         */
+        private fun dbg(msg: String) {
+            Log.d(TAG, "[D][sherpa] $msg")                                          // 디버그 수준으로 출력
+        }
+
+        /**
+         * add-hyungchul-20261010-1951
+         * 목적: 모델 폴더 상태를 Logcat 에 자세히 남긴다 — "모델 파일이 없다" 고 나올 때 원인(폴더 없음 / 읽기 불가 / 파일 크기 0)을 가린다.
+         * 입력: context, spec / 출력: Logcat 여러 줄 / 리턴: 없음
+         */
+        fun logDirReport(context: Context, spec: SherpaModelSpec) {
+            val ext = context.getExternalFilesDir(null)                             // 앱 전용 외부 폴더(null 이면 내부 filesDir 로 대체됨)
+            val root = modelsRoot(context)                                          // …/files/models
+            val dir = modelDir(context, spec)                                       // …/files/models/<패키지>
+            dbg("dir report: externalFilesDir=${ext?.absolutePath ?: "null(내부 filesDir 사용)"}")
+            dbg("dir report: modelsRoot=${root.absolutePath} exists=${root.exists()} canRead=${root.canRead()} " +
+                "children=${root.list()?.joinToString(",") ?: "null(읽을 수 없음)"}")   // 안에 어떤 패키지 폴더가 있는지
+            dbg("dir report: modelDir=${dir.absolutePath} exists=${dir.exists()} isDir=${dir.isDirectory} canRead=${dir.canRead()} " +
+                "children=${dir.list()?.joinToString(",") ?: "null(읽을 수 없음)"}")
+            for ((role, rel) in spec.files) {                                       // 역할별 파일 하나씩
+                val f = File(dir, rel)
+                val size = if (f.isDirectory) "dir(${f.list()?.size ?: 0} items)" else "${f.length()}B"   // 폴더면 항목 수, 파일이면 바이트
+                dbg("dir report:   $role=$rel exists=${f.exists()} canRead=${f.canRead()} size=$size")
+            }
+        }
 
         /**
          * 목적: 앱 전용 모델 폴더(…/files/models).
