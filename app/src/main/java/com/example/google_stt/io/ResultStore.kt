@@ -8,7 +8,9 @@
  *   contentResolver 와 algoName("google") 은 생성자로 받는다.
  *
  * change-hyungchul-20261009-1530 — 결과 폴더를 PC "STT 통합 실행기" v7.7 평탄화 규칙으로 바꿨다(사용자 결정 Q10·Q13).
- *   예전: output/google/<모드>/[ns_*/][vad_*/][epd_*/]<하위>/<파일>.txt , …/result.csv , …/run_meta.csv
+ *   예전: output/google/<모드>/[ns_…/][vad_…/][epd_…/]<하위>/<파일>.txt , …/result.csv , …/run_meta.csv
+ *   change-hyungchul-20261010-1636 : 위 줄의 "ns_*" 뒤 "/" 가 블록 주석 끝 표시로 읽혀 주석이 일찍 닫히고
+ *     ResultStore 클래스가 선언되지 않던 문제("Unresolved reference 'ResultStore'")를 고쳤다("*" → "…").
  *   지금: output/<엔진>_<모델>_<조건>/<하위>/<파일>.txt
  *         output/<엔진>_<조건>_result.csv     (CSV 는 결과 폴더 바로 아래 — PC 와 같음)
  *         output/<엔진>_<조건>_run_meta.csv   (앱 전용 실행 요약, 같은 위치)
