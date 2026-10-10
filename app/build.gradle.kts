@@ -134,7 +134,10 @@ dependencies {
     //     libonnxruntime.so 와 이름이 겹치지 않는다(사용자 결정 Q3: 정적 링크 AAR + 앱 ORT 1.25.1 유지).
     //   · Maven 배포가 없어 파일로 넣는다. 받기: bash tools/download_stt_models.sh aar  → app/libs/ (git 에는 넣지 않음)
     //   · 판을 바꾸면 stt/SherpaOfflineTranscriber.kt 의 RUNTIME 문자열도 같이 바꿀 것.
-    implementation(files("libs/sherpa-onnx-static-link-onnxruntime-1.13.7.aar"))
+    // change-hyungchul-20261011-0340 : 1.13.7 → 1.13.8 (38.7 MB, 2026-09-10 배포). 무음 환각 수정(Moonshine v2·Cohere·FunASR-Nano), 내장 onnxruntime 1.28.2.
+    //   Kotlin API(설정 클래스·Recognizer·Stream·Result)는 1.13.7 과 같다(javap 대조). 네이티브 구성도 같다 — arm64 는 ORT 정적 포함·16 KB 정렬,
+    //   x86 만 libonnxruntime.so(ORT 1.28.2)를 따로 넣어 아래 packaging.jniLibs.excludes 가 그대로 필요하다.
+    implementation(files("libs/sherpa-onnx-static-link-onnxruntime-1.13.8.aar"))
 
     // ★ add-hyungchul-20261011-0301 : 2단계 2-4 — Vosk(Kaldi) 온디바이스 STT
     //   · Maven Central com.alphacephei:vosk-android:0.3.75 (Apache-2.0). libvosk.so(arm64-v8a 포함, NDK 28.2 빌드)와 org.vosk Java API.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 파일명: tools/download_stt_models.sh
 # 목적 및 기능: 2단계 sherpa-onnx STT 엔진 준비(PC 에서 실행)
-#   1) sherpa-onnx 정적 링크 AAR(v1.13.7)을 app/libs/ 에 받는다 — 빌드에 꼭 필요하다
+#   1) sherpa-onnx 정적 링크 AAR(v1.13.8 — change-hyungchul-20261011-0340)을 app/libs/ 에 받는다 — 빌드에 꼭 필요하다
 #   2) 모델 패키지(tar.bz2, 공식 GitHub Releases "asr-models")를 받아 앱이 쓰는 파일만 stt_models/<패키지>/ 에 푼다
 #   3) 파일마다 sha256 을 SHA256SUMS.txt 로 남긴다(앱이 run_meta 에 그대로 기록 — 휴대폰에서 다시 해시하지 않기 위함)
 #   4) adb 로 휴대폰 공용 폴더 /sdcard/Documents/stt_models/<패키지>/ 에 넣는다
@@ -33,7 +33,7 @@ LOCAL="$ROOT/stt_models"                                   # PC 쪽 모델 보�
 DL="$LOCAL/_download"                                      # tar.bz2 임시 위치(풀고 나면 지운다)
 APP_ID="com.example.google_stt"                            # 앱 패키지 이름
 DEV_ROOT="/sdcard/Documents/stt_models"                    # change-hyungchul-20261010-2238 : 휴대폰 모델 폴더(앱 SherpaOfflineTranscriber.modelsRoot 와 같게)
-SHERPA_VER="1.13.7"                                        # sherpa-onnx 판(app/build.gradle.kts 와 같게)
+SHERPA_VER="1.13.8"                                        # sherpa-onnx 판(app/build.gradle.kts 와 같게)  change-hyungchul-20261011-0340 : 1.13.7 → 1.13.8
 AAR="sherpa-onnx-static-link-onnxruntime-$SHERPA_VER.aar"  # 정적 링크 AAR 이름
 AAR_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v$SHERPA_VER/$AAR"
 MODELS_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"   # 모델 패키지 위치

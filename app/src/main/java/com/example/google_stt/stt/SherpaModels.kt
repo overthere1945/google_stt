@@ -22,6 +22,7 @@
  *   · SenseVoice Small int8(2024-07-17, ITN 지원판) — FunASR MODEL_LICENSE
  *   · Moonshine v2 tiny KO(quantized, .ort) — Moonshine AI Community License(연매출 100만 달러 이상이면 상업 사용 불가, 등록·표시 의무)
  *   · 조각 상한은 이 작업 환경(sherpa 1.13.7 리눅스 JNI + 같은 Kotlin API)에서 휴대폰 kr 음원으로 실측해 정했다(각 정의의 주석)
+ *     change-hyungchul-20261011-0340 : sherpa 1.13.8 로 올린 뒤 다시 확인 — Moonshine 9.5 / 10 / 12 / 15 s 조각은 여전히 빈 결과(9 s 정상), 4종 결과 글자는 1.13.7 과 같다
  *
  * add-hyungchul-20261011-0301 — 2단계 2-4: Vosk small ko 0.22 / en-us 0.15 (SherpaFamily.VOSK)
  *   · 런타임은 sherpa 가 아니라 vosk-android(Kaldi)지만, 모델 폴더 위치·필수 파일 점검·run_meta 기록 규칙이 같아 이 정의를 함께 쓴다.

@@ -13,6 +13,7 @@
  * - 계측: first_result_ms(시작 → 첫 글자), feed_ms(공급 시간 합), tail_ms(마지막 조각 공급 끝 → 최종 결과, 조각마다 합),
  *         stt_wall_ms(시작 → 끝), segments(디코딩한 조각 수 — "엔진별 최대 길이" 면 1, SEG10 이면 10초 조각 수)
  * - ★ 결과 글자: sherpa 1.13.7 의 OnlineRecognizerResult.text 는 한국어(한글)의 띄어쓰기를 모두 지운다
+ *   (change-hyungchul-20261011-0340 : sherpa 1.13.8 에서도 같다 — Nemotron·Zipformer KO 스트리밍 결과 글자가 1.13.7 과 한 글자도 다르지 않음, 리눅스 JNI 실측)
  *   (이 작업 환경에서 같은 AAR Kotlin API + 리눅스 JNI 로 실측: text="조국이당신을…", tokens=" 조|국|이| |당|신|을…").
  *   그래서 tokens 를 이어 붙여 글자를 만들고 공백을 하나로 줄인다(영어·프랑스어 결과는 text 와 같아진다 — 실측 확인).
  * - 언어: OnlineStream.setOption("language", "ko" / "en") — 패키지 README 의 per-stream language string.

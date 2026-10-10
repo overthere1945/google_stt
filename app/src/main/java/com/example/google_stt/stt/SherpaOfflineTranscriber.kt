@@ -244,7 +244,7 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
         /** 디코딩 스레드 수 — PC sherpa_onnx_stt.py --num-threads 기본값과 같다(사용자 결정 2026-10-10) */
         const val NUM_THREADS = 4
         /** run_meta·CSV 에 남기는 런타임 이름(app/build.gradle.kts 의 AAR 판과 같게 유지) */
-        const val RUNTIME = "sherpa-onnx 1.13.7 (static-link onnxruntime)"
+        const val RUNTIME = "sherpa-onnx 1.13.8 (static-link onnxruntime)"   // change-hyungchul-20261011-0340 : 1.13.7 → 1.13.8
         /** Qwen3-ASR 최대 문맥 길이(오디오 토큰 + 프롬프트 + 출력). 공식 문서의 긴 음원 예제 값 */
         const val QWEN3_MAX_TOTAL_LEN = 1024
         /** Qwen3-ASR 최대 출력 토큰 */

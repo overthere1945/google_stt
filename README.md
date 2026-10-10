@@ -4,7 +4,7 @@
 지연·자원을 계측하는 평가 앱입니다. 결과는 PC "STT 통합 실행기"와 같은 폴더·조건 이름 규칙으로 저장되어
 PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
-- 현재 판: **2.4.0** (2026-10-11) — 변경 내용은 [`docs/RELEASE_NOTES_v2.4.0.md`](docs/RELEASE_NOTES_v2.4.0.md) (이전: [`v2.3.0`](docs/RELEASE_NOTES_v2.3.0.md), [`v2.2.0`](docs/RELEASE_NOTES_v2.2.0.md), [`v2.1.1`](docs/RELEASE_NOTES_v2.1.1.md), [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
+- 현재 판: **2.4.1** (2026-10-11) — 변경 내용은 [`docs/RELEASE_NOTES_v2.4.1.md`](docs/RELEASE_NOTES_v2.4.1.md) (이전: [`v2.4.0`](docs/RELEASE_NOTES_v2.4.0.md), [`v2.3.0`](docs/RELEASE_NOTES_v2.3.0.md), [`v2.2.0`](docs/RELEASE_NOTES_v2.2.0.md), [`v2.1.1`](docs/RELEASE_NOTES_v2.1.1.md), [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
 - 대상 기기: Galaxy S25 Ultra (arm64-v8a), minSdk 31 / targetSdk 35 — APK 는 **arm64-v8a 전용**(`abiFilters`, 에뮬레이터·32비트 기기 설치 불가)
 - 네트워크: **INTERNET 권한 없음**(온디바이스 실행 증명용). VAD·노이즈 저감 모델은 APK 에 넣고, STT 모델(sherpa-onnx)은 휴대폰 공용 폴더 `/sdcard/Documents/stt_models` 에 넣고 앱은 **'모든 파일 접근'** 권한으로 읽습니다(v2.1.1).
 
@@ -65,7 +65,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 | Vosk small KO 0.22 / EN-US 0.15 (v2.4.0, vosk-android 0.3.75) | `vosk-small-ko` / `vosk-small-en` (모델 이름 `vosk`) | Apache-2.0 (allowed) | 없음(스트리밍, Feed 설정) | 없음(언어별 모델 — Language 와 맞는 쪽을 고른다) | 82 MB / 40 MB |
 | Moonshine tiny KO (v2.3.0) | `moonshine-tiny-ko` | Moonshine Community License (**conditional** — 연매출 100만 달러 이상 상업 사용 불가) | **9 s** (실측: 9.3 s 이상 빈 결과) | 없음(한국어 전용) | 약 0.07 GB |
 
-- 런타임: sherpa-onnx **1.13.7 정적 링크 AAR**(onnxruntime 내장 — 앱의 onnxruntime-android 1.25.1 과 따로 돈다), CPU 4 스레드.
+- 런타임: sherpa-onnx **1.13.8 정적 링크 AAR**(v2.4.1 부터, onnxruntime 1.28.2 내장 — 앱의 onnxruntime-android 1.25.1 과 따로 돈다), CPU 4 스레드.
 - 실행: 실시간 공급 없이 **최대 속도로 디코딩**한다. 모델은 배치 시작 때 1번 불러 끝에 해제한다(불러온 시간은 run_meta `stt_model_load_ms`).
 - **Nemotron(스트리밍)** 은 Feed 설정대로 100 ms 조각을 넣는다(REALTIME = 실시간). 지연 비교는 `tail_ms`·`first_result_ms` 로 한다. 결과 글자는 토큰을 이어 만든다(sherpa 스트리밍 `text` 가 한국어 띄어쓰기를 지우는 문제 회피). 값 뜻은 `STT_계측_CSV_설명서.md` 7장.
 - **상업 조건부 4종**(v2.3.0, 사용자 결정 Q5): 화면 이름 끝에 `[상업 조건부]`, run_meta `stt_commercial=conditional`. Zipformer KO 스트리밍은 Nemotron 과 같은 스트리밍 경로(Feed 설정)이고, Zipformer KO 두 종은 토큰으로 띄어쓰기를 만든다. **Moonshine 은 "10초 통일" 에서도 9 s 조각**으로 줄인다(run_meta `stt_chunk_max_sec=9.0`). 근거는 `docs/RELEASE_NOTES_v2.3.0.md`.
@@ -88,7 +88,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
    - 해시 확인: `cd app/src/main/assets && sha256sum -c models.sha256`
 2. sherpa-onnx AAR·STT 모델 받기(빌드 전에 AAR 이 꼭 있어야 합니다):
    ```bash
-   bash tools/download_stt_models.sh aar             # app/libs/sherpa-onnx-static-link-onnxruntime-1.13.7.aar
+   bash tools/download_stt_models.sh aar             # app/libs/sherpa-onnx-static-link-onnxruntime-1.13.8.aar (v2.4.1 — 예전 1.13.7.aar 는 지워도 된다)
    ```
 3. Android Studio 에서 Gradle Sync → Run(실기기). WebRTC VAD 는 JitPack 저장소에서 받습니다.
 4. USB 디버깅을 연결하고 STT 모델을 휴대폰 공용 폴더에 넣기(앱 설치 여부와 무관, MTP·파일 관리자로 `Documents/stt_models` 에 복사해도 된다):

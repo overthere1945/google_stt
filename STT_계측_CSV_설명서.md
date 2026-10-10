@@ -471,7 +471,7 @@ result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). sherpa-onnx 엔�
 |---|---|
 | `engine` | `SHERPA_OFFLINE` |
 | `mode` | 결과 엔진 이름 = `whisper-base`, `qwen3asr-0.6b`, `omnilingual-300m` … |
-| `execution` | `ON_DEVICE(sherpa-onnx 1.13.7 (static-link onnxruntime), cpu, threads=4)` |
+| `execution` | `ON_DEVICE(sherpa-onnx 1.13.8 (static-link onnxruntime), cpu, threads=4)` (v2.4.0 까지 1.13.7. change-hyungchul-20261011-0340) |
 | `feed_mode` / `feed_delay_ms` | 화면 값이 그대로 남지만 **쓰지 않는다**(실시간 공급 없이 최대 속도로 디코딩) |
 | `feed_ms`, `feed_expected_ms`, `feed_stall_ratio` | `-1` (공급 없음) |
 | `stt_wall_ms` | 첫 조각 디코딩 시작 → 마지막 조각 결과(순수 디코딩 시간 합) |
@@ -503,7 +503,7 @@ result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). Nemotron 3.5 스�
 |---|---|
 | `engine` | `SHERPA_STREAMING` |
 | `mode` | `nemotron3.5-320ms` / `nemotron3.5-560ms` (change-hyungchul-20261011-0150 : 80 / 160 / 1120 ms 삭제) |
-| `execution` | `ON_DEVICE(sherpa-onnx 1.13.7 (static-link onnxruntime), streaming, cpu, threads=4)` |
+| `execution` | `ON_DEVICE(sherpa-onnx 1.13.8 (static-link onnxruntime), streaming, cpu, threads=4)` (v2.4.0 까지 1.13.7) |
 | `feed_mode` / `feed_delay_ms` | **실제로 쓴다** — 100 ms 조각을 이 간격으로 넣는다(REALTIME = 실시간, D50 = 2배속 …) |
 | `feed_ms` | 공급에 걸린 시간 합. 디코딩이 공급을 못 따라가면 `feed_expected_ms` 보다 길어진다 |
 | `feed_expected_ms`, `feed_stall_ratio` | Google 경로와 같은 식(이론 공급시간 / 실제 ÷ 이론). 정체 경고도 같은 기준 |
@@ -558,3 +558,11 @@ result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). Vosk 는 7장(스
 
 - 결과 파일: `output/vosk-small-ko_vosk_<조건>/…`, `output/vosk-small-ko_<조건>_result.csv`
 - Vosk 모델은 언어별이다. Language 를 ko 로 두고 `vosk-small-en` 을 고르면 영어 모델로 한국어를 받아 쓰게 되니 맞는 쪽을 고른다.
+
+## 10. v2.4.1 — `execution` 열 따옴표 수정 (change-hyungchul-20261011-0340)
+
+- **v2.1.0 ~ v2.4.0 의 result.csv 는 sherpa·Vosk 행의 열이 밀려 있다.** `execution` 값(`ON_DEVICE(…, cpu, threads=4)`)의 쉼표를 따옴표로 감싸지 않아
+  오프라인 sherpa 행은 2열, 스트리밍 sherpa·Vosk 행은 3열이 뒤로 밀렸다(머리 99열 / 행 101~102열). Google 엔진 행은 쉼표가 없어 정상이다.
+- v2.4.1 부터 `execution` 을 다른 글자 열처럼 따옴표로 감싸 머리와 행이 모두 99열이다. 열 이름·순서는 바뀌지 않았다.
+- 예전 CSV 는 복구하지 않는다(사용자 결정 — 본 측정 전 동작 확인용 결과뿐). v2.4.1 로 다시 측정한다.
+- run_meta.csv(키, 값 2열)는 값마다 따옴표를 써 와서 영향이 없었다.
