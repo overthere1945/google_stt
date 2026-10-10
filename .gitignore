@@ -26,6 +26,9 @@ local.properties
 /app/src/main/assets/*.ark
 /app/src/main/assets/*.LICENSE.txt
 /app/src/main/jniLibs/
+# add-hyungchul-20261010-1800 : sherpa-onnx AAR(36 MB)과 STT 모델(수백 MB~GB)은 tools/download_stt_models.sh 로 받는다
+/app/libs/*.aar
+/stt_models/
 
 # 빌드 에러 로그 등 일회성 산출물
 /error.txt

@@ -22,6 +22,14 @@
  *   · 결과 폴더: output/<엔진>_<모델>_<조건>/…, CSV: output/<엔진>_<조건>_result.csv (PC GUI v7.7 규칙)
  *   · result.csv 끝에 vad_engine / vad_preset / vad_params / vad_commercial / seg_mode / seg_chunks /
  *     seg_splits / condition 컬럼을 덧붙였다(앞 컬럼 index 는 그대로).
+ *
+ * change-hyungchul-20261010-1800 — 2단계 2-1: sherpa-onnx 오프라인 엔진(Whisper / Qwen3-ASR / Omnilingual)
+ *   · 모델은 배치 시작 때 1번 불러 끝에 해제한다(SherpaOfflineTranscriber). Google warm-up·할당량(SODA) 안내는 하지 않는다.
+ *   · 구간 처리 "엔진별 최대 길이" = 모델별 조각 상한(Whisper 29 s, Qwen3 30 s, Omnilingual 39 s)으로 SegmentPacker 가 자른다.
+ *     SEG10 이면 10 s. Speech EPD 는 쓰지 않는다(조각이 이미 짧다).
+ *   · 실시간 공급 없이 최대 속도로 디코딩한다(4 스레드). feed_ms = -1, tail_ms = stt_wall_ms.
+ *   · run_meta 에 stt_runtime / stt_model_dir / stt_model_files / stt_model_sha256 / stt_num_threads / stt_model_load_ms /
+ *     stt_chunk_max_sec / stt_language / stt_license / stt_commercial 키를 추가했다(result.csv 컬럼은 그대로).
  */
 package com.example.google_stt.batch
 
@@ -63,6 +71,7 @@ import com.example.google_stt.stt.ModelConfig
 import com.example.google_stt.stt.PlatformOnDeviceTranscriber
 import com.example.google_stt.stt.QUOTA_BUDGET_SESSIONS
 import com.example.google_stt.stt.QUOTA_COOLDOWN_MS
+import com.example.google_stt.stt.SherpaOfflineTranscriber   // add-hyungchul-20261010-1800
 import com.example.google_stt.stt.SttEngine
 import com.example.google_stt.stt.WARMUP_TIMEOUT_MS
 import com.example.google_stt.stt.describe
@@ -163,8 +172,10 @@ class BatchRunner(
         val feed = req.feed
         val vadSelection = req.vadSelection
         // change-hyungchul-20261009-1626 : 10초 통일(SEG10)에서는 EPD 를 쓰지 않으므로 CSV·run_meta·세션 예상치에도 OFF 로 남긴다(검토 지적 A)
+        // change-hyungchul-20261010-1800 : sherpa-onnx 엔진도 조각을 모델 상한 이하로 나눠 넣으므로 EPD 를 쓰지 않는다
+        val sherpaSpec = modelConfig.sherpa                       // add-hyungchul-20261010-1800 : sherpa 모델 정의(Google 엔진이면 null)
         val epdSelection =
-            if (req.vadSelection.segMode.maxSec != null) EpdSelection(EpdConfig(EpdMode.OFF), null) else req.epdSelection
+            if (req.vadSelection.segMode.maxSec != null || sherpaSpec != null) EpdSelection(EpdConfig(EpdMode.OFF), null) else req.epdSelection
         val noiseConfig = req.noiseConfig
         val condition = req.condition                 // change-hyungchul-20261009-1530
         val vadSetting = vadSelection.setting         // change-hyungchul-20261009-1530 : VAD 엔진·프리셋·값
@@ -175,6 +186,7 @@ class BatchRunner(
         var abortedByWedge = false                    // add-hyungchul-20260914-2350
         var vadProcessor: VadDetector? = null          // add-hyungchul-20260825-1430 / change-hyungchul-20261009-1530 : 엔진 공통 계약
         var noiseReducer: NoiseReducer? = null         // add-hyungchul-20260826-1100
+        var sherpaT: SherpaOfflineTranscriber? = null  // add-hyungchul-20261010-1800 : sherpa-onnx 전사기(배치 1회에 1개, finally 에서 해제)
         try {
             val inputRoot = DocumentFile.fromTreeUri(activity, inUri)
             val outputRoot = DocumentFile.fromTreeUri(activity, outUri)
@@ -193,6 +205,10 @@ class BatchRunner(
             appendLog(activity.getString(R.string.log_found, items.size))
             appendLog(activity.getString(R.string.log_model, modelFolder))
             appendLog("[feed] ${feed.name} (chunk delay ${feed.delayMs} ms)")
+            // add-hyungchul-20261010-1800 : 오프라인 엔진은 실시간 공급을 하지 않는다(사용자 결정: 최대 속도)
+            if (sherpaSpec != null) {
+                appendLog("[feed] sherpa-onnx 오프라인 엔진은 공급 속도 설정을 쓰지 않는다 — 조각을 받자마자 최대 속도로 디코딩한다.")
+            }
             // add-hyungchul-20260825-1430
             appendLog(
                 if (vadSelection.enabled) {
@@ -233,15 +249,25 @@ class BatchRunner(
 
             // 실행 전 1회 가용성 점검 — 어떤 엔진이 실제로 쓰이는지 로그와 run_meta 에 남긴다.
             val preflightText = preflight(modelConfig, locale)
+            // add-hyungchul-20261010-1800 : sherpa 모델 파일이 없으면 시작하지 않는다(없는 파일로 네이티브를 부르면 앱이 죽는다)
+            if (sherpaSpec != null) {
+                val missing = SherpaOfflineTranscriber.missingFiles(appContext, sherpaSpec)
+                if (missing.isNotEmpty()) {
+                    appendLog("[sherpa][중단] " + SherpaOfflineTranscriber.missingMessage(appContext, sherpaSpec, missing))
+                    toast("${sherpaSpec.displayName} 모델 파일이 없어 배치를 시작하지 않았습니다.")
+                    return
+                }
+            }
 
             // add-hyungchul-20260914-2350
             // preflight 는 "모델이 있는가" 만 본다. 엔진이 먹통이어도 AVAILABLE 로 나온다.
             // 그래서 1초짜리 무음을 실제로 넣어 보고 응답이 오는지까지 확인한다.
             session.sttSessionCount = 0                       // add-hyungchul-20260915-2200 : 배치마다 초기화
-            val warmUpStatus = session.warmUpEngine(modelConfig, locale)
+            // change-hyungchul-20261010-1800 : sherpa-onnx 는 SODA 세션이 없어 warm-up 을 하지 않는다(모델은 아래에서 1번 불러 둔다)
+            val warmUpStatus = if (sherpaSpec != null) "N/A(sherpa)" else session.warmUpEngine(modelConfig, locale)
             if (warmUpStatus == "OK") {
                 appendLog("[warmup] 엔진 응답 확인 — 배치를 시작한다.")
-            } else {
+            } else if (sherpaSpec == null) {                  // change-hyungchul-20261010-1800 : Google 엔진일 때만 중단
                 appendLog(
                     "[warmup][중단] 1초짜리 무음을 넣었는데 ${WARMUP_TIMEOUT_MS / 1000}초 안에 응답이 없다. " +
                         "인식 엔진이 먹통인 상태라 지금 돌리면 파일마다 타임아웃까지 기다리다 끝난다.",
@@ -290,10 +316,31 @@ class BatchRunner(
                             "license=${vadSetting.engine.license} (commercial=${vadSetting.engine.commercial})",
                 )
             }
+            // add-hyungchul-20261010-1800 : sherpa-onnx 모델을 배치 전체에서 1번만 불러 둔다(불러오는 시간이 파일별 계측에 섞이지 않게)
+            if (sherpaSpec != null) {
+                val t = SherpaOfflineTranscriber(appContext)
+                sherpaT = t                                   // finally 에서 해제(불러오다 실패해도 해제한다)
+                appendLog("[sherpa] ${sherpaSpec.displayName} 불러오는 중 — ${SherpaOfflineTranscriber.modelDir(appContext, sherpaSpec).absolutePath}")
+                withContext(Dispatchers.Default) { t.load(sherpaSpec, locale) }
+                appendLog(
+                    "[sherpa] model=${sherpaSpec.dirName}, runtime=${SherpaOfflineTranscriber.RUNTIME}, " +
+                        "threads=${SherpaOfflineTranscriber.NUM_THREADS}, load=${t.loadMs}ms, " +
+                        "${SherpaOfflineTranscriber.languageLabel(sherpaSpec, locale)}, " +
+                        "license=${sherpaSpec.license} (commercial=${sherpaSpec.commercial})",
+                )
+            }
             // change-hyungchul-20261009-1530 : 구간 처리 안내 — SEG10 은 조각마다 세션을 연다
             appendLog("[seg] ${vadSelection.segMode.displayName} / 조건=$condition")
             if (vadSelection.segMode == SegMode.SEG10 && req.epdSelection.enabled) {   // change-hyungchul-20261009-1626 : 화면 설정 기준으로 안내
                 appendLog("[seg] 10초 통일에서는 조각이 이미 짧아 Speech EPD 를 쓰지 않는다(설정은 무시된다).")
+            }
+            // add-hyungchul-20261010-1800 : sherpa 엔진의 조각 상한 안내(엔진별 최대 길이 모드)와 EPD 무시 안내
+            if (sherpaSpec != null) {
+                val cap = vadSelection.segMode.maxSec ?: sherpaSpec.maxChunkSec
+                appendLog("[seg] sherpa: 조각 상한 ${cap}s 로 나눠 조각마다 디코딩한다.")
+                if (vadSelection.segMode != SegMode.SEG10 && req.epdSelection.enabled) {
+                    appendLog("[seg] sherpa 엔진은 Speech EPD 를 쓰지 않는다(설정은 무시된다).")
+                }
             }
 
             // change(add)-hyungchul-20260820 — 실행 환경 요약을 먼저 저장해 둔다.
@@ -349,6 +396,17 @@ class BatchRunner(
                             "epd_mode" to epdSelection.config.mode.name,
                             "epd_config" to epdSelection.config.summary(),
                             "engine_warmup" to warmUpStatus,
+                            // add-hyungchul-20261010-1800 : sherpa-onnx 엔진 정보(Google 엔진이면 빈 칸)
+                            "stt_runtime" to (if (sherpaSpec != null) SherpaOfflineTranscriber.RUNTIME else ""),
+                            "stt_model_dir" to (if (sherpaSpec != null) SherpaOfflineTranscriber.modelDir(appContext, sherpaSpec).absolutePath else ""),
+                            "stt_model_files" to (if (sherpaSpec != null) SherpaOfflineTranscriber.filesSummary(appContext, sherpaSpec) else ""),
+                            "stt_model_sha256" to (if (sherpaSpec != null) SherpaOfflineTranscriber.sha256Summary(appContext, sherpaSpec) else ""),
+                            "stt_num_threads" to (if (sherpaSpec != null) SherpaOfflineTranscriber.NUM_THREADS.toString() else ""),
+                            "stt_model_load_ms" to (sherpaT?.loadMs?.toString() ?: ""),
+                            "stt_chunk_max_sec" to (if (sherpaSpec != null) (vadSelection.segMode.maxSec ?: sherpaSpec.maxChunkSec).toString() else ""),
+                            "stt_language" to (if (sherpaSpec != null) SherpaOfflineTranscriber.languageLabel(sherpaSpec, locale) else ""),
+                            "stt_license" to (sherpaSpec?.license ?: ""),
+                            "stt_commercial" to (sherpaSpec?.commercial ?: ""),
                             // change-hyungchul-20261009-1626 : 아래 두 키는 예전 뜻(Silero 전용)대로 Silero 일 때만 채운다(검토 지적 G)
                             "onnxruntime_version" to (if (vadSetting.engine == VadEngine.SILERO) vadProcessor?.runtimeVersion ?: "" else ""),
                             "silero_model_sha256" to (if (vadSetting.engine == VadEngine.SILERO) vadProcessor?.modelSha256 ?: "" else ""),
@@ -370,7 +428,8 @@ class BatchRunner(
                             "ns_label" to (nsReducer?.label ?: ""),
                             "ns_config" to if (nsOn) noiseConfig.summary() else "",
                             "ns_model_sha256" to nsModelSha,
-                            "pipeline_order" to "decode -> noise_reduction -> vad -> epd -> stt",
+                            // change-hyungchul-20261010-1800 : sherpa 엔진은 EPD 대신 조각 나누기(seg)를 거친다
+                            "pipeline_order" to (if (sherpaSpec != null) "decode -> noise_reduction -> vad -> seg -> stt" else "decode -> noise_reduction -> vad -> epd -> stt"),
                             "output_variant" to condition,   // change-hyungchul-20261009-1530 : 예전 폴더 조각 목록 → 조건 이름
                         ),
                     )
@@ -391,19 +450,20 @@ class BatchRunner(
             } else {
                 items.size + 1
             }
-            appendLog(
+            // change-hyungchul-20261010-1800 : 아래 할당량(SODA) 안내 3가지는 Google 엔진에만 해당한다(sherpaSpec == null 조건 추가)
+            if (sherpaSpec == null) appendLog(
                 "[quota] 예상 세션 수 약 ${projectedSessions}개 / 실측 한도 약 " +
                     "${QUOTA_BUDGET_SESSIONS}개 (com.google.android.tts 의 SODA 세션 한도).",
             )
             // change-hyungchul-20261009-1530 : 10초 통일이면 파일마다 (말 길이 / 10초) 개의 세션을 쓴다 — 미리 크게 경고한다.
-            if (vadSelection.segMode == SegMode.SEG10) {
+            if (sherpaSpec == null && vadSelection.segMode == SegMode.SEG10) {
                 appendLog(
                     "[quota][경고] 구간 처리 = 10초 통일: 파일 하나가 '말 길이 / 10초' 개의 세션을 쓴다" +
                         "(60초 파일 ≈ 6세션). Google 엔진은 한도(약 ${QUOTA_BUDGET_SESSIONS}세션)에 빨리 닿으니 " +
                         "입력 폴더를 작게 나눠 돌릴 것.",
                 )
             }
-            if (projectedSessions > QUOTA_BUDGET_SESSIONS) {
+            if (sherpaSpec == null && projectedSessions > QUOTA_BUDGET_SESSIONS) {
                 appendLog(
                     "[quota][경고] 한도를 넘길 것으로 보인다. 중간부터 응답이 멈출 수 있다. " +
                         "대안: (1) EPD 를 B안(세션 1개)으로 바꾼다 " +
@@ -634,7 +694,8 @@ class BatchRunner(
                 // ── add-hyungchul-20261009-1530 : 3.4) 구간 처리 — 모든 엔진 10초 통일(SEG10) ──
                 //   말 구간(또는 파일 전체)을 10초 이하 조각으로 묶는다. 조각마다 세션을 연다(transcribeChunks).
                 //   EPD 는 쓰지 않는다(조각이 61초 결함 경계보다 훨씬 짧다).
-                val segMax = vadSelection.segMode.maxSec
+                // change-hyungchul-20261010-1800 : sherpa 엔진은 "엔진별 최대 길이" 에서도 모델 상한(maxChunkSec)으로 조각을 만든다
+                val segMax = vadSelection.segMode.maxSec ?: sherpaSpec?.maxChunkSec
                 if (segMax != null && sttPcm.isNotEmpty()) {
                     val packed = withContext(Dispatchers.Default) {
                         SegmentPacker.pack(stagePcm, vadSegmentsForSeg, segMax, vadSetting.joinMs)
@@ -710,7 +771,8 @@ class BatchRunner(
                 // add-hyungchul-20260914-2130
                 // 타임아웃이 실제로 터진 행에도 값이 남도록 호출 "전에" 기록한다.
                 // change-hyungchul-20260914-2350 : 조각별 타임아웃의 합(= 이 파일 1건의 최악 대기시간)
-                row.sttTimeoutSec = sttChunks.sumOf { sttTimeoutSec(it.size, feed) }
+                // change-hyungchul-20261010-1800 : sherpa 엔진은 시간 제한 없이 디코딩하므로 -1(해당 없음)
+                row.sttTimeoutSec = if (sherpaSpec != null) -1 else sttChunks.sumOf { sttTimeoutSec(it.size, feed) }
                 try {
                     // change-hyungchul-20260914-2350
                     // 조각이 1개면 예전과 완전히 같은 경로다. 2개 이상이면 세션을 나눠 돌리고 합친다.
@@ -718,11 +780,21 @@ class BatchRunner(
                     // change-hyungchul-20260916-1000
                     //   세션 번호는 호출 "전에" 기록한다. 전에는 호출이 끝난 뒤에 넣어서
                     //   정작 원인을 알고 싶은 실패 행의 stt_session_index 가 -1 로 남았다.
-                    row.sttSessionIndex = session.sttSessionCount + 1
-                    val outcome = session.transcribeWithQuotaRetry(
-                        sttChunks, modelConfig, locale, feed, relName,
-                    ) { fed ->
-                        updateProgress((baseUnits + fed) / totalUnits.toDouble())
+                    // change-hyungchul-20261010-1800 : sherpa 엔진이면 SherpaOfflineTranscriber 로 조각을 차례로 디코딩한다(세션 번호는 -1 그대로)
+                    val sherpaRunner = sherpaT
+                    val outcome = if (sherpaRunner != null) {
+                        withContext(Dispatchers.Default) {
+                            sherpaRunner.transcribe(sttChunks, locale) { fed ->
+                                updateProgress((baseUnits + fed) / totalUnits.toDouble())
+                            }
+                        }
+                    } else {
+                        row.sttSessionIndex = session.sttSessionCount + 1
+                        session.transcribeWithQuotaRetry(
+                            sttChunks, modelConfig, locale, feed, relName,
+                        ) { fed ->
+                            updateProgress((baseUnits + fed) / totalUnits.toDouble())
+                        }
                     }
 
                     row.readyMs = outcome.readyMs
@@ -778,7 +850,8 @@ class BatchRunner(
                     if (outcome.engineNote.isNotEmpty()) row.error = outcome.engineNote
 
                     // add-hyungchul-20260914-1500 : 공급 정체 계측
-                    row.feedExpectedMs = expectedFeedMs(sttPcm.size, feed.delayMs)
+                    // change-hyungchul-20261010-1800 : sherpa 엔진은 공급을 하지 않으므로 이론 공급시간도 -1(정체 판정도 하지 않는다)
+                    row.feedExpectedMs = if (sherpaSpec != null) -1 else expectedFeedMs(sttPcm.size, feed.delayMs)
                     row.feedStallRatio =
                         if (row.feedExpectedMs > 0 && row.feedMs >= 0) {
                             row.feedMs.toDouble() / row.feedExpectedMs
@@ -915,6 +988,7 @@ class BatchRunner(
             }
             runCatching { vadProcessor?.close() }   // add-hyungchul-20260825-1430
             runCatching { noiseReducer?.close() }   // add-hyungchul-20260826-1100
+            runCatching { sherpaT?.close() }        // add-hyungchul-20261010-1800 : sherpa 인식기 해제(네이티브 메모리)
             host.onBatchFinished()   // change-hyungchul-20261009-1514 : running=false / START 버튼 복구를 MainActivity 에 맡긴다
         }
     }
@@ -928,6 +1002,10 @@ class BatchRunner(
         SttEngine.ML_KIT -> "ON_DEVICE(MLKit basic=platform SpeechRecognizer)"
 
         SttEngine.ANDROID_PLATFORM_ON_DEVICE -> "ON_DEVICE(platform on-device service)"
+
+        // add-hyungchul-20261010-1800 : sherpa-onnx 오프라인(앱 안에서 직접 추론)
+        SttEngine.SHERPA_OFFLINE ->
+            "ON_DEVICE(${SherpaOfflineTranscriber.RUNTIME}, cpu, threads=${SherpaOfflineTranscriber.NUM_THREADS})"
     }
 
     /** 배치 시작 전 1회 가용성 점검. 로그에 남기고 run_meta.csv 용 문자열도 돌려준다. */
@@ -975,6 +1053,19 @@ class BatchRunner(
                     appendLog("[preflight] $line2")
                     sb.append(line2)
                 }
+            }
+
+            // add-hyungchul-20261010-1800 : sherpa-onnx — 모델 파일이 휴대폰 앱 전용 폴더에 있는지 본다
+            SttEngine.SHERPA_OFFLINE -> {
+                val spec = config.sherpa
+                val line = if (spec == null) {
+                    "sherpa model spec 없음"
+                } else {
+                    val missing = SherpaOfflineTranscriber.missingFiles(appContext, spec)
+                    "sherpa ${spec.dirName} = " + if (missing.isEmpty()) "READY" else "MISSING(${missing.joinToString(",")})"
+                }
+                appendLog("[preflight] $line")
+                sb.append(line).append(" ; ")
             }
         }
         val svc = SttTelemetry.recognitionServices(appContext)

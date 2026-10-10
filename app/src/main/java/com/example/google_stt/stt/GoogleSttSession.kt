@@ -75,6 +75,10 @@ class GoogleSttSession(
 
             SttEngine.ANDROID_PLATFORM_ON_DEVICE ->
                 platform.transcribeAndroidOnDevice(pcm, locale, feed, onFed)
+
+            // add-hyungchul-20261010-1800 : sherpa-onnx 는 Google 세션(SODA 할당량)을 쓰지 않는다 — BatchRunner 가 SherpaOfflineTranscriber 로 직접 부른다
+            SttEngine.SHERPA_OFFLINE ->
+                throw IllegalStateException("sherpa-onnx 엔진은 Google 세션 관리자를 거치지 않습니다.")
         }
     }
 

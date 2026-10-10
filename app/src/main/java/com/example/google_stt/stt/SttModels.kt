@@ -12,7 +12,8 @@ package com.example.google_stt.stt
 
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
 
-enum class SttEngine { ML_KIT, ANDROID_PLATFORM_ON_DEVICE }
+// change-hyungchul-20261010-1800 : 2단계 — sherpa-onnx 오프라인 엔진(SHERPA_OFFLINE) 추가
+enum class SttEngine { ML_KIT, ANDROID_PLATFORM_ON_DEVICE, SHERPA_OFFLINE }
 
 data class ModelConfig(
     val folder: String,
@@ -23,6 +24,8 @@ data class ModelConfig(
     //   이름 안에 '_' 를 쓰지 않는다(PC 평가기가 '_' 로 엔진/모델/조건을 나누기 때문).
     val resultEngine: String = "",
     val resultModel: String = "",
+    // add-hyungchul-20261010-1800 : sherpa-onnx 모델 정의(SHERPA_OFFLINE 일 때만). 파일·조각 상한·라이선스는 stt/SherpaModels.kt
+    val sherpa: SherpaModelSpec? = null,
 )
 
 // change(add)-hyungchul-20260820
@@ -70,6 +73,16 @@ object SttCatalog {
         // change-hyungchul-20261009-1524 : Pixel 10 전용 ML Kit MODE_ADVANCED("advanced") 경로 제거
         // change-hyungchul-20261009-1530 : 결과 폴더 이름(google-platform_ondevice_<조건>) 추가
         ModelConfig("android_ondevice", SttEngine.ANDROID_PLATFORM_ON_DEVICE, null, "google-platform", "ondevice"),
+        // add-hyungchul-20261010-1800 : 2단계 2-1 — sherpa-onnx 오프라인 엔진(사용자 결정: Whisper / Qwen3-ASR 0.6B / Omnilingual 300M 먼저)
+        //   결과 이름(사용자 결정 "엔진 = 계열-크기"): <엔진>=whisper-base 등, <모델>=sherpa-int8(런타임-정밀도)
+        //   → 폴더 whisper-base_sherpa-int8_<조건>/ , CSV whisper-base_<조건>_result.csv (모델마다 CSV 가 따로 생겨 덮어쓰지 않는다)
+        sherpaModel("whisper-tiny", SherpaCatalog.WHISPER_TINY),
+        sherpaModel("whisper-base", SherpaCatalog.WHISPER_BASE),
+        sherpaModel("whisper-small", SherpaCatalog.WHISPER_SMALL),
+        sherpaModel("whisper-medium", SherpaCatalog.WHISPER_MEDIUM),
+        sherpaModel("whisper-turbo", SherpaCatalog.WHISPER_TURBO),
+        sherpaModel("qwen3asr-0.6b", SherpaCatalog.QWEN3_ASR_06B),
+        sherpaModel("omnilingual-300m", SherpaCatalog.OMNILINGUAL_300M),
     )
 
     // change-hyungchul-20260824
@@ -89,5 +102,19 @@ object SttCatalog {
         FeedConfig("D30", 30L),         // 실시간 ×3.3
         FeedConfig("D20", 20L),         // 실시간 ×5.0
         FeedConfig("D10", 10L),         // 실시간 ×10.0 — 현재까지 확인된 하한
+    )
+
+    /**
+     * add-hyungchul-20261010-1800
+     * 목적: sherpa-onnx 모델의 ModelConfig 를 만든다.
+     * 입력: name — 결과 엔진 이름이자 mode 컬럼 값("계열-크기", '_' 금지), spec — 모델 정의
+     * 리턴: ModelConfig(engine = SHERPA_OFFLINE, resultModel = "sherpa-int8")
+     */
+    private fun sherpaModel(name: String, spec: SherpaModelSpec) = ModelConfig(
+        folder = name,                       // 로그 "모델/경로" · CSV mode 컬럼
+        engine = SttEngine.SHERPA_OFFLINE,
+        resultEngine = name,                 // 결과 폴더 <엔진>
+        resultModel = "sherpa-int8",         // 결과 폴더 <모델> = 런타임-정밀도
+        sherpa = spec,
     )
 }

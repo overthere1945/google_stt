@@ -33,8 +33,9 @@ android {
         targetSdk = 35
         // change-hyungchul-20261009-1626 : SW 버전 규칙(Major.Minor.Patch) 적용 — ML Kit Advanced 제거(기능 삭제)와
         //   결과 폴더 규칙 변경이 있어 Major 를 올린다(1.0 → 2.0.0). 릴리스 노트: docs/RELEASE_NOTES_v2.0.0.md
-        versionCode = 2
-        versionName = "2.0.0"
+        // change-hyungchul-20261010-1800 : 2.0.0 → 2.1.0 (Minor) — sherpa-onnx STT 엔진 추가(기존 결과·설정과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.1.0.md
+        versionCode = 3
+        versionName = "2.1.0"
     }
 
     compileOptions {
@@ -89,6 +90,14 @@ dependencies {
     //     @aar 를 붙여야 Android 용 libjnidispatch.so 가 함께 들어온다.
     implementation("net.java.dev.jna:jna:5.17.0@aar")
     //   · pyannote / FSMN / FireRed VAD 는 위 onnxruntime-android 1.25.1 로 직접 실행한다(추가 의존성 없음).
+
+    // ★ add-hyungchul-20261010-1800 : 2단계 2-1 — sherpa-onnx 오프라인 STT(Whisper / Qwen3-ASR / Omnilingual)
+    //   · 공식 GitHub Releases v1.13.7 의 "정적 링크" AAR(sherpa-onnx-static-link-onnxruntime-1.13.7.aar, 36.1 MB).
+    //     onnxruntime 을 libsherpa-onnx-jni.so 안에 정적으로 넣은 판이라, 위 onnxruntime-android 1.25.1 의
+    //     libonnxruntime.so 와 이름이 겹치지 않는다(사용자 결정 Q3: 정적 링크 AAR + 앱 ORT 1.25.1 유지).
+    //   · Maven 배포가 없어 파일로 넣는다. 받기: bash tools/download_stt_models.sh aar  → app/libs/ (git 에는 넣지 않음)
+    //   · 판을 바꾸면 stt/SherpaOfflineTranscriber.kt 의 RUNTIME 문자열도 같이 바꿀 것.
+    implementation(files("libs/sherpa-onnx-static-link-onnxruntime-1.13.7.aar"))
 
     // ※ Google Cloud STT 관련 의존성(google-cloud-speech, grpc, 서비스계정 JSON 등)은
     //    이 앱에 필요 없다. 세 경로 모두 온디바이스이며 네트워크 자격증명을 쓰지 않는다.

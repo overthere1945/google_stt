@@ -462,3 +462,35 @@ WER/CER 자체는 `.txt` 를 정답 스크립트와 대조해 따로 계산하�
 - `output/<엔진>_<조건>_result.csv`, `output/<엔진>_<조건>_run_meta.csv`
 - run_meta 새 키: `vad_engine`, `vad_preset`, `vad_params`, `vad_license`, `vad_commercial`, `seg_mode`, `condition`, `result_dir`, `vad_runtime`, `vad_model_sha256`
   (`onnxruntime_version` / `silero_model_sha256` 은 예전 뜻대로 Silero 일 때만 채운다)
+
+## 6. v2.1.0 — sherpa-onnx 오프라인 엔진의 값 뜻 (add-hyungchul-20261010-1800)
+
+result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). sherpa-onnx 엔진(Whisper / Qwen3-ASR / Omnilingual) 행에서는 아래처럼 읽는다.
+
+| 컬럼 | sherpa 엔진에서의 값 |
+|---|---|
+| `engine` | `SHERPA_OFFLINE` |
+| `mode` | 결과 엔진 이름 = `whisper-base`, `qwen3asr-0.6b`, `omnilingual-300m` … |
+| `execution` | `ON_DEVICE(sherpa-onnx 1.13.7 (static-link onnxruntime), cpu, threads=4)` |
+| `feed_mode` / `feed_delay_ms` | 화면 값이 그대로 남지만 **쓰지 않는다**(실시간 공급 없이 최대 속도로 디코딩) |
+| `feed_ms`, `feed_expected_ms`, `feed_stall_ratio` | `-1` (공급 없음) |
+| `stt_wall_ms` | 첫 조각 디코딩 시작 → 마지막 조각 결과(순수 디코딩 시간 합) |
+| `tail_ms` | `stt_wall_ms` 와 같다(입력이 처음부터 다 있으므로 "EOF → 결과" = 전체 처리 시간) |
+| `first_result_ms` | 첫 조각 결과까지 |
+| `rtf_stt_input` | ★ 엔진 속도 비교 지표(= 디코딩 시간 ÷ STT 입력 길이) — Google 엔진의 REALTIME `rtf` 와 달리 1 보다 훨씬 작게 나온다 |
+| `segments` | 실제로 디코딩한 조각 수 |
+| `seg_chunks` / `seg_splits` | 조각 수 / 상한 때문에 긴 말 구간을 자른 횟수. 구간 처리 "엔진별 최대 길이" 에서도 모델 상한(Whisper 29 s, Qwen3-ASR 30 s, Omnilingual 39 s)으로 나눈다 |
+| `epd_mode` | 항상 `OFF`(EPD 를 쓰지 않는다) |
+| `stt_timeout_sec`, `stt_session_index` | `-1`(해당 없음 — SODA 세션·시간 제한이 없다) |
+| `mlkit_status`, `check_status_ms`, `download_ms` | 빈 칸 / `-1` |
+
+run_meta 새 키(sherpa 엔진일 때만 채움):
+`stt_runtime`, `stt_model_dir`(휴대폰 경로), `stt_model_files`(파일=바이트;…), `stt_model_sha256`(PC 스크립트가 만든 SHA256SUMS.txt 내용),
+`stt_num_threads`(4), `stt_model_load_ms`(배치 시작 때 모델을 불러온 시간 — 파일별 계측에는 섞이지 않는다), `stt_chunk_max_sec`,
+`stt_language`(`whisper language=ko` / `qwen3 language=Korean` / `omnilingual (언어 지정 없음)`), `stt_license`, `stt_commercial`.
+`pipeline_order` 는 `decode -> noise_reduction -> vad -> seg -> stt` 로 남는다.
+
+결과 파일 위치(사용자 결정 "엔진 = 계열-크기"):
+- `output/whisper-base_sherpa-int8_<조건>/<하위>/<파일>.txt`
+- `output/whisper-base_<조건>_result.csv`, `output/whisper-base_<조건>_run_meta.csv` (모델마다 CSV 가 따로 생긴다)
+- 조건 이름에는 EPD 부분이 붙지 않는다(예: `SILERO`, `NS_GTCRN_SILERO_SAFE`, `PYANNOTE_S500_SEG10`).

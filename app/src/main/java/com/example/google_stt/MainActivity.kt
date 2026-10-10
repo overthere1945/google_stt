@@ -70,6 +70,11 @@
  *       ui/VadUi.kt, ui/EpdUi.kt, ui/NoiseUi.kt, ui/UiUtils.kt, ui/Selections.kt  화면 컨트롤러
  *       batch/BatchRunner.kt      배치 실행 본문(lifecycleScope.launch 안쪽), preflight, CSV 공통 컬럼 채우기
  *
+ * add-hyungchul-20261010-1800 — 2단계 2-1: sherpa-onnx 오프라인 STT 엔진(Whisper / Qwen3-ASR 0.6B / Omnilingual 300M)
+ *       stt/SherpaModels.kt              모델 목록(폴더·파일·조각 상한·라이선스)
+ *       stt/SherpaOfflineTranscriber.kt  모델 불러오기·조각 디코딩·해제
+ *   · Model 스피너에 Google 2개 뒤로 sherpa 모델을 붙인다. 조건 이름에는 EPD 를 넣지 않는다(sherpa 는 EPD 를 쓰지 않음).
+ *
  * ※ 이 3개 경로 중 어느 것도 Google Cloud 인증(서비스 계정 JSON, API Key, OAuth 토큰)을 사용하지 않는다.
  */
 package com.example.google_stt
@@ -233,7 +238,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
                 getString(R.string.model_base),
                 // change-hyungchul-20261009-1524 : Pixel 10 전용 Advanced 항목 제거(SttCatalog.models 와 순서를 맞춘다)
                 getString(R.string.model_android_ondevice),
-            ),
+            ) + models.mapNotNull { it.sherpa?.displayName },   // add-hyungchul-20261010-1800 : sherpa-onnx 모델(SttCatalog 순서 그대로, Google 2개 뒤)
         )
 
         // change-hyungchul-20260824
@@ -320,7 +325,8 @@ class MainActivity : AppCompatActivity(), BatchHost {
             add(vadSelection.conditionToken)                                          // NOVAD / SILERO_SAFE / …
             if (vadSelection.segMode.conditionSuffix.isNotEmpty()) add(vadSelection.segMode.conditionSuffix)  // SEG10
             // EPD 는 10초 통일에서 쓰지 않으므로(BatchRunner) 그때는 이름에도 넣지 않는다
-            if (vadSelection.segMode.maxSec == null) {
+            // change-hyungchul-20261010-1800 : sherpa-onnx 엔진도 EPD 를 쓰지 않으므로 이름에 넣지 않는다
+            if (vadSelection.segMode.maxSec == null && modelConfig.sherpa == null) {
                 epdSelection.outputFolder?.let { add(it.uppercase(Locale.US)) }       // epd_split_t45_m55 → EPD_SPLIT_T45_M55
             }
         }.joinToString("_")
