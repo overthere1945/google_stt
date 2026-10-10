@@ -273,8 +273,10 @@ data class SttRow(
         return if (audioSec > 0 && t >= 0) t / 1000.0 / audioSec else -1.0
     }
 
+    // change-hyungchul-20261011-0340 : execution 을 따옴표로 감싼다(q). sherpa·Vosk 의 값 "ON_DEVICE(…, cpu, threads=4)" 에 쉼표가 있어
+    //   감싸지 않으면 그 뒤 열이 2~3칸씩 밀렸다(v2.1.0 ~ v2.4.0, 실기기 CSV 에서 머리 99열 / 행 101~102열 확인). 다른 따옴표 없는 열은 쉼표가 없는 값만 쓴다.
     fun toCsvLine(): String = listOf(
-        SttTelemetry.q(path), SttTelemetry.q(file), status, engine, mode, execution, lang,
+        SttTelemetry.q(path), SttTelemetry.q(file), status, engine, mode, SttTelemetry.q(execution), lang,
         SttTelemetry.f2(audioSec), SttTelemetry.q(srcMime),
         srcRate.toString(), srcCh.toString(), srcBytes.toString(),
         decodeMs.toString(), feedMode, feedDelayMs.toString(), feedMs.toString(),
