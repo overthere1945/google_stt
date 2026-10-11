@@ -89,6 +89,9 @@
  *   · 화면 아래 [목록에 추가]·[목록 저장]·[목록 불러오기]·[목록 실행]·[중지] — 이 파일은 연결만 한다(readPlanJob / setPlanBusy).
  *   · 목록 실행 중에는 START 를 잠근다(running = true). 화면 로그는 길어지면 앞부분을 잘라 낸다(며칠 실행 대비).
  *
+ * add-hyungchul-20261012-0310 — v2.6.0: 고른 입력·출력 폴더를 저장하고(plan/PlanState), 다시 열 때 권한이 남아 있으면 되살린다(Q44).
+ *   프로세스가 새로 시작됐을 때(PlanState.checkedThisProcess) PlanUi.checkResumeOnStart() — 꺼진 이유 기록·이어 하기 창.
+ *
  * ※ 이 3개 경로 중 어느 것도 Google Cloud 인증(서비스 계정 JSON, API Key, OAuth 토큰)을 사용하지 않는다.
  */
 package com.example.google_stt
@@ -128,6 +131,7 @@ import com.example.google_stt.ui.VadUi                               // change-h
 import com.example.google_stt.denoise.NoiseAlgorithm                 // add-hyungchul-20261011-2000 : 목록은 노이즈 저감 없음만
 import com.example.google_stt.plan.PlanJob                           // add-hyungchul-20261011-2000 : 목록 작업
 import com.example.google_stt.plan.PlanRunner                        // add-hyungchul-20261011-2000 : 목록 실행기
+import com.example.google_stt.plan.PlanState                         // add-hyungchul-20261012-0310 : 폴더 기억·이어 하기
 import com.example.google_stt.plan.SEG_10                            // add-hyungchul-20261011-2000
 import com.example.google_stt.plan.SEG_MAX                           // add-hyungchul-20261011-2000
 import com.example.google_stt.ui.PlanUi                              // add-hyungchul-20261011-2000 : 목록 화면
@@ -188,6 +192,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
                 )
                 inputTreeUri = uri
                 inputPathView.text = getString(R.string.input_label, prettyPath(uri))
+                PlanState.saveFolder(this, PlanState.KEY_IN, uri)   // add-hyungchul-20261012-0310 : 다음에 다시 열 때 되살린다
             }
         }
 
@@ -200,6 +205,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
                 )
                 outputTreeUri = uri
                 outputPathView.text = getString(R.string.output_label, prettyPath(uri))
+                PlanState.saveFolder(this, PlanState.KEY_OUT, uri)  // add-hyungchul-20261012-0310 : 다음에 다시 열 때 되살린다
             }
         }
 
@@ -218,6 +224,16 @@ class MainActivity : AppCompatActivity(), BatchHost {
         langSpinner = findViewById(R.id.langSpinner)
         modelSpinner = findViewById(R.id.modelSpinner)
         feedSpinner = findViewById(R.id.feedSpinner)   // change(add)-hyungchul-20260820
+
+        // add-hyungchul-20261012-0310 : 저장한 입력·출력 폴더를 되살린다(권한이 아직 남아 있을 때만 — Q44)
+        PlanState.restoreFolder(this, PlanState.KEY_IN, needWrite = false)?.let {
+            inputTreeUri = it
+            inputPathView.text = getString(R.string.input_label, prettyPath(it))
+        }
+        PlanState.restoreFolder(this, PlanState.KEY_OUT, needWrite = true)?.let {
+            outputTreeUri = it
+            outputPathView.text = getString(R.string.output_label, prettyPath(it))
+        }
 
         // change-hyungchul-20261009-1514 : VAD / EPD / 노이즈 저감 View 는 각 컨트롤러가 찾는다.
         vadUi = VadUi(this, ::appendLog, ::toast)
@@ -310,6 +326,13 @@ class MainActivity : AppCompatActivity(), BatchHost {
         findViewById<Button>(R.id.inputButton).setOnClickListener { inputPicker.launch(null) }
         findViewById<Button>(R.id.outputButton).setOnClickListener { outputPicker.launch(null) }
         startButton.setOnClickListener { startTranscription() }
+
+        // add-hyungchul-20261012-0310 : 프로세스가 새로 시작됐을 때만(회전 등 같은 프로세스 재생성 제외) 꺼진 이유 기록·이어 하기 창
+        //   검토 지적 1: 메모리 부족으로 꺼진 뒤 최근 앱에서 다시 열면 savedInstanceState 가 있어 그것으로는 놓친다 → 프로세스 단위로 판단
+        if (!PlanState.checkedThisProcess) {
+            PlanState.checkedThisProcess = true
+            planUi.checkResumeOnStart()
+        }
     }
 
     // ─────────────────────────── 실행 ───────────────────────────

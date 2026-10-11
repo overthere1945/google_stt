@@ -16,6 +16,8 @@
  *         output/<엔진>_<조건>_run_meta.csv   (앱 전용 실행 요약, 같은 위치)
  *   <엔진>/<모델> = ModelConfig.resultEngine / resultModel (예: google-mlkit / basic)
  *   <조건>       = [NS_…_]<VAD 프리셋>[_SEG10][_EPD_…]  (예: NOVAD, SILERO_SAFE, PYANNOTE_S500_SEG10)
+ *
+ * add-hyungchul-20261012-0310 — v2.6.0: saveResult 에 dirPrefix(기본 "") 추가. 목록 실행은 "_" 를 붙인 폴더에 쓰고 DONE 이면 원래 이름으로 바꾼다(Q48).
  */
 package com.example.google_stt.io
 
@@ -87,11 +89,12 @@ class ResultStore(
 
     /**
      * 목적: 전사 TXT 를 output/<엔진>_<모델>_<조건>/<입력 하위 폴더>/<파일명>.txt 로 쓴다.
-     * 입력: outputRoot, model, condition, item(입력 파일), text(전사문)
+     * 입력: outputRoot, model, condition, item(입력 파일), text(전사문),
+     *       dirPrefix — 결과 폴더 이름 앞에 붙일 글자(add-hyungchul-20261012-0310 : 목록 실행 중 "_", START 는 "")
      * 리턴: 없음
      */
-    fun saveResult(outputRoot: DocumentFile, model: ModelConfig, condition: String, item: AudioItem, text: String) {
-        val segments = mutableListOf(resultDirName(model, condition))
+    fun saveResult(outputRoot: DocumentFile, model: ModelConfig, condition: String, item: AudioItem, text: String, dirPrefix: String = "") {
+        val segments = mutableListOf(dirPrefix + resultDirName(model, condition))   // change-hyungchul-20261012-0310 : 접두어(기본 빈 문자열 = 예전과 같음)
         segments.addAll(item.relPath)
         val dir = ensureDir(outputRoot, segments)
         writeBytes(dir, item.nameNoExt + ".txt", text.toByteArray(Charsets.UTF_8))

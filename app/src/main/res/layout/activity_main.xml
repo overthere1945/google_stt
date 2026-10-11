@@ -7,6 +7,7 @@
     Feed 스피너와 Start 버튼 사이에만 삽입했고, 기존 위젯의 순서/속성은 하나도 바꾸지 않았다.
     지연(latency) 측정에서 공급 속도가 최대 교란 요인이라 UI에서 고르고 CSV에 함께 기록한다.
   add-hyungchul-20261011-2000: v2.5.0 목록 실행 버튼 6개 + 목록 요약·상태 글을 Start 버튼 바로 아래에 추가.
+  add-hyungchul-20261012-0310: v2.6.0 동시 작업 수 선택(planWorkersSpinner)을 목록 제목 아래에 추가.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -443,6 +444,27 @@
                 android:textStyle="bold"
                 android:textColor="?android:attr/textColorPrimary"
                 android:paddingTop="16dp" />
+
+            <!-- add-hyungchul-20261012-0310 : v2.6.0 동시 작업 수 1·2·3 (ui/PlanUi.kt) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/plan_workers_label"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <Spinner
+                    android:id="@+id/planWorkersSpinner"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp" />
+            </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"

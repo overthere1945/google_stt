@@ -22,7 +22,9 @@
     <string name="progress_zero">0.0%</string>
     <string name="log_title">진행 로그</string>
     <!-- add-hyungchul-20261011-2000 : v2.5.0 목록 실행 -->
-    <string name="plan_title">목록 실행 (동시 3개 · 오프라인 엔진 1개)</string>
+    <!-- change-hyungchul-20261012-0310 : 동시 작업 수를 화면에서 고르므로 제목에서 "동시 3개" 를 뺐다 -->
+    <string name="plan_title">목록 실행 (오프라인 엔진은 동시에 1개)</string>
+    <string name="plan_workers_label">동시 작업 수</string>   <!-- add-hyungchul-20261012-0310 -->
     <string name="btn_plan_add">목록에 추가</string>
     <string name="btn_plan_clear">목록 비우기</string>
     <string name="btn_plan_save">목록 저장</string>

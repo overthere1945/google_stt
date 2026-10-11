@@ -579,3 +579,16 @@ result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). Vosk 는 7장(스
   - key = `<lang>/<날짜>_<FEED>/<엔진>_<모델>_<조건>` (작업 식별 — 이어 하기 기준)
   - status: `DONE`(배치가 끝까지 돌았다 — 일부 파일 ERROR 여도 완료) / `FAILED`(시작 못 함·오류 — 다음에 다시) / `INTERRUPTED`(중지·앱 종료 — 다음에 처음부터)
   - 머리 위 `# date=` 줄이 날짜 폴더 값이다(이어 하기 때 같은 날짜를 쓴다).
+
+## 12. v2.6.0 — 목록 실행 기록 파일 (add-hyungchul-20261012-0310)
+
+- result.csv·run_meta.csv 열은 바뀌지 않았다. run_meta `parallel_jobs` 는 화면에서 고른 동시 작업 수(1·2·3)다.
+- TXT 결과 폴더: 작업 중 `_<엔진>_<모델>_<조건>`, DONE 이면 `<엔진>_<모델>_<조건>` 로 바뀐다. `_stale_<이름>_<시각>` 은 끝나지 않은 예전 결과(지우지 않고 비켜 둔 것).
+  PC 평가기는 `_` 로 시작하는 폴더를 건너뛴다(평가기 v1.1.0 규칙). CSV 는 접두어 없이 쓰므로 평가는 TXT 모드로 한다.
+- `_plan.csv`: [목록 실행] 때의 목록 사본(목록 CSV 형식, 펼친 한 줄 = 작업 1개). 이어 하기 창이 읽는다.
+- `_plan_memlog.csv`(30초마다 한 줄): `time,avail_mb,total_mb,threshold_mb,low_memory,app_pss_mb,thermal,finished,total,running`
+  - avail_mb / total_mb / threshold_mb / low_memory = Android `ActivityManager.MemoryInfo`(휴대폰 전체: 남은 메모리, 전체, 시스템이 메모리 부족으로 보는 기준, 지금 부족 상태인지)
+  - app_pss_mb = 이 앱 프로세스 PSS(`Debug.getPss`), running = 그 순간 돌던 작업(`;` 로 구분)
+- `_plan_exits.csv`(목록 실행 도중 꺼졌을 때, 다음 실행에서 한 줄): `logged,exit_time,reason,status,pss_mb,rss_mb,low_memory_report_supported,plan_was_running,description`
+  - reason = `ApplicationExitInfo` 종료 이유(LOW_MEMORY·CRASH_NATIVE·CRASH·SIGNALED·USER_REQUESTED 등), status = 종료 코드 또는 신호 번호
+  - low_memory_report_supported = 이 기기가 메모리 부족 종료를 LOW_MEMORY 로 보고하는지(`isLowMemoryKillReportSupported`). false 인 기기에서 SIGNALED + 신호 9 는 메모리 부족으로 본다.

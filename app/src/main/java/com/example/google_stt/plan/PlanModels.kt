@@ -10,20 +10,42 @@
  *   Q42 동시 작업 3개(오프라인은 1개만), 이번 목록 실행에서 Google 엔진 제외, 노이즈 저감 없음, 공급 속도 REALTIME.
  *
  * add-hyungchul-20261011-2000 — v2.5.0 목록 실행
+ * add-hyungchul-20261012-0310 — v2.6.0: 동시 작업 수 선택(Q47)·목록 사본/메모리/종료 기록 파일 이름·작업 중 폴더 접두어(Q48) 상수 추가
  */
 package com.example.google_stt.plan
 
 /** 목록 CSV 머리줄(열 순서 고정) */
 const val PLAN_HEADER = "lang,model,feed,vad,seg"
 
-/** 동시 작업(work) 수 — 사용자 결정 Q42 */
+/** 동시 작업(work) 수 — 사용자 결정 Q42 / change-hyungchul-20261012-0310 : v2.6.0 부터는 화면에서 고르는 값의 기본값(Q47) */
 const val PLAN_WORKERS = 3
+
+/** add-hyungchul-20261012-0310 : 고를 수 있는 동시 작업 수의 최댓값(1·2·3) */
+const val PLAN_WORKERS_MAX = 3
 
 /** 오프라인(sherpa OfflineRecognizer) 작업의 동시 상한 — CPU 4스레드·메모리를 많이 써서 1개만 */
 const val PLAN_OFFLINE_MAX = 1
 
 /** 진행 기록 파일 이름(출력 폴더 바로 아래) */
 const val PLAN_PROGRESS_FILE = "_plan_progress.csv"
+
+/** add-hyungchul-20261012-0310 : [목록 실행] 때 자동 저장하는 목록 사본(출력 폴더 바로 아래, Q45) — 이어 하기 창이 읽는다 */
+const val PLAN_FILE = "_plan.csv"
+
+/** add-hyungchul-20261012-0310 : 실행 중 메모리 기록(30초마다 한 줄, Q46) */
+const val PLAN_MEMLOG_FILE = "_plan_memlog.csv"
+
+/** add-hyungchul-20261012-0310 : 앱이 꺼진 이유 기록(다음 실행 때 한 줄, Q46) */
+const val PLAN_EXITS_FILE = "_plan_exits.csv"
+
+/** add-hyungchul-20261012-0310 : 메모리 기록 간격(ms) */
+const val PLAN_MEMLOG_INTERVAL_MS = 30_000L
+
+/**
+ * add-hyungchul-20261012-0310 : 작업 중인 결과 폴더 앞에 붙이는 글자(Q48).
+ * PC 평가기는 '_' 로 시작하는 폴더를 건너뛴다(평가기 v1.1.0 규칙) → 끝나지 않은 결과가 채점에 섞이지 않는다. DONE 이면 원래 이름으로 바꾼다.
+ */
+const val RUN_DIR_PREFIX = "_"
 
 /** 구간 처리 토큰: 엔진별 최대 길이 */
 const val SEG_MAX = "MAX"

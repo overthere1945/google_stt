@@ -59,6 +59,8 @@
  *     catch·finally 의 마지막 CSV 저장도 같은 하위 폴더에 쓴다(openOutputRoot).
  *   · lastCompleted / lastOk / lastFail: 목록 실행이 작업 결과(DONE / FAILED)를 판정한다. 배치 흐름은 바꾸지 않았다.
  *   · run_meta 끝에 parallel_jobs(동시에 돈 배치 수) 키 추가 — 2 이상이면 시간·메모리 컬럼은 다른 작업과 섞인 값이다.
+ *
+ * add-hyungchul-20261012-0310 — v2.6.0: BatchRequest.runDirPrefix(목록 실행 "_") 를 TXT 결과 폴더 이름 앞에 붙인다. CSV·run_meta 이름은 그대로.
  */
 package com.example.google_stt.batch
 
@@ -167,6 +169,7 @@ data class BatchRequest(
     val inSub: List<String> = emptyList(),   // 입력 하위 폴더(예: ["kr"]) — 없으면 고른 폴더 그대로
     val outSub: List<String> = emptyList(),  // 출력 하위 폴더(예: ["kr", "20261012_REALTIME"]) — 없으면 고른 폴더 그대로, 없으면 만든다
     val parallelJobs: Int = 1,               // 동시에 돈 배치 수(run_meta parallel_jobs — 2 이상이면 시간·메모리 컬럼은 서로 섞인 값)
+    val runDirPrefix: String = "",           // add-hyungchul-20261012-0310 : 결과 폴더 이름 앞 글자(목록 실행 중 "_" — DONE 이면 PlanRunner 가 원래 이름으로 바꾼다), START 는 ""
 )
 
 /**
@@ -197,6 +200,9 @@ class BatchRunner(
     var lastFail = 0
         private set
 
+    /** add-hyungchul-20261012-0310 : 이번 run() 의 결과 폴더 접두어(BatchRequest.runDirPrefix, START 는 "") */
+    private var runDirPrefix = ""
+
     // ── 화면/저장 호출 위임: 옮겨 온 본문을 한 글자도 바꾸지 않기 위한 얇은 연결부 ──
     private fun appendLog(line: String) = host.appendLog(line)
     private fun toast(msg: String) = host.toast(msg)
@@ -216,7 +222,7 @@ class BatchRunner(
     private fun writeCsv(outputRoot: DocumentFile, model: ModelConfig, condition: String, body: String) =
         store.writeCsv(outputRoot, model, condition, body)
     private fun saveResult(outputRoot: DocumentFile, model: ModelConfig, condition: String, item: AudioItem, text: String) =
-        store.saveResult(outputRoot, model, condition, item, text)
+        store.saveResult(outputRoot, model, condition, item, text, runDirPrefix)   // change-hyungchul-20261012-0310 : 접두어 전달
 
     /**
      * add-hyungchul-20261011-2000
@@ -272,6 +278,7 @@ class BatchRunner(
         val sttRuntime = if (isVosk) VoskTranscriber.RUNTIME else SherpaOfflineTranscriber.RUNTIME                 // add-hyungchul-20261011-0301 : run_meta·로그 런타임 이름
         val sttThreads = if (isVosk) VoskTranscriber.NUM_THREADS else SherpaOfflineTranscriber.NUM_THREADS         // add-hyungchul-20261011-0301 : 디코딩 스레드 수
         lastCompleted = false                         // add-hyungchul-20261011-2000 : 이번 실행 결과 판정값 초기화
+        runDirPrefix = req.runDirPrefix               // add-hyungchul-20261012-0310 : 결과 폴더 접두어(START 는 "")
         lastOk = 0
         lastFail = 0
         try {

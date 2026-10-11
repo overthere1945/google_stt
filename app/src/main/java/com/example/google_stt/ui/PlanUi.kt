@@ -9,6 +9,11 @@
  * - [중지]: 선택 창 "지금 바로 / 이 작업 끝나고"(사용자 결정 Q39) — 어느 쪽이든 목록 전체가 멈춘다.
  *
  * add-hyungchul-20261011-2000 — v2.5.0 목록 실행
+ * add-hyungchul-20261012-0310 — v2.6.0
+ *   · 동시 작업 수 선택(1·2·3, 기본 3, 저장해 두고 다음에도 씀 — Q47)
+ *   · 앱을 다시 열면(checkResumeOnStart) 지난번 꺼진 이유를 로그에 남기고, 출력 폴더에 끝나지 않은 목록(_plan.csv + 진행 기록)이 있으면 이어 하기 창(Q44).
+ *     목록 실행 도중 메모리 부족(LOW_MEMORY)으로 꺼졌으면 동시 작업을 1개 줄여 이어 하기를 기본으로 제안(Q49 — 사용자가 확인).
+ *   · 실행 중 표시(PlanState.setRunning)를 남겨 '실행 도중 꺼졌는지' 를 다음 실행 때 안다.
  */
 package com.example.google_stt.ui
 
@@ -19,19 +24,28 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.Settings
 import android.view.WindowManager
+import android.view.View                                    // add-hyungchul-20261012-0310
+import android.widget.AdapterView                           // add-hyungchul-20261012-0310 : 동시 작업 수 선택
+import android.widget.ArrayAdapter                          // add-hyungchul-20261012-0310
 import android.widget.Button
+import android.widget.Spinner                               // add-hyungchul-20261012-0310
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.google_stt.R
+import com.example.google_stt.plan.PLAN_FILE                 // add-hyungchul-20261012-0310
 import com.example.google_stt.plan.PLAN_OFFLINE_MAX
 import com.example.google_stt.plan.PLAN_WORKERS
+import com.example.google_stt.plan.PLAN_WORKERS_MAX          // add-hyungchul-20261012-0310
 import com.example.google_stt.plan.PlanCheck
 import com.example.google_stt.plan.PlanCsv
 import com.example.google_stt.plan.PlanJob
 import com.example.google_stt.plan.PlanPrep
+import com.example.google_stt.plan.PlanProgress                 // add-hyungchul-20261012-0310
+import com.example.google_stt.plan.PlanExit                  // add-hyungchul-20261012-0310
 import com.example.google_stt.plan.PlanRunner
+import com.example.google_stt.plan.PlanState                 // add-hyungchul-20261012-0310
 import com.example.google_stt.stt.SttCatalog
 import com.example.google_stt.stt.describe
 import kotlinx.coroutines.CancellationException
@@ -70,6 +84,7 @@ class PlanUi(
     private var planJob: Job? = null                            // 실행 중인 목록 코루틴(지금 바로 중지 = cancel)
     private var preparing = false                               // 시작 전 점검 중(두 번 눌러 점검이 겹치지 않게)
     private var savedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED   // 회전 잠금 전 값
+    private var workerCount = PLAN_WORKERS                      // add-hyungchul-20261012-0310 : 고른 동시 작업 수(1~3)
 
     private lateinit var addButton: Button
     private lateinit var clearButton: Button
@@ -79,6 +94,7 @@ class PlanUi(
     private lateinit var stopButton: Button
     private lateinit var summaryView: TextView
     private lateinit var statusView: TextView
+    private lateinit var workersSpinner: Spinner                // add-hyungchul-20261012-0310 : 동시 작업 수 1·2·3
 
     /**
      * 목적: 버튼·글 View 를 찾고 누를 때 할 일을 붙인다(onCreate 에서 1회).
@@ -99,7 +115,104 @@ class PlanUi(
         loadButton.setOnClickListener { load() }
         startButton.setOnClickListener { start() }
         stopButton.setOnClickListener { stop() }
+        // add-hyungchul-20261012-0310 : 동시 작업 수(1·2·3) — 저장한 값으로 시작하고, 바꾸면 저장한다(Q47)
+        workersSpinner = activity.findViewById(R.id.planWorkersSpinner)
+        workersSpinner.adapter = ArrayAdapter(
+            activity, android.R.layout.simple_spinner_dropdown_item, (1..PLAN_WORKERS_MAX).map { "$it" },
+        )
+        workerCount = PlanState.workers(activity)
+        workersSpinner.setSelection(workerCount - 1)
+        workersSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                workerCount = position + 1                                      // 0 → 1개, 1 → 2개, 2 → 3개
+                PlanState.saveWorkers(activity, workerCount)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
         refresh()
+    }
+
+    /**
+     * add-hyungchul-20261012-0310
+     * 목적: Q44·Q46·Q49 — 프로세스가 새로 시작됐을 때 지난번 꺼진 이유를 로그에 남기고,
+     *       마지막 목록의 출력 폴더에 끝나지 않은 목록이 있으면 이어 하기 창을 띄운다.
+     * 입력: 없음(폴더는 마지막 목록 실행의 폴더, 없으면 folders()) / 출력: 로그·창 / 리턴: 없음
+     */
+    fun checkResumeOnStart() {
+        val wasRunning = PlanState.wasRunning(activity)                         // 지난번 목록 실행 도중 꺼졌는지
+        PlanState.setRunning(activity, false)                                   // 한 번만 알린다
+        val exits = PlanState.newExits(activity)                                // 아직 보지 않은 종료 기록(최근 것부터, 검토 지적 2a)
+        exits.forEach {
+            log(
+                "[종료 이유] 지난 실행: ${it.summary} / 메모리 부족 종료 보고 지원=${it.lowMemoryReportSupported}" +
+                    if (wasRunning) " — 목록 실행 도중 꺼졌다" else "",
+            )
+        }
+        val exit = exits.firstOrNull { it.isLowMemory } ?: exits.firstOrNull()  // 판단에 쓸 기록: 메모리 부족이 있으면 그것
+        // 검토 지적 2b: 마지막 목록 실행의 폴더를 우선 쓴다(실행 중에 폴더를 바꿨어도 그 목록의 출력 폴더로 이어 간다)
+        //   2차 검토 B: 입력·출력은 같은 쌍에서 고른다(마지막 목록의 출력 + 지금 고른 다른 입력이 섞이지 않게).
+        //   마지막 목록의 출력 폴더가 있으면 입력도 그 목록의 것만 쓰고, 없어졌으면(null) 아래에서 "입력 폴더를 다시 고르라" 로 간다.
+        val (planIn, planOut) = PlanState.planFolders(activity)
+        val (curIn, curOut) = folders()
+        val inUri = if (planOut != null) planIn else curIn
+        val outUri = planOut ?: curOut
+        if (outUri == null) return                                              // 저장한 출력 폴더가 없다(처음 실행·권한 없어짐)
+        activity.lifecycleScope.launch {
+            if (wasRunning) exits.forEach { runner.recordExit(outUri, it, wasRunning) }   // 출력 폴더 _plan_exits.csv
+            val text = runner.readPlanText(outUri) ?: return@launch             // 목록 사본이 없으면(새 폴더·v2.5.0 결과) 창을 띄우지 않는다
+            val parsed = PlanCsv.parse(text)
+            val errs = parsed.errors + PlanCheck.errors(parsed.jobs, PlanRunner.appModels(), PlanRunner.googleModels(), feedNames(), PlanRunner.vadPresets().keys)
+            if (errs.isNotEmpty() || parsed.jobs.isEmpty()) { log("[이어 하기] $PLAN_FILE 을 읽을 수 없어 이어 하기 창을 띄우지 않는다"); return@launch }
+            if (inUri == null) {                                                // 입력 폴더 권한이 없어졌다 → 목록만 채워 둔다
+                jobs.clear(); jobs += parsed.jobs; planName = "$PLAN_FILE(출력 폴더)"; refresh()
+                log("[이어 하기] 끝나지 않은 목록을 불러왔다 — 입력 폴더를 다시 고른 뒤 [목록 실행]")
+                return@launch
+            }
+            val prep = runCatching { runner.prepare(parsed.jobs, inUri, outUri) }
+                .getOrElse { if (it is CancellationException) throw it; log("[이어 하기] 점검 실패 — ${describe(it)}"); return@launch }
+            if (prep.pending.isEmpty()) return@launch                           // 모두 DONE — 이어 할 것 없음
+            // 검토 지적 6: 실행 도중 꺼진 것이 아니고 남은 것이 FAILED 뿐이면 매번 묻지 않는다(로그만)
+            val notFailed = prep.pending.count { prep.rows[it.key]?.status != PlanProgress.FAILED }
+            if (!wasRunning && notFailed == 0) { log("[이어 하기] 남은 작업은 FAILED ${prep.pending.size}개뿐 — [목록 실행] 으로 다시 돌릴 수 있다"); return@launch }
+            if (isBusy() || planJob != null || preparing) return@launch          // 그사이 다른 실행이 시작됐다
+            jobs.clear(); jobs += parsed.jobs; planName = "$PLAN_FILE(출력 폴더)"; refresh()
+            if (prep.errors.isNotEmpty()) { showErrors("이어 하기 — 시작할 수 없다", prep.errors); return@launch }
+            showResumeDialog(prep, inUri, outUri, exit, wasRunning)
+        }
+    }
+
+    /**
+     * add-hyungchul-20261012-0310
+     * 목적: 이어 하기 창. 목록 실행 도중 메모리 부족으로 꺼졌으면 동시 작업을 1개 줄여 이어 하기를 기본 버튼으로 제안한다(Q49).
+     * 입력: prep — 점검 결과, inUri / outUri, exit — 지난 종료 기록(없으면 null), wasRunning — 실행 도중 꺼졌는지 / 리턴: 없음
+     */
+    private fun showResumeDialog(prep: PlanPrep, inUri: Uri, outUri: Uri, exit: PlanExit?, wasRunning: Boolean) {
+        val lowMem = wasRunning && exit?.isLowMemory == true && workerCount > 1
+        val msg = buildString {
+            append("출력 폴더에 끝나지 않은 목록이 있다.\n")
+            append("DONE ${prep.done.size} / 전체 ${prep.jobs.size} (남은 ${prep.pending.size}), 날짜 폴더 ${prep.date}\n")
+            if (wasRunning) append("\n지난번 목록 실행 도중 앱이 꺼졌다.\n")
+            if (wasRunning && exit != null) append("꺼진 이유: ${exit.summary}\n")
+            if (wasRunning && exit != null && !exit.lowMemoryReportSupported) append("(이 기기는 메모리 부족 종료를 LOW_MEMORY 로 보고하지 않을 수 있다)\n")
+            if (lowMem) append("\n메모리 부족으로 꺼졌으므로 동시 작업을 ${workerCount}개 → ${workerCount - 1}개로 줄여 이어 하기를 권한다.")
+            append("\n\n실행 중에는 화면을 켜 둔 채로 두고 충전기를 연결한다.")
+        }
+        val b = AlertDialog.Builder(activity).setTitle("이어 하기").setMessage(msg).setNegativeButton("나중에", null)
+        if (lowMem) {
+            b.setPositiveButton("${workerCount - 1}개로 줄여 이어 하기") { _, _ -> setWorkers(workerCount - 1); begin(prep, inUri, outUri) }
+            b.setNeutralButton("그대로 ${workerCount}개로") { _, _ -> begin(prep, inUri, outUri) }
+        } else {
+            b.setPositiveButton("이어서 실행 (동시 ${workerCount}개)") { _, _ -> begin(prep, inUri, outUri) }
+        }
+        b.show()
+    }
+
+    /** add-hyungchul-20261012-0310 : 목적: 동시 작업 수를 바꾸고(화면·저장 함께) 기록한다. 입력: n(1~3) / 리턴: 없음 */
+    private fun setWorkers(n: Int) {
+        workerCount = n.coerceIn(1, PLAN_WORKERS_MAX)
+        workersSpinner.setSelection(workerCount - 1)
+        PlanState.saveWorkers(activity, workerCount)
+        log("[이어 하기] 동시 작업 수를 ${workerCount}개로 줄였다")
     }
 
     /** 목적: 목록 상태 한 줄을 화면에 쓴다(PlanRunner onStatus 로도 부른다). 입력: text / 리턴: 없음 */
@@ -207,7 +320,7 @@ class PlanUi(
             append("작업 ${prep.jobs.size}개 중 이번 실행 ${pending}개\n")
             if (prep.resumed) append("이어 하기: 진행 기록에서 DONE ${prep.done.size}개 건너뜀, 날짜 폴더 ${prep.date} 그대로\n")
             else append("새 목록: 날짜 폴더 ${prep.date}\n")
-            append("동시 ${PLAN_WORKERS}개(오프라인 엔진은 ${PLAN_OFFLINE_MAX}개)\n")
+            append("동시 ${workerCount}개(오프라인 엔진은 ${PLAN_OFFLINE_MAX}개)\n")   // change-hyungchul-20261012-0310 : 고른 값
             append("결과: <출력>/<kr|en>/${prep.date}_<FEED>/<엔진>_<모델>_<조건>/…\n\n")
             append("실행 중에는 화면을 켜 둔 채로 두고 회전을 잠근다. 충전기를 연결하고 전원 버튼·뒤로 가기를 누르지 않는다.")
         }
@@ -230,11 +343,14 @@ class PlanUi(
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // 화면 켜 두기(목록 실행 중만)
         savedOrientation = activity.requestedOrientation
         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED  // 회전 잠금(Activity 재생성으로 끊기는 것을 막는다)
+        PlanState.setRunning(activity, true)                                    // add-hyungchul-20261012-0310 : 꺼지면 true 가 남는다
+        PlanState.savePlanFolders(activity, inUri, outUri)                      // add-hyungchul-20261012-0310 : 이 목록의 폴더(이어 하기 기준)
+        val count = workerCount                                                 // add-hyungchul-20261012-0310 : 시작 때 값으로 고정
         // LAZY: planJob 에 먼저 넣은 뒤 시작한다(바로 끝나는 경우에도 finally 의 planJob = null 이 마지막이 되게)
         val job = activity.lifecycleScope.launch(start = CoroutineStart.LAZY) {
             var failure: Throwable? = null                                      // 중지가 아닌 오류(검토 지적 2)
             try {
-                runner.run(prep, planName, inUri, outUri)
+                runner.run(prep, planName, inUri, outUri, count)                 // change-hyungchul-20261012-0310 : 동시 작업 수
             } catch (e: CancellationException) {
                 throw e                                                         // 지금 바로 중지 — finally 에서 안내
             } catch (e: Throwable) {
@@ -248,6 +364,7 @@ class PlanUi(
                 }
                 activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 activity.requestedOrientation = savedOrientation
+                PlanState.setRunning(activity, false)                           // add-hyungchul-20261012-0310 : 정상·중지·오류로 끝남
                 planJob = null
                 setBusy(false)
                 refresh()
@@ -295,6 +412,7 @@ class PlanUi(
         loadButton.isEnabled = !running && !preparing
         startButton.isEnabled = !running && !preparing
         stopButton.isEnabled = running
+        workersSpinner.isEnabled = !running                                    // add-hyungchul-20261012-0310 : 실행 중에는 바꿀 수 없다
     }
 
     /**

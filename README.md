@@ -4,7 +4,7 @@
 지연·자원을 계측하는 평가 앱입니다. 결과는 PC "STT 통합 실행기"와 같은 폴더·조건 이름 규칙으로 저장되어
 PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
-- 현재 판: **2.5.0** (2026-10-11) — 변경 내용은 [`docs/RELEASE_NOTES_v2.5.0.md`](docs/RELEASE_NOTES_v2.5.0.md) (이전: [`v2.4.1`](docs/RELEASE_NOTES_v2.4.1.md), [`v2.4.0`](docs/RELEASE_NOTES_v2.4.0.md), [`v2.3.0`](docs/RELEASE_NOTES_v2.3.0.md), [`v2.2.0`](docs/RELEASE_NOTES_v2.2.0.md), [`v2.1.1`](docs/RELEASE_NOTES_v2.1.1.md), [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
+- 현재 판: **2.6.0** (2026-10-12) — 변경 내용은 [`docs/RELEASE_NOTES_v2.6.0.md`](docs/RELEASE_NOTES_v2.6.0.md) (이전: [`v2.5.0`](docs/RELEASE_NOTES_v2.5.0.md), [`v2.4.1`](docs/RELEASE_NOTES_v2.4.1.md), [`v2.4.0`](docs/RELEASE_NOTES_v2.4.0.md), [`v2.3.0`](docs/RELEASE_NOTES_v2.3.0.md), [`v2.2.0`](docs/RELEASE_NOTES_v2.2.0.md), [`v2.1.1`](docs/RELEASE_NOTES_v2.1.1.md), [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
 - 대상 기기: Galaxy S25 Ultra (arm64-v8a), minSdk 31 / targetSdk 35 — APK 는 **arm64-v8a 전용**(`abiFilters`, 에뮬레이터·32비트 기기 설치 불가)
 - 네트워크: **INTERNET 권한 없음**(온디바이스 실행 증명용). VAD·노이즈 저감 모델은 APK 에 넣고, STT 모델(sherpa-onnx)은 휴대폰 공용 폴더 `/sdcard/Documents/stt_models` 에 넣고 앱은 **'모든 파일 접근'** 권한으로 읽습니다(v2.1.1).
 
@@ -119,16 +119,24 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
    - 목록에는 Google 엔진·VAD CUSTOM·노이즈 저감을 넣지 않는다(노이즈 저감은 항상 없음, EPD 없음).
    - 엑셀로 고쳤다면 "CSV UTF-8" 로 저장. MTP 위에서 바로 저장하지 말고 PC 로 복사 → 고침 → 다시 복사.
 2. 입력 폴더는 `kr`·`en` 을 담은 폴더(예: `Documents/input_sound`)를, 출력 폴더는 새 폴더(예: `Documents/output_stt`)를 고른다.
-3. **[목록 실행]** → 점검(모델 파일·입력 하위 폴더·이어 하기) → 확인 창 → 시작.
-   - 동시 3개(오프라인 엔진은 1개만, 남은 칸은 스트리밍 엔진). 실행 중 화면 켜 둠·회전 잠금. 충전기 연결 권장.
+3. **동시 작업 수**(1·2·3, 기본 3 — v2.6.0)를 고르고 **[목록 실행]** → 점검(모델 파일·입력 하위 폴더·이어 하기) → 확인 창 → 시작.
+   - 오프라인 엔진은 동시에 1개만, 남은 칸은 스트리밍 엔진. 실행 중 화면 켜 둠·회전 잠금. 충전기 연결 권장.
+   - 시작할 때 목록 사본을 출력 폴더 `_plan.csv` 로 남긴다(v2.6.0).
    - 다음 작업을 잡기 전에 발열이 SEVERE 이상이면 MODERATE 이하가 될 때까지(최대 20분) 기다린다.
 4. **[중지]** → "지금 바로"(지금 파일이 끝나는 대로, 그 작업은 INTERRUPTED) / "이 작업 끝나고".
 5. 이어 하기: 같은 출력 폴더로 다시 [목록 실행] 하면 `_plan_progress.csv` 의 DONE 작업은 건너뛰고 같은 날짜 폴더에 이어 쓴다.
    끊긴 작업은 첫 파일부터 다시 돈다. 새로 시작하려면 새 출력 폴더를 고른다.
+6. **앱이 꺼졌을 때(v2.6.0)** — 앱을 다시 열면 고른 폴더가 되살아나고, 마지막 목록이 끝나지 않았으면 **이어 하기 창**이 뜬다([이어서 실행] 한 번).
+   - 지난번 꺼진 이유(메모리 부족 `LOW_MEMORY`, 네이티브 충돌 `CRASH_NATIVE` 등)를 화면 로그와 `_plan_exits.csv` 에 남긴다.
+   - 목록 실행 도중 메모리 부족으로 꺼졌으면 창이 **동시 작업을 1개 줄여 이어 하기**를 기본 버튼으로 제안한다(사용자가 확인).
+   - 실행 중 30초마다 휴대폰 남은 메모리·앱 메모리·발열·돌고 있는 작업을 `_plan_memlog.csv` 에 남긴다.
+   - 끝나지 않은 결과는 `_<결과 폴더>` 에 쓰고 DONE 이면 원래 이름으로 바꾼다 → PC 평가기는 `_` 로 시작하는 폴더를 건너뛰므로 반쪽 결과가 채점에 섞이지 않는다.
+     같은 이름의 예전 반쪽 폴더는 지우지 않고 `_stale_<이름>_<시각>` 으로 비켜 둔다.
 
 ```
 <출력 폴더>/
   _plan_progress.csv                       ← key,status(DONE/FAILED/INTERRUPTED),worker,started,finished,ok,fail,note
+  _plan.csv / _plan_memlog.csv / _plan_exits.csv   ← 목록 사본 / 30초 메모리 기록 / 꺼진 이유 (v2.6.0)
   kr/20261012_REALTIME/whisper-base_sherpa-int8_SILERO_SAFE/Customer_Service/01.txt
   kr/20261012_REALTIME/whisper-base_SILERO_SAFE_result.csv
   en/20261012_REALTIME/…
@@ -160,7 +168,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 | `stt/` | `SttModels`(경로·공급 속도·결과형), `SttConstants`, `SttUtil`, `PcmFeeder`, `MlKitTranscriber`, `PlatformOnDeviceTranscriber`, `GoogleSttSession`(세션 수·할당량 재시도·조각 합치기·warm-up), `SherpaModels`(sherpa 모델 목록), `SherpaOfflineTranscriber`(sherpa 불러오기·디코딩) |
 | `vad/` | `VadModels`(엔진·항목·프리셋), `VadPipeline`(공통 계약·이어 붙이기·팩토리), `FrameSegmenter`(Silero 방식 구간 규칙), `KaldiFbank`, `SegmentPacker`(10초 조각), 엔진별 `*VadDetector` |
 | `ui/` | `VadUi`, `EpdUi`, `NoiseUi`, `UiUtils`, `Selections`, `PlanUi`(목록 실행 화면, v2.5.0) |
-| `plan/` | `PlanModels`(목록 CSV·검증·진행 기록 — 순수 Kotlin), `PlanRunner`(동시 3개 실행·이어 하기·발열 대기) (v2.5.0) |
+| `plan/` | `PlanModels`(목록 CSV·검증·진행 기록 — 순수 Kotlin), `PlanRunner`(동시 실행·이어 하기·발열 대기·메모리 기록·결과 폴더 이름 바꾸기) (v2.5.0~), `PlanState`(폴더·동시 작업 수 기억, 꺼진 이유 읽기) (v2.6.0) |
 | `io/` | `AudioInput`(입력 폴더 탐색), `ResultStore`(결과 저장) |
 | `SileroVadProcessor.kt` | Silero ONNX 실행기(VadDetector 구현), `VadConfig`, `VadSegment`, `VadResult` |
 | `SpeechEpd.kt`, `SttTelemetry.kt`, `AudioDecoder.kt`, `denoise/` | 기존 그대로(계측 열 추가만) |
@@ -177,6 +185,8 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 - sherpa 정적 AAR 은 x86 에서만 `libonnxruntime.so`(ORT 1.27.1)를 따로 넣어 앱의 onnxruntime-android 1.25.1 과 경로가 겹칩니다. 그래서 `packaging.jniLibs.excludes` 에 `lib/x86/libonnxruntime.so` 를 넣었습니다. **`abiFilters` 만으로는 풀리지 않습니다** — AGP 는 모든 ABI 를 먼저 합치면서 중복을 검사하고, `abiFilters` 는 APK 를 묶을 때만 적용하기 때문입니다.
 - 목록 실행: 결과 파일을 쓸 때마다 날짜 폴더의 목록을 다시 읽어(SAF findFile) 날짜 폴더에 결과가 많아질수록 저장이 조금씩 느려진다(전사 결과에는 영향 없음).
 - 목록 실행: "지금 바로 중지" 는 지금 파일이 끝나야 멈춘다(REALTIME 스트리밍은 그 파일 길이만큼).
+- 목록 실행: 결과 CSV(`<엔진>_<조건>_result.csv`·`_run_meta.csv`)는 `_` 접두어 없이 날짜 폴더에 쓴다 — 끝나지 않은 작업의 CSV 도 보인다. 평가는 TXT 모드로 한다.
+- 이어 하기 창은 프로세스가 새로 시작될 때만 뜬다. 같은 프로세스에서 뒤로 가기로 멈춘 뒤 다시 열면 창 없이 [목록 실행] 으로 이어 간다.
 - USB(MTP)로 PC 에서 결과 폴더를 보면 앱이 막 쓴 파일이 0바이트로 보일 수 있습니다(휴대폰 미디어 색인 미갱신). `adb pull` 이나 USB 재연결로 확인하세요.
 
 ## 7. 라이선스 메모
