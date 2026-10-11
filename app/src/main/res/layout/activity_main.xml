@@ -6,6 +6,7 @@
   change(add)-hyungchul-20260826-1100: Noise Reduction 알고리즘 선택 + 옵션 UI 추가.
     Feed 스피너와 Start 버튼 사이에만 삽입했고, 기존 위젯의 순서/속성은 하나도 바꾸지 않았다.
     지연(latency) 측정에서 공급 속도가 최대 교란 요인이라 UI에서 고르고 CSV에 함께 기록한다.
+  add-hyungchul-20261011-2000: v2.5.0 목록 실행 버튼 6개 + 목록 요약·상태 글을 Start 버튼 바로 아래에 추가.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -433,6 +434,91 @@
                 android:layout_height="wrap_content"
                 android:text="@string/btn_start"
                 android:layout_marginTop="8dp" />
+
+            <!-- add-hyungchul-20261011-2000 : v2.5.0 목록 실행(ui/PlanUi.kt) — START 아래에만 넣었고 기존 위젯은 바꾸지 않았다 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/plan_title"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:paddingTop="16dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/planAddButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/btn_plan_add" />
+
+                <Button
+                    android:id="@+id/planClearButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/btn_plan_clear" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/planSaveButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/btn_plan_save" />
+
+                <Button
+                    android:id="@+id/planLoadButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/btn_plan_load" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/planStartButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/btn_plan_start" />
+
+                <Button
+                    android:id="@+id/planStopButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:enabled="false"
+                    android:text="@string/btn_plan_stop" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/planSummary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?android:attr/textColorPrimary" />
+
+            <TextView
+                android:id="@+id/planStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?android:attr/textColorSecondary" />
 
             <!-- 전체 진행률 (0.0% ~ 100.0%) -->
             <LinearLayout

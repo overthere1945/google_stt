@@ -21,6 +21,14 @@
     <string name="progress_title">전체 진행률</string>
     <string name="progress_zero">0.0%</string>
     <string name="log_title">진행 로그</string>
+    <!-- add-hyungchul-20261011-2000 : v2.5.0 목록 실행 -->
+    <string name="plan_title">목록 실행 (동시 3개 · 오프라인 엔진 1개)</string>
+    <string name="btn_plan_add">목록에 추가</string>
+    <string name="btn_plan_clear">목록 비우기</string>
+    <string name="btn_plan_save">목록 저장</string>
+    <string name="btn_plan_load">목록 불러오기</string>
+    <string name="btn_plan_start">목록 실행</string>
+    <string name="btn_plan_stop">중지</string>
 
     <!-- change-hyungchul-20260824 : Feed 속도(항목은 MainActivity 의 feeds 목록에서 자동 생성) -->
     <string name="feed_title">Feed (오디오 공급 속도)</string>

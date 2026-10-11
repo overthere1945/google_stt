@@ -85,6 +85,10 @@
  *       stt/SherpaStreamingTranscriber.kt  스트리밍 불러오기·Feed 간격 공급·토큰으로 글자 만들기·해제
  *   · 스피너 목록은 SttCatalog.models 에서 자동으로 만들어지므로 이 파일의 코드는 바꾸지 않았다.
  *
+ * add-hyungchul-20261011-2000 — v2.5.0 목록 실행(ui/PlanUi.kt, plan/PlanRunner.kt, plan/PlanModels.kt)
+ *   · 화면 아래 [목록에 추가]·[목록 저장]·[목록 불러오기]·[목록 실행]·[중지] — 이 파일은 연결만 한다(readPlanJob / setPlanBusy).
+ *   · 목록 실행 중에는 START 를 잠근다(running = true). 화면 로그는 길어지면 앞부분을 잘라 낸다(며칠 실행 대비).
+ *
  * ※ 이 3개 경로 중 어느 것도 Google Cloud 인증(서비스 계정 JSON, API Key, OAuth 토큰)을 사용하지 않는다.
  */
 package com.example.google_stt
@@ -121,6 +125,13 @@ import com.example.google_stt.stt.describe                           // change-h
 import com.example.google_stt.ui.EpdUi                               // change-hyungchul-20261009-1514
 import com.example.google_stt.ui.NoiseUi                             // change-hyungchul-20261009-1514
 import com.example.google_stt.ui.VadUi                               // change-hyungchul-20261009-1514
+import com.example.google_stt.denoise.NoiseAlgorithm                 // add-hyungchul-20261011-2000 : 목록은 노이즈 저감 없음만
+import com.example.google_stt.plan.PlanJob                           // add-hyungchul-20261011-2000 : 목록 작업
+import com.example.google_stt.plan.PlanRunner                        // add-hyungchul-20261011-2000 : 목록 실행기
+import com.example.google_stt.plan.SEG_10                            // add-hyungchul-20261011-2000
+import com.example.google_stt.plan.SEG_MAX                           // add-hyungchul-20261011-2000
+import com.example.google_stt.ui.PlanUi                              // add-hyungchul-20261011-2000 : 목록 화면
+import com.example.google_stt.vad.SegMode                            // add-hyungchul-20261011-2000
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -148,6 +159,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
     private lateinit var vadUi: VadUi
     private lateinit var epdUi: EpdUi
     private lateinit var noiseUi: NoiseUi
+    private lateinit var planUi: PlanUi          // add-hyungchul-20261011-2000 : 목록 실행 화면
 
     // change-hyungchul-20261009-1514 : STT 전사기 · 세션 관리자 · 결과 저장기 · 배치 실행기
     private lateinit var batchRunner: BatchRunner
@@ -270,6 +282,31 @@ class MainActivity : AppCompatActivity(), BatchHost {
         epdUi.setupEpdUi()     // add-hyungchul-20260914-2350
         noiseUi.setupNoiseUi()   // add-hyungchul-20260826-1100
 
+        // add-hyungchul-20261011-2000 : 목록 실행 — 작업마다 새 BatchRunner(work 별 화면 연결 + 새 세션 관리자)를 만든다
+        val planStore = ResultStore(contentResolver)                           // 상태 없는 저장기(목록 전용)
+        lateinit var planUiRef: PlanUi                                         // 실행기의 상태 표시가 화면을 가리키게
+        val planRunner = PlanRunner(
+            activity = this,
+            ui = this,
+            store = planStore,
+            newRunner = { laneHost ->
+                BatchRunner(laneHost, GoogleSttSession(mlKit, platform, laneHost::appendLog), mlKit, platform, planStore, algoName)
+            },
+            onStatus = { planUiRef.showStatus(it) },
+        )
+        planUi = PlanUi(
+            activity = this,
+            runner = planRunner,
+            log = ::appendLog,
+            toast = ::toast,
+            readCurrent = ::readPlanJob,
+            folders = { Pair(inputTreeUri, outputTreeUri) },
+            isBusy = { running },
+            setBusy = ::setPlanBusy,
+        )
+        planUiRef = planUi
+        planUi.setupPlanUi()
+
         findViewById<Button>(R.id.inputButton).setOnClickListener { inputPicker.launch(null) }
         findViewById<Button>(R.id.outputButton).setOnClickListener { outputPicker.launch(null) }
         startButton.setOnClickListener { startTranscription() }
@@ -376,6 +413,38 @@ class MainActivity : AppCompatActivity(), BatchHost {
         startButton.isEnabled = true
     }
 
+    /**
+     * add-hyungchul-20261011-2000
+     * 목적: [목록에 추가] — 지금 화면 설정을 목록 작업 1개로 읽는다.
+     * 입력: 없음 / 출력: 넣을 수 없으면 토스트로 이유 / 리턴: PlanJob 또는 null
+     * 규칙: 언어는 English / 한국어(자동 불가), VAD CUSTOM 불가, 노이즈 저감은 '사용 안 함' 만(사용자 결정).
+     *       Google 엔진·언어 전용 모델 검사는 PlanUi 가 PlanCheck 로 한다.
+     */
+    private fun readPlanJob(): PlanJob? {
+        val lang = when (langSpinner.selectedItemPosition) {
+            0 -> "en"                                                         // English → 입력 하위 폴더 en
+            1 -> "kr"                                                         // 한국어 → 입력 하위 폴더 kr
+            else -> { toast("목록에는 언어를 English / 한국어 중 하나로 고른다"); return null }
+        }
+        val model = models[modelSpinner.selectedItemPosition.coerceIn(0, models.size - 1)]
+        val feed = feeds[feedSpinner.selectedItemPosition.coerceIn(0, feeds.size - 1)]
+        val vad = try { vadUi.readVadSelection() } catch (e: Exception) { toast("VAD 설정 오류: ${describe(e)}"); return null }
+        if (vad.setting.preset.isCustom) { toast("VAD CUSTOM 은 목록에 넣을 수 없다(고정 프리셋만)"); return null }
+        val noise = try { noiseUi.readNoiseConfig() } catch (e: Exception) { toast("노이즈 저감 설정 오류: ${describe(e)}"); return null }
+        if (noise.algorithm != NoiseAlgorithm.NONE) { toast("목록에는 노이즈 저감 '사용 안 함' 만 넣을 수 있다"); return null }
+        return PlanJob(lang, model.folder, feed.name, vad.conditionToken, if (vad.segMode == SegMode.SEG10) SEG_10 else SEG_MAX)
+    }
+
+    /**
+     * add-hyungchul-20261011-2000
+     * 목적: 목록 실행 중 표시 — START 버튼을 잠그거나 되살린다.
+     * 입력: busy — 목록 실행 중이면 true / 출력: 없음 / 리턴: 없음
+     */
+    private fun setPlanBusy(busy: Boolean) {
+        running = busy
+        startButton.isEnabled = !busy
+    }
+
     // ─────────────────────────── 유틸 ───────────────────────────
     override fun updateProgress(fraction: Double) {
         val clamped = fraction.coerceIn(0.0, 1.0)
@@ -401,7 +470,15 @@ class MainActivity : AppCompatActivity(), BatchHost {
 
     override fun appendLog(line: String) {
         Log.i(logTag, line)
-        runOnUiThread { logView.append(line + "\n") }
+        runOnUiThread {
+            logView.append(line + "\n")
+            // add-hyungchul-20261011-2000 : 목록 실행은 며칠 동안 수십만 줄을 쓴다 — 화면 로그가 너무 길면 앞 절반을 잘라 낸다(Logcat 에는 전부 남는다)
+            if (logView.length() > LOG_VIEW_MAX_CHARS) {
+                val text = logView.text
+                val cut = text.indexOf('\n', text.length - LOG_VIEW_MAX_CHARS / 2).let { if (it < 0) text.length - LOG_VIEW_MAX_CHARS / 2 else it + 1 }
+                logView.text = text.subSequence(cut, text.length)                  // 줄 중간이 아니라 줄 처음부터 남긴다
+            }
+        }
     }
 
     /**
@@ -442,5 +519,8 @@ class MainActivity : AppCompatActivity(), BatchHost {
          * (com.google.android.as 나 com.google.android.aicore 가 아니다)
          */
         private const val SPEECH_SERVICE_PACKAGE = "com.google.android.tts"
+
+        /** add-hyungchul-20261011-2000 : 화면 로그 최대 글자 수(넘으면 앞 절반을 잘라 낸다) */
+        private const val LOG_VIEW_MAX_CHARS = 200_000
     }
 }

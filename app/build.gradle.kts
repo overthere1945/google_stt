@@ -40,8 +40,9 @@ android {
         // change-hyungchul-20261011-0150 : 2.2.0 → 2.3.0 (Minor) — 2단계 2-3 상업 조건부 엔진 4종(Zipformer KO 오프라인·스트리밍, SenseVoice Small, Moonshine tiny KO) 추가(기존 결과·설정과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.3.0.md
         // change-hyungchul-20261011-0301 : 2.3.0 → 2.4.0 (Minor) — 2단계 2-4 Vosk small ko / en-us 추가(기존 결과·설정과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.4.0.md
         // change-hyungchul-20261011-0340 : 2.4.0 → 2.4.1 (Patch) — result.csv execution 열 따옴표(열 밀림 수정) + sherpa-onnx 1.13.7 → 1.13.8. 릴리스 노트: docs/RELEASE_NOTES_v2.4.1.md
-        versionCode = 8
-        versionName = "2.4.1"
+        // change-hyungchul-20261011-2000 : 2.4.1 → 2.5.0 (Minor) — 목록 실행(동시 3개·오프라인 1개, 이어 하기, 중지 선택 창) 추가(기존 START·결과 형식과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.5.0.md
+        versionCode = 9
+        versionName = "2.5.0"
 
         // add-hyungchul-20261010-1855 : APK 에 넣을 ABI 를 arm64-v8a 하나로 제한(사용자 결정 Q21)
         //   · 이유: sherpa-onnx 정적 링크 AAR 1.13.7 은 x86 에서만 libonnxruntime.so(ORT 1.27.1)를 따로 동적 링크해 넣는데,

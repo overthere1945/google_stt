@@ -53,6 +53,12 @@
  * add-hyungchul-20261011-0301 — 2단계 2-4: Vosk small ko / en-us (v2.4.0)
  *   · 스트리밍 전사기를 공통 약속 StreamingSttTranscriber 로 받고, SherpaFamily.VOSK 면 VoskTranscriber, 그 밖은 SherpaStreamingTranscriber 를 만든다.
  *   · Feed 공급·계측·EPD OFF·조각 상한(없음 / SEG10 10 초)은 sherpa 스트리밍과 같다. run_meta stt_runtime·stt_num_threads 만 Vosk 값으로 남긴다.
+ *
+ * add-hyungchul-20261011-2000 — v2.5.0 목록 실행(plan/PlanRunner.kt 가 작업마다 이 클래스를 하나씩 만들어 동시에 3개까지 돌린다)
+ *   · BatchRequest.inSub / outSub: 고른 입력·출력 폴더 아래 하위 폴더(kr / en, <날짜>_<FEED>)를 쓴다. 빈 목록(START)이면 예전과 같다.
+ *     catch·finally 의 마지막 CSV 저장도 같은 하위 폴더에 쓴다(openOutputRoot).
+ *   · lastCompleted / lastOk / lastFail: 목록 실행이 작업 결과(DONE / FAILED)를 판정한다. 배치 흐름은 바꾸지 않았다.
+ *   · run_meta 끝에 parallel_jobs(동시에 돈 배치 수) 키 추가 — 2 이상이면 시간·메모리 컬럼은 다른 작업과 섞인 값이다.
  */
 package com.example.google_stt.batch
 
@@ -157,6 +163,10 @@ data class BatchRequest(
     val epdSelection: EpdSelection,       // Speech EPD 설정 snapshot
     val noiseConfig: NoiseReduceConfig,   // 노이즈 저감 설정
     val condition: String,                // change-hyungchul-20261009-1530 : 결과 조건 이름(v7.7 평탄화) — 예전 variantSegments(폴더 조각 목록) 대체
+    // add-hyungchul-20261011-2000 : v2.5.0 목록 실행 — 고른 폴더 아래 하위 폴더를 쓴다(START 는 기본값 그대로 = 예전과 같다)
+    val inSub: List<String> = emptyList(),   // 입력 하위 폴더(예: ["kr"]) — 없으면 고른 폴더 그대로
+    val outSub: List<String> = emptyList(),  // 출력 하위 폴더(예: ["kr", "20261012_REALTIME"]) — 없으면 고른 폴더 그대로, 없으면 만든다
+    val parallelJobs: Int = 1,               // 동시에 돈 배치 수(run_meta parallel_jobs — 2 이상이면 시간·메모리 컬럼은 서로 섞인 값)
 )
 
 /**
@@ -175,6 +185,17 @@ class BatchRunner(
     private val logTag = "GoogleStt"                       // MainActivity 의 logTag 와 같은 값
     private val activity: AppCompatActivity get() = host.activity
     private val appContext get() = host.activity.applicationContext
+
+    // add-hyungchul-20261011-2000 : v2.5.0 목록 실행이 작업 결과를 판정하는 값(run() 이 끝난 뒤 읽는다)
+    /** 마지막 run() 이 파일 목록을 끝까지 돌고 result.csv 를 저장했는지(중간 return·예외·취소면 false) */
+    var lastCompleted = false
+        private set
+    /** 마지막 run() 의 성공 파일 수 */
+    var lastOk = 0
+        private set
+    /** 마지막 run() 의 실패 파일 수 */
+    var lastFail = 0
+        private set
 
     // ── 화면/저장 호출 위임: 옮겨 온 본문을 한 글자도 바꾸지 않기 위한 얇은 연결부 ──
     private fun appendLog(line: String) = host.appendLog(line)
@@ -196,6 +217,17 @@ class BatchRunner(
         store.writeCsv(outputRoot, model, condition, body)
     private fun saveResult(outputRoot: DocumentFile, model: ModelConfig, condition: String, item: AudioItem, text: String) =
         store.saveResult(outputRoot, model, condition, item, text)
+
+    /**
+     * add-hyungchul-20261011-2000
+     * 목적: 결과를 쓸 출력 폴더를 연다(고른 폴더 + 하위 폴더, 하위 폴더가 없으면 만든다).
+     * 입력: outUri — 고른 출력 폴더 트리 URI, outSub — 하위 폴더 조각(빈 목록이면 고른 폴더 그대로 = START)
+     * 리턴: 출력 폴더 DocumentFile, 열지 못하면 null
+     */
+    private fun openOutputRoot(outUri: Uri, outSub: List<String>): DocumentFile? {
+        val root = DocumentFile.fromTreeUri(activity, outUri) ?: return null   // 고른 폴더
+        return if (outSub.isEmpty()) root else store.ensureDir(root, outSub)   // 하위 폴더(없으면 만든다)
+    }
 
     /**
      * 목적: 배치 1회를 끝까지 실행한다(MainActivity 의 lifecycleScope.launch 안에서 부른다).
@@ -239,9 +271,15 @@ class BatchRunner(
         val isVosk = sherpaSpec?.family == SherpaFamily.VOSK      // add-hyungchul-20261011-0301 : Vosk(Kaldi) 여부
         val sttRuntime = if (isVosk) VoskTranscriber.RUNTIME else SherpaOfflineTranscriber.RUNTIME                 // add-hyungchul-20261011-0301 : run_meta·로그 런타임 이름
         val sttThreads = if (isVosk) VoskTranscriber.NUM_THREADS else SherpaOfflineTranscriber.NUM_THREADS         // add-hyungchul-20261011-0301 : 디코딩 스레드 수
+        lastCompleted = false                         // add-hyungchul-20261011-2000 : 이번 실행 결과 판정값 초기화
+        lastOk = 0
+        lastFail = 0
         try {
-            val inputRoot = DocumentFile.fromTreeUri(activity, inUri)
-            val outputRoot = DocumentFile.fromTreeUri(activity, outUri)
+            // change-hyungchul-20261011-2000 : 목록 실행은 고른 폴더 아래 하위 폴더(inSub / outSub)를 쓴다 — START 는 빈 목록이라 예전과 같다
+            val inputRoot = req.inSub.fold(DocumentFile.fromTreeUri(activity, inUri)) { dir, name ->
+                dir?.findFile(name)?.takeIf { it.isDirectory }                                // 하위 폴더가 없으면 null → 아래에서 중단
+            }
+            val outputRoot = openOutputRoot(outUri, req.outSub)
             if (inputRoot == null || outputRoot == null) {
                 dbg("batch", "abort: folder open fail (input=${inputRoot != null}, output=${outputRoot != null})")   // add-hyungchul-20261010-1951
                 toast(activity.getString(R.string.msg_folder_open_fail)); return
@@ -531,6 +569,7 @@ class BatchRunner(
                             // change-hyungchul-20261010-1800 : sherpa 엔진은 EPD 대신 조각 나누기(seg)를 거친다
                             "pipeline_order" to (if (sherpaSpec != null) "decode -> noise_reduction -> vad -> seg -> stt" else "decode -> noise_reduction -> vad -> epd -> stt"),
                             "output_variant" to condition,   // change-hyungchul-20261009-1530 : 예전 폴더 조각 목록 → 조건 이름
+                            "parallel_jobs" to req.parallelJobs.toString(),   // add-hyungchul-20261011-2000 : 동시에 돈 배치 수(목록 실행 3, START 1)
                         ),
                     )
                     store.writeRunMeta(outputRoot, modelConfig, condition, meta)   // change-hyungchul-20261009-1530
@@ -1065,6 +1104,9 @@ class BatchRunner(
             withContext(Dispatchers.IO) {
                 writeCsv(outputRoot, modelConfig, condition, csv.toString())
             }
+            lastOk = ok                                   // add-hyungchul-20261011-2000 : 목록 실행 판정 — 끝까지 돌고 CSV 저장까지 마쳤다
+            lastFail = fail
+            lastCompleted = !abortedByWedge
 
             updateProgress(1.0)
             dbg("batch", "end: ok=$ok fail=$fail abortedByWedge=$abortedByWedge")   // add-hyungchul-20261010-1951 : 배치 끝
@@ -1088,7 +1130,7 @@ class BatchRunner(
             //   코루틴이 이미 취소된 상태라면 그냥 withContext 는 즉시 예외를 던지고
             //   runCatching 이 그걸 삼켜 "조용히 저장 실패" 가 된다(vLog/08 사고의 원인).
             runCatching {
-                val outputRoot = DocumentFile.fromTreeUri(activity, outUri)
+                val outputRoot = openOutputRoot(outUri, req.outSub)   // change-hyungchul-20261011-2000 : 하위 폴더(목록 실행) 반영
                 if (outputRoot != null) {
                     withContext(NonCancellable + Dispatchers.IO) {
                         writeCsv(outputRoot, modelConfig, condition, csv.toString())
@@ -1102,7 +1144,7 @@ class BatchRunner(
             //   writeCsv 는 같은 파일을 덮어쓰므로 catch 에서 이미 저장했어도 문제없다.
             runCatching {
                 withContext(NonCancellable + Dispatchers.IO) {
-                    val root = DocumentFile.fromTreeUri(activity, outUri)
+                    val root = openOutputRoot(outUri, req.outSub)   // change-hyungchul-20261011-2000 : 하위 폴더(목록 실행) 반영
                     if (root != null) {
                         writeCsv(root, modelConfig, condition, csv.toString())
                     }

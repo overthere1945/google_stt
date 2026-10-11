@@ -1,0 +1,35 @@
+﻿# google_stt v2.5.0 목록 견본 — 한국어/영어 × 언어별 앱 엔진 전체 × REALTIME × VAD 21개(TEN 제외) × 엔진별 최대 길이(SEG10 안 함)
+# Google 엔진 2종은 넣지 않는다(개별 START 로 실행). 노이즈 저감은 없음(목록은 항상 '사용 안 함').
+# 작업 수: kr 14모델 × 21 = 294, en 11모델 × 21 = 231, 합계 525
+# 순서: 언어마다 오프라인 엔진 줄을 먼저, 스트리밍 엔진 줄을 뒤에 둔다 — 동시 3개 중 오프라인은 1개만 돌므로
+#       남은 2개 칸은 뒤쪽 스트리밍 작업을 당겨 와서 바로 돈다(시간이 오래 걸리는 REALTIME 스트리밍이 겹쳐 돈다).
+# 칸 안 ';' = 여러 값(조합으로 펼침). '#' 줄은 주석. 휴대폰 /sdcard/Documents/stt_plan/ 에 넣고 [목록 불러오기].
+lang,model,feed,vad,seg
+# --- kr 오프라인 10종 ---
+kr,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;zipformer-ko;sensevoice-small;moonshine-tiny-ko,REALTIME,NOVAD,MAX
+kr,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;zipformer-ko;sensevoice-small;moonshine-tiny-ko,REALTIME,SILERO;SILERO_SAFE;SILERO_FW;SILERO_DEFAULT;SILERO_SHERPA;SILERO_QWEN3;SILERO_WS;SILERO_USER,MAX
+kr,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;zipformer-ko;sensevoice-small;moonshine-tiny-ko,REALTIME,WEBRTC_DEFAULT;WEBRTC_LIB;WEBRTC_ASR,MAX
+kr,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;zipformer-ko;sensevoice-small;moonshine-tiny-ko,REALTIME,PYANNOTE_DEFAULT;PYANNOTE_S500;PYANNOTE_S2000,MAX
+kr,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;zipformer-ko;sensevoice-small;moonshine-tiny-ko,REALTIME,FSMN_DEFAULT;FSMN_CONFIG;FSMN_S500,MAX
+kr,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;zipformer-ko;sensevoice-small;moonshine-tiny-ko,REALTIME,FIRERED_DEFAULT;FIRERED_S500;FIRERED_S2000,MAX
+# --- kr 스트리밍 4종 ---
+kr,nemotron3.5-320ms;nemotron3.5-560ms;zipformer-ko-stream;vosk-small-ko,REALTIME,NOVAD,MAX
+kr,nemotron3.5-320ms;nemotron3.5-560ms;zipformer-ko-stream;vosk-small-ko,REALTIME,SILERO;SILERO_SAFE;SILERO_FW;SILERO_DEFAULT;SILERO_SHERPA;SILERO_QWEN3;SILERO_WS;SILERO_USER,MAX
+kr,nemotron3.5-320ms;nemotron3.5-560ms;zipformer-ko-stream;vosk-small-ko,REALTIME,WEBRTC_DEFAULT;WEBRTC_LIB;WEBRTC_ASR,MAX
+kr,nemotron3.5-320ms;nemotron3.5-560ms;zipformer-ko-stream;vosk-small-ko,REALTIME,PYANNOTE_DEFAULT;PYANNOTE_S500;PYANNOTE_S2000,MAX
+kr,nemotron3.5-320ms;nemotron3.5-560ms;zipformer-ko-stream;vosk-small-ko,REALTIME,FSMN_DEFAULT;FSMN_CONFIG;FSMN_S500,MAX
+kr,nemotron3.5-320ms;nemotron3.5-560ms;zipformer-ko-stream;vosk-small-ko,REALTIME,FIRERED_DEFAULT;FIRERED_S500;FIRERED_S2000,MAX
+# --- en 오프라인 8종 ---
+en,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;sensevoice-small,REALTIME,NOVAD,MAX
+en,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;sensevoice-small,REALTIME,SILERO;SILERO_SAFE;SILERO_FW;SILERO_DEFAULT;SILERO_SHERPA;SILERO_QWEN3;SILERO_WS;SILERO_USER,MAX
+en,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;sensevoice-small,REALTIME,WEBRTC_DEFAULT;WEBRTC_LIB;WEBRTC_ASR,MAX
+en,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;sensevoice-small,REALTIME,PYANNOTE_DEFAULT;PYANNOTE_S500;PYANNOTE_S2000,MAX
+en,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;sensevoice-small,REALTIME,FSMN_DEFAULT;FSMN_CONFIG;FSMN_S500,MAX
+en,whisper-tiny;whisper-base;whisper-small;whisper-medium;whisper-turbo;qwen3asr-0.6b;omnilingual-300m;sensevoice-small,REALTIME,FIRERED_DEFAULT;FIRERED_S500;FIRERED_S2000,MAX
+# --- en 스트리밍 3종 ---
+en,nemotron3.5-320ms;nemotron3.5-560ms;vosk-small-en,REALTIME,NOVAD,MAX
+en,nemotron3.5-320ms;nemotron3.5-560ms;vosk-small-en,REALTIME,SILERO;SILERO_SAFE;SILERO_FW;SILERO_DEFAULT;SILERO_SHERPA;SILERO_QWEN3;SILERO_WS;SILERO_USER,MAX
+en,nemotron3.5-320ms;nemotron3.5-560ms;vosk-small-en,REALTIME,WEBRTC_DEFAULT;WEBRTC_LIB;WEBRTC_ASR,MAX
+en,nemotron3.5-320ms;nemotron3.5-560ms;vosk-small-en,REALTIME,PYANNOTE_DEFAULT;PYANNOTE_S500;PYANNOTE_S2000,MAX
+en,nemotron3.5-320ms;nemotron3.5-560ms;vosk-small-en,REALTIME,FSMN_DEFAULT;FSMN_CONFIG;FSMN_S500,MAX
+en,nemotron3.5-320ms;nemotron3.5-560ms;vosk-small-en,REALTIME,FIRERED_DEFAULT;FIRERED_S500;FIRERED_S2000,MAX
