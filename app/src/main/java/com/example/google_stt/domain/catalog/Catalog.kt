@@ -5,11 +5,14 @@
  *   값(패키지 이름·파일·조각 상한·라이선스)은 v3 의 stt/SherpaModels.kt·stt/SttModels.kt 에서 그대로 옮겼다.
  *   조각 상한의 근거(실측·공식 수치)는 v3 SherpaModels.kt 주석에 있다.
  * - 언어 전용 모델은 langSupport 로만 구분한다. 한국어 폴더에 쓸 수 있는 모델 13개, 영어 폴더 15개(ML Kit 제외).
+ * - 자산 표(assets)는 CatalogAssets.kt 가 이 모델 목록에서 만든다(add-hyungchul-20261106-0037 : [T2-2a]).
  * - 목록 순서 = 화면 표시 순서. 실행 순서(오프라인 → 스트리밍·Vosk → ML Kit)는 ComboGenerator 가 정한다.
  *
  * add-hyungchul-20261106-0040 — [T2-2]
  */
 package com.example.google_stt.domain.catalog
+
+import com.example.google_stt.domain.vad.VadEngine   // add-hyungchul-20261106-0037 : [T2-2a] VAD 엔진 → 자산 ID
 
 /** 목적: 모델 카탈로그(자산 목록은 CatalogAssets.kt 에서 더한다). */
 object Catalog {
@@ -165,6 +168,18 @@ object Catalog {
             null, LangSupport.MULTI, "Google ML Kit 약관", Commercial.ALLOWED, "ML Kit GenAI — Basic (API 31+)",
         ),
     )
+
+    /** add-hyungchul-20261106-0037 : [T2-2a] 자산 표(22개) — 자산 ID → 정의. 해시는 AssetManifest.merge 로 합친다 */
+    val assets: Map<String, AssetSpec> = CatalogAssets.all(models)
+
+    /**
+     * add-hyungchul-20261106-0037 : [T2-2a]
+     * 목적: VAD 엔진이 필요로 하는 자산 ID 를 알려 준다.
+     * 입력: engine - VAD 엔진
+     * 출력: 없음
+     * 리턴: String? - 자산 ID(VAD 를 안 쓰거나 TEN 처럼 APK 에 든 것은 null)
+     */
+    fun vadAssetId(engine: VadEngine): String? = CatalogAssets.vadAssetId(engine)   // 대응표는 CatalogAssets 에 있다
 
     /**
      * 목적: 주어진 언어의 폴더에 쓸 수 있는 모델만 고른다(언어 전용 모델 제외).
