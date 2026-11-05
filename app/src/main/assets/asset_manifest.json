@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "generated": "2026-11-06",
+  "note": "자산 해시 목록. 값이 없는 자산은 앱에서 \"미검증\" 으로 표시된다. tools/fetch_assets.py(T4-6)가 다시 만든다.",
+  "assets": {
+    "sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11": {
+      "files": {
+        "decoder.int8.onnx": "19f9c98fc6d0a2c33a65a43b36fdb2e914c26c0aa9764be3aebc502a1e982fb0",
+        "encoder.int8.onnx": "012e9321373af99021415e0b0eb3ec827b4be3153be6f30d9b448fe65e896e68",
+        "joiner.int8.onnx": "4101c7c679a0bc30483794b27a059e34e79232aa2068d78d51231a22c8b0d7ce",
+        "tokens.txt": "729cc103155bafa785f9cd45746cd41cabe97eab7182fc04d594129587958f8a"
+      }
+    },
+    "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25": {
+      "files": {
+        "conv_frontend.onnx": "d22dc4423e0940e49884e903d2ea2f7e5567c14fc1aed97e4e26d6b8f208ef9e",
+        "decoder.int8.onnx": "4f6885be5959ae26af3089d38ee7972c5fafbeeb1cf8d5e76eab6d8b61ca5771",
+        "encoder.int8.onnx": "60748d3e6744a57c9c91e1b17424a6c2990567e8adceb0783940c03ed98fa9d9",
+        "tokenizer/merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+        "tokenizer/tokenizer_config.json": "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c",
+        "tokenizer/vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+      }
+    },
+    "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17": {
+      "files": {
+        "model.int8.onnx": "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51",
+        "tokens.txt": "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc"
+      }
+    },
+    "sherpa-onnx-whisper-base": {
+      "files": {
+        "base-decoder.int8.onnx": "9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d",
+        "base-encoder.int8.onnx": "0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11",
+        "base-tokens.txt": "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"
+      }
+    },
+    "sherpa-onnx-zipformer-korean-2024-06-24": {
+      "files": {
+        "decoder-epoch-99-avg-1.int8.onnx": "2cc8c04ea080a657c18ebc59702e6b049cef08163eba5d68ac5bf707925cb0fb",
+        "encoder-epoch-99-avg-1.int8.onnx": "8b196d723421a0513c98ec25da2c43420c029e817f5e4a90b29ff80291c0af2b",
+        "joiner-epoch-99-avg-1.int8.onnx": "eb654db1ea2cc9d63474855f65958b6059084692a9f2eb4f3812aceb1e416a20",
+        "tokens.txt": "016bdf0965029263b7ad01b742366ee542ef0bef38261510e8176ff6f2e9e668"
+      }
+    },
+    "vosk-model-small-en-us-0.15": {
+      "files": {
+        "am/final.mdl": "75370a0137f9daf8f469dedd7daa4513ae7a621f03240c6e512e2b50b656a7b6",
+        "conf/mfcc.conf": "1e2228006d01d805ad1c267fee9f79709ca87ac51bd82b0e3f5c69ba543f0fc4",
+        "conf/model.conf": "8f14cb1eeb07c762c371db648c6be688d347236155ca0f64fb13b6567a8ce81f",
+        "graph/Gr.fst": "023c8b7e30704a9e37765c635c252e608a02f361235bf94abdcf2a5225d85b20",
+        "graph/HCLr.fst": "5caafba3081e1646545ac6bff0dd7a318e53dcbdc86f237909ce1d2ac1293d34",
+        "graph/disambig_tid.int": "9ad87cc166d0998f08f758f47a6223a120dfffcbee805c4849c3aa5e6bb3c0fc",
+        "graph/phones/word_boundary.int": "da199d9c991e0e84681ddbb34627b915b26302d50a8fdaa23c51e2bc3a50b5c3",
+        "ivector/final.dubm": "8c5d7dd69d2122313baaf19f61f35dd3fa18b70c62ac0687e311e1c46e6daca7",
+        "ivector/final.ie": "3f37faf90c375b9e4740b569398b5829ed9cc07d19be6d441f72c3b71d7efcc6",
+        "ivector/final.mat": "ddd83586dc5f928cda8738b922c85ffe38fc789cb5f9151a712ca12f37265382",
+        "ivector/global_cmvn.stats": "33be09afcc80059847a275c3d043b51f1ab954c7c2438ddbbf4745e8ba144ff9",
+        "ivector/online_cmvn.conf": "a2f3571754b64297cb7efb2e7ca3df61995c5a45fcbb97188f90613552bb2dfe",
+        "ivector/splice.conf": "9f0c5f7c82d18eaf25d8bce470efa9f7741f88411fe428774bc0a9bb69a24756"
+      },
+      "archiveSha256": "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498"
+    },
+    "vosk-model-small-ko-0.22": {
+      "files": {
+        "am/final.mdl": "de1a0b3beaad1f266b18d9af624a8d2451ac32e500a575cec9826d415ecfd0b4",
+        "conf/mfcc.conf": "cdb0d516e5b8886092f1d840c628107703a65b571dc3b16b888a9a3978958b96",
+        "conf/model.conf": "dd7178da0e99fdbe489816c1e9702c3daa28e02accacc2993e0becb7af33b80c",
+        "graph/Gr.fst": "b13d06a65c73b4f32a7618844fbe62aaa2fd250bea63c124c40ec2a8b5c5735e",
+        "graph/HCLr.fst": "862822d277b283b16b293aca397e14d6e0bc460723004d966dace532db4110d0",
+        "graph/disambig_tid.int": "f393757ce5a99ce66ab60bb8aa89f6ac3ceff737f27e9d5d11fc60893d7aba64",
+        "graph/phones.txt": "ca2c642d315ed11525c2004e95b688f3dd29a8bdd7735649babfef438702e42a",
+        "graph/phones/word_boundary.int": "6de0418fb4dc7c42d0e9c75c906a239235830bc8415eb96a40099d204586d0ab",
+        "ivector/final.dubm": "8dcb7b76385f6fe1a5e876185452261e218a9a25eb17d87b5b86e4fbb14ddce3",
+        "ivector/final.ie": "888bdd4437dfbd476e6939099c7af81de85a3c2d50217db0c311f67db0a66fed",
+        "ivector/final.mat": "022aec6ec7f135cb494f89aabbccb9ab27653468d01a77ad480433de69f76990",
+        "ivector/global_cmvn.stats": "397ea1dfa402d0ea434924b181fc70202777656bef5b4f37c9cf2ac96e6e74a9",
+        "ivector/online_cmvn.conf": "4cfe3a77bd2420961704432ba67201f242ef36ff97803c88275dcead7f4acd36",
+        "ivector/splice.conf": "9f0c5f7c82d18eaf25d8bce470efa9f7741f88411fe428774bc0a9bb69a24756"
+      },
+      "archiveSha256": "eea36124087fed26c59996a4761519458e3bd185e8ea9d9865ad8760c4a1d989"
+    },
+    "silero-vad": {
+      "files": {
+        "silero_vad_16k_op15.onnx": "7ed98ddbad84ccac4cd0aeb3099049280713df825c610a8ed34543318f1b2c49"
+      }
+    },
+    "pyannote-seg3": {
+      "archiveSha256": "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488",
+      "files": {
+        "pyannote_seg3.onnx": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+        "pyannote_seg3.LICENSE.txt": "14d7016ad68e7394d6e6b78d96cc2ae431c905287b89674cfdf021e79e62b8ba"
+      }
+    },
+    "fsmn-vad": {
+      "files": {
+        "fsmn_vad_quant.onnx": "5289eb2aa3c9af2d7a4284bcfa7c3ceb81d360814ed4203239b6c5d0569da8a1",
+        "fsmn_vad_am.mvn": "6820fef9687708c4fc3fab2530179c8fcea6262daa25514380056cd8f6eb1754"
+      }
+    },
+    "firered-vad": {
+      "files": {
+        "fireredvad_vad.onnx": "a226e68e695548754a9ab5480a55bbcb8522aa69111cb97e4f093ddce63ad5dc",
+        "fireredvad_cmvn.ark": "c87f6f13edf0f0ec7535ddfc9cc3387d9268cb234b70182d566c5e2edf3ca473"
+      }
+    }
+  }
+}

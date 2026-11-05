@@ -178,6 +178,9 @@ dependencies {
 
     // add-hyungchul-20261105-1650 : [T0-4] 시험 기반(6단계 1장) — 코루틴 가상 시간 시험, 계측 시험 실행기
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")   // runTest·가상 시간(판은 kotlinx-coroutines-android 와 같게)
+    // add-hyungchul-20261106-0037 : [T2-2b] JVM 단위 시험용 org.json 구현 — Android 의 org.json 은 PC 시험에서 껍데기(예외)라서
+    //   domain/catalog/AssetManifest(매니페스트 JSON 읽기)를 시험하려면 같은 API 의 실제 구현이 필요하다. 앱(APK)에는 들어가지 않는다
+    testImplementation("org.json:json:20260814")                                  // org.json 참조 구현(Maven Central 최신판)
     androidTestImplementation("androidx.test:runner:1.7.0")                       // AndroidJUnitRunner(최신 안정판, Google Maven 메타데이터로 확인)
     androidTestImplementation("androidx.test.ext:junit:1.3.0")                    // AndroidJUnit4 실행기(최신 안정판)
 }
