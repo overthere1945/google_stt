@@ -51,6 +51,9 @@ android {
         versionCode = 12
         versionName = "4.0.0-dev"
 
+        // add-hyungchul-20261105-1650 : [T0-4] 계측 시험(L2, app/src/androidTest) 실행기 — connectedDebugAndroidTest 가 이 실행기로 시험을 돌린다
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         // add-hyungchul-20261010-1855 : APK 에 넣을 ABI 를 arm64-v8a 하나로 제한(사용자 결정 Q21)
         //   · 이유: sherpa-onnx 정적 링크 AAR 1.13.7 은 x86 에서만 libonnxruntime.so(ORT 1.27.1)를 따로 동적 링크해 넣는데,
         //     onnxruntime-android 1.25.1 도 같은 경로 lib/x86/libonnxruntime.so 를 넣어 mergeDebugNativeLibs 가
@@ -172,4 +175,9 @@ dependencies {
 
     // add-hyungchul-20261105-1625 : [T0-2] JVM 단위 시험(L1) — 지금까지 선언이 없어 testDebugUnitTest 가 컴파일 오류로 실패했다(사용자 승인 2026-11-05)
     testImplementation("junit:junit:4.13.2")   // JUnit 4(app/src/test)
+
+    // add-hyungchul-20261105-1650 : [T0-4] 시험 기반(6단계 1장) — 코루틴 가상 시간 시험, 계측 시험 실행기
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")   // runTest·가상 시간(판은 kotlinx-coroutines-android 와 같게)
+    androidTestImplementation("androidx.test:runner:1.7.0")                       // AndroidJUnitRunner(최신 안정판, Google Maven 메타데이터로 확인)
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")                    // AndroidJUnit4 실행기(최신 안정판)
 }

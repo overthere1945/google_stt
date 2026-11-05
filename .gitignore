@@ -35,3 +35,6 @@ local.properties
 Claude outputs/
 tools/stt_diag_*/
 tools/stt_diag_*.tar.gz
+
+# add-hyungchul-20261105-1650 : [T0-4] 계측 시험 음원(사용자 녹음)은 저장소에 넣지 않는다(D31)
+/app/src/androidTest/assets/audio/
