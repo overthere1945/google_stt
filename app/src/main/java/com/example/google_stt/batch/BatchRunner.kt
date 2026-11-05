@@ -78,20 +78,20 @@ import android.provider.Settings                          // add-hyungchul-20261
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
-import com.example.google_stt.AudioDecoder
-import com.example.google_stt.EpdConfig   // change-hyungchul-20261009-1626
-import com.example.google_stt.EpdMode
+import com.example.google_stt.engine.audio.AudioDecoder   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.domain.epd.EpdConfig   // change-hyungchul-20261009-1626   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.domain.epd.EpdMode   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
 import com.example.google_stt.R
-import com.example.google_stt.SpeechEpd
+import com.example.google_stt.domain.epd.SpeechEpd   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
 import com.example.google_stt.SttResourceSnapshot
 import com.example.google_stt.SttRow
 import com.example.google_stt.SttTelemetry
 import com.example.google_stt.domain.vad.VadConfig   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
-import com.example.google_stt.denoise.NoiseAlgorithm
-import com.example.google_stt.denoise.NoiseReduceConfig
-import com.example.google_stt.denoise.NoiseReducer
-import com.example.google_stt.denoise.NoiseReducerFactory
-import com.example.google_stt.denoise.OnnxNoiseReducerBase
+import com.example.google_stt.engine.denoise.NoiseAlgorithm   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.engine.denoise.NoiseReduceConfig   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.engine.denoise.NoiseReducer   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.engine.denoise.NoiseReducerFactory   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.engine.denoise.OnnxNoiseReducerBase   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
 import com.example.google_stt.io.AudioItem
 import com.example.google_stt.io.ResultStore
 import com.example.google_stt.io.collectAudio

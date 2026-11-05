@@ -1,4 +1,4 @@
-// 파일명: app/src/main/java/com/example/google_stt/SpeechEpd.kt
+// 파일명: app/src/main/java/com/example/google_stt/domain/epd/SpeechEpd.kt
 // 목적 및 기능:
 //   add-hyungchul-20260914-2350
 //   Google on-device(ML Kit GenAI) 는 한 세션에 넣는 오디오가 약 61초를 넘고
@@ -20,7 +20,7 @@
 //
 // 비고: 이 파일은 안드로이드 API 를 쓰지 않는다(순수 Kotlin). 그래서 단위 검증이 쉽다.
 
-package com.example.google_stt
+package com.example.google_stt.domain.epd   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동 (옛 위치 SpeechEpd.kt)
 
 import java.io.ByteArrayOutputStream
 import java.util.Locale

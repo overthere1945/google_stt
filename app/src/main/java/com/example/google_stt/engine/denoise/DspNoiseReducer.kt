@@ -1,5 +1,5 @@
 /*
- * 파일명: denoise/DspNoiseReducer.kt
+ * 파일명: engine/denoise/DspNoiseReducer.kt
  * 목적 및 기능:
  * - 모델 파일이 전혀 필요 없는 전통 DSP 노이즈 저감 3종을 순수 Kotlin 으로 구현한다.
  *     (1) Spectral Subtraction — Berouti 1979 (과감산 + 스펙트럼 바닥)
@@ -24,7 +24,7 @@
  *
  * add-hyungchul-20260826-1100
  */
-package com.example.google_stt.denoise
+package com.example.google_stt.engine.denoise   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동 (옛 위치 denoise/DspNoiseReducer.kt)
 
 import kotlin.math.PI
 import kotlin.math.abs

@@ -20,9 +20,9 @@ import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.example.google_stt.R
-import com.example.google_stt.denoise.NoiseAlgorithm
-import com.example.google_stt.denoise.NoiseAlgorithmKind
-import com.example.google_stt.denoise.NoiseReduceConfig
+import com.example.google_stt.engine.denoise.NoiseAlgorithm   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.engine.denoise.NoiseAlgorithmKind   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.engine.denoise.NoiseReduceConfig   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
 import java.util.Locale
 
 /**

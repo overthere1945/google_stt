@@ -17,8 +17,8 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Spinner
 import androidx.appcompat.app.AppCompatActivity
-import com.example.google_stt.EpdConfig
-import com.example.google_stt.EpdMode
+import com.example.google_stt.domain.epd.EpdConfig   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.domain.epd.EpdMode   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
 import com.example.google_stt.R
 import java.util.Locale
 

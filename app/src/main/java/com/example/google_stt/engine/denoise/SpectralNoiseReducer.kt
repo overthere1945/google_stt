@@ -1,5 +1,5 @@
 /*
- * 파일명: denoise/SpectralNoiseReducer.kt
+ * 파일명: engine/denoise/SpectralNoiseReducer.kt
  * 목적 및 기능:
  * - STFT → (프레임별 처리) → iSTFT 로 동작하는 모든 알고리즘의 공통 뼈대.
  * - 딥러닝(ONNX)이든 전통 DSP 든 전부 이 루프를 타므로 stft / infer / istft 단계 시간을
@@ -9,7 +9,7 @@
  *
  * add-hyungchul-20260826-1100
  */
-package com.example.google_stt.denoise
+package com.example.google_stt.engine.denoise   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동 (옛 위치 denoise/SpectralNoiseReducer.kt)
 
 /**
  * 목적: 프레임 단위 스펙트럼 처리를 하는 노이즈 저감기의 공통 구현.

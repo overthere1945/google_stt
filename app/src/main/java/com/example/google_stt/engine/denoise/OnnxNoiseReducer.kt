@@ -1,5 +1,5 @@
 /*
- * 파일명: denoise/OnnxNoiseReducer.kt
+ * 파일명: engine/denoise/OnnxNoiseReducer.kt
  * 목적 및 기능:
  * - ONNX Runtime 으로 도는 딥러닝 노이즈 저감 3종을 구현한다.
  *     (1) GtcrnNoiseReducer   — 1순위. gtcrn_simple.onnx
@@ -39,7 +39,7 @@
  *
  * add-hyungchul-20260826-1100
  */
-package com.example.google_stt.denoise
+package com.example.google_stt.engine.denoise   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동 (옛 위치 denoise/OnnxNoiseReducer.kt)
 
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment

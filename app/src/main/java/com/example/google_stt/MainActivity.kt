@@ -143,7 +143,7 @@ import com.example.google_stt.stt.describe                           // change-h
 import com.example.google_stt.ui.EpdUi                               // change-hyungchul-20261009-1514
 import com.example.google_stt.ui.NoiseUi                             // change-hyungchul-20261009-1514
 import com.example.google_stt.ui.VadUi                               // change-hyungchul-20261009-1514
-import com.example.google_stt.denoise.NoiseAlgorithm                 // add-hyungchul-20261011-2000 : 목록은 노이즈 저감 없음만
+import com.example.google_stt.engine.denoise.NoiseAlgorithm                 // add-hyungchul-20261011-2000 : 목록은 노이즈 저감 없음만   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
 import com.example.google_stt.plan.PlanCheck                         // add-hyungchul-20261104-1750 : 언어 전용 모델 확인(KO_ONLY / EN_ONLY)
 import com.example.google_stt.plan.PlanJob                           // add-hyungchul-20261011-2000 : 목록 작업
 import com.example.google_stt.plan.PlanRunner                        // add-hyungchul-20261011-2000 : 목록 실행기

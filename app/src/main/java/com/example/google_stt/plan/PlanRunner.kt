@@ -30,10 +30,10 @@ import com.example.google_stt.SttTelemetry
 import com.example.google_stt.batch.BatchHost
 import com.example.google_stt.batch.BatchRequest
 import com.example.google_stt.batch.BatchRunner
-import com.example.google_stt.denoise.NoiseAlgorithm
-import com.example.google_stt.denoise.NoiseReduceConfig
-import com.example.google_stt.EpdConfig
-import com.example.google_stt.EpdMode
+import com.example.google_stt.engine.denoise.NoiseAlgorithm   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.engine.denoise.NoiseReduceConfig   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.domain.epd.EpdConfig   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
+import com.example.google_stt.domain.epd.EpdMode   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
 import com.example.google_stt.io.ResultStore
 import com.example.google_stt.stt.FeedConfig
 import com.example.google_stt.stt.ModelConfig

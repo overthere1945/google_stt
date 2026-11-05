@@ -1,5 +1,5 @@
 /*
- * 파일명: AudioDecoder.kt
+ * 파일명: engine/audio/AudioDecoder.kt
  * 목적 및 기능:
  * - 임의의 오디오 파일(mp3/m4a/aac/wav/ogg/flac 등)을 STT 입력 규격으로 변환한다.
  *   → Raw(헤더 없음) 16-bit PCM, Mono(1채널), 16 kHz, little-endian
@@ -14,7 +14,7 @@
  *    (44.1k/48k → 16k 에서 발생하던 aliasing 이 WER 을 악화시키므로 STT 평가에 중요)
  * 3) audio/raw 트랙의 PCM 인코딩(8/16/24/32bit, float)을 확인해 16-bit 로 정규화한다.
  */
-package com.example.google_stt
+package com.example.google_stt.engine.audio   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동 (옛 위치 AudioDecoder.kt)
 
 import android.content.Context
 import android.media.AudioFormat

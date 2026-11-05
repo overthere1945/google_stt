@@ -1,5 +1,5 @@
 /*
- * 파일명: denoise/AudioDsp.kt
+ * 파일명: engine/denoise/AudioDsp.kt
  * 목적 및 기능:
  * - 노이즈 저감 알고리즘이 공통으로 쓰는 신호처리 기본기를 모아 둔다.
  *     (1) Fft      : 임의 길이 복소 FFT. 2의 거듭제곱은 radix-2, 그 외는 Bluestein 으로 처리한다.
@@ -15,7 +15,7 @@
  *
  * add-hyungchul-20260826-1100
  */
-package com.example.google_stt.denoise
+package com.example.google_stt.engine.denoise   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동 (옛 위치 denoise/AudioDsp.kt)
 
 import kotlin.math.PI
 import kotlin.math.cos

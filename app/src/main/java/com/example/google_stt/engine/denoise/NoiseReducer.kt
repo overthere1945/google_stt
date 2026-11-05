@@ -1,5 +1,5 @@
 /*
- * 파일명: denoise/NoiseReducer.kt
+ * 파일명: engine/denoise/NoiseReducer.kt
  * 목적 및 기능:
  * - STT 앞단 노이즈 저감 알고리즘을 "런타임에 교체 가능한 플러그인"으로 추상화한다.
  * - 알고리즘 목록/옵션/결과(단계별 소요시간 포함)를 한 곳에 모아 둔다.
@@ -25,7 +25,7 @@
  *
  * add-hyungchul-20260826-1100
  */
-package com.example.google_stt.denoise
+package com.example.google_stt.engine.denoise   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동 (옛 위치 denoise/NoiseReducer.kt)
 
 import android.content.Context
 import kotlin.math.log10

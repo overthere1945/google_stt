@@ -1,5 +1,5 @@
 /*
- * 파일명: vad/KaldiFbank.kt
+ * 파일명: engine/vad/KaldiFbank.kt
  * 목적 및 기능:
  * - Kaldi(kaldi-native-fbank) 규격의 80차 log-mel filterbank 특징을 계산한다.
  *   FunASR FSMN-VAD(창: hamming) 와 FireRedVAD(창: povey, knf 기본값)가 공통으로 쓴다.
@@ -15,9 +15,9 @@
  *
  * add-hyungchul-20261009-1530
  */
-package com.example.google_stt.vad
+package com.example.google_stt.engine.vad   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동 (옛 위치 vad/KaldiFbank.kt)
 
-import com.example.google_stt.denoise.Fft
+import com.example.google_stt.engine.denoise.Fft   // change-hyungchul-20261105-1919 : [T1-3] 패키지 이동
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ln
