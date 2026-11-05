@@ -146,11 +146,12 @@ class PlanRunner(
 
     companion object {
         /**
-         * 목적: 목록에 쓸 수 있는 VAD 프리셋(이름 → 프리셋). 고정 프리셋 + NOVAD, TEN·CUSTOM 제외(사용자 결정 Q40).
+         * 목적: 목록에 쓸 수 있는 VAD 프리셋(이름 → 프리셋). 고정 프리셋 + NOVAD, CUSTOM 제외.
+         *   change-hyungchul-20261104-1750 : TEN 도 넣는다 — 사용자 요청(2026-11-04) VAD 5종에 TEN VAD 포함(예전 Q40 은 TEN 제외)
          * 리턴: LinkedHashMap(표시 순서)
          */
         fun vadPresets(): Map<String, VadPreset> =
-            VadEngine.entries.filter { it != VadEngine.TEN }                       // TEN 은 상업 조건부 — 견본에서 뺐다
+            VadEngine.entries                                                      // change-hyungchul-20261104-1750 : TEN 제외 필터 삭제
                 .flatMap { VadPresetCatalog.presets(it) }
                 .filter { !it.isCustom }                                           // CUSTOM 은 값이 없어 목록에 못 쓴다
                 .associateBy { it.name }

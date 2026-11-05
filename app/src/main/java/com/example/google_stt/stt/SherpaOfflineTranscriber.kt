@@ -31,6 +31,12 @@
  *                      moonshine = OfflineMoonshineModelConfig(encoder, mergedDecoder)) — AAR classes.jar javap 로 매개변수 이름 확인
  *   · 결과 글자(resultText): Zipformer KO 의 text 는 한글 띄어쓰기가 없어 tokens 로 만든다(스트리밍과 같은 문제, 실측).
  *     Moonshine 은 text 앞에 "▁" 가 남는 경우가 있어 공백으로 바꾼다. 다른 계열은 예전처럼 text 를 쓴다.
+ *
+ * change-hyungchul-20261104-1750 — v3.0.0
+ *   · Moonshine v2 tiny KO(MOONSHINE_V2) 제거(상업 사용 불가 라이선스) — 불러오기·글자 만들기·언어 표기 분기를 지웠다.
+ *   · 서버와 같은 영어 전용 모델: ZIPFORMER_EN(OfflineTransducerModelConfig), NEMO_TRANSDUCER(Parakeet-TDT, modelType "nemo_transducer"),
+ *     MOONSHINE_V1(OfflineMoonshineModelConfig preprocessor / encoder / uncachedDecoder / cachedDecoder) — 매개변수 이름은
+ *     sherpa-onnx v1.13.8 kotlin-api/OfflineRecognizer.kt 로 확인. 결과는 result.text 그대로(서버 sherpa_onnx_stt.py 와 같음).
  */
 package com.example.google_stt.stt
 
@@ -139,11 +145,40 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
                 provider = "cpu",
             )
 
-            // add-hyungchul-20261011-0150 : 2-3 — Moonshine v2 tiny KO(ORT 형식 encoder + merged decoder, 언어 지정 없음)
-            SherpaFamily.MOONSHINE_V2 -> OfflineModelConfig(
-                moonshine = OfflineMoonshineModelConfig(
+            // change-hyungchul-20261104-1750 : MOONSHINE_V2(Moonshine v2 tiny KO, encoder + mergedDecoder) 분기 제거
+
+            // add-hyungchul-20261104-1750 : Zipformer EN 오프라인 transducer(영어 전용, 언어 지정 없음 — Zipformer KO 와 같은 설정)
+            SherpaFamily.ZIPFORMER_EN -> OfflineModelConfig(
+                transducer = OfflineTransducerModelConfig(
                     encoder = path(SherpaRole.ENCODER),
-                    mergedDecoder = path(SherpaRole.DECODER),                       // decoder_model_merged.ort
+                    decoder = path(SherpaRole.DECODER),
+                    joiner = path(SherpaRole.JOINER),
+                ),
+                tokens = path(SherpaRole.TOKENS),
+                numThreads = NUM_THREADS,
+                provider = "cpu",
+            )
+
+            // add-hyungchul-20261104-1750 : Parakeet-TDT 0.6B v2(NeMo transducer — 공식 Kotlin 예제 type 30 과 같이 modelType "nemo_transducer")
+            SherpaFamily.NEMO_TRANSDUCER -> OfflineModelConfig(
+                transducer = OfflineTransducerModelConfig(
+                    encoder = path(SherpaRole.ENCODER),
+                    decoder = path(SherpaRole.DECODER),
+                    joiner = path(SherpaRole.JOINER),
+                ),
+                tokens = path(SherpaRole.TOKENS),
+                numThreads = NUM_THREADS,
+                provider = "cpu",
+                modelType = "nemo_transducer",                                      // NeMo TDT 디코딩(공식 예제와 같은 값)
+            )
+
+            // add-hyungchul-20261104-1750 : Moonshine v1 영어 tiny / base(공식 Kotlin 예제 type 21·22 와 같은 4개 파일, 언어 지정 없음)
+            SherpaFamily.MOONSHINE_V1 -> OfflineModelConfig(
+                moonshine = OfflineMoonshineModelConfig(
+                    preprocessor = path(SherpaRole.PREPROCESSOR),                  // preprocess.onnx
+                    encoder = path(SherpaRole.ENCODER),                             // encode.int8.onnx
+                    uncachedDecoder = path(SherpaRole.UNCACHED_DECODER),            // uncached_decode.int8.onnx
+                    cachedDecoder = path(SherpaRole.CACHED_DECODER),                // cached_decode.int8.onnx
                 ),
                 tokens = path(SherpaRole.TOKENS),
                 numThreads = NUM_THREADS,
@@ -347,15 +382,15 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
          * add-hyungchul-20261011-0150
          * 목적: 오프라인 결과에서 저장할 글자를 만든다.
          * 입력: family — 모델 계열, text — OfflineRecognizerResult.text, tokens — OfflineRecognizerResult.tokens
-         * 리턴: ZIPFORMER = 토큰 이어 붙이기("▁" → 공백, 한글 띄어쓰기 복원) / MOONSHINE_V2 = text 의 "▁" 를 공백으로 / 그 밖 = text.trim()(예전과 같다)
+         * 리턴: ZIPFORMER = 토큰 이어 붙이기("▁" → 공백, 한글 띄어쓰기 복원) / 그 밖 = text.trim()(예전과 같다)
+         *   (change-hyungchul-20261104-1750 : MOONSHINE_V2 분기 제거. 새 영어 계열 ZIPFORMER_EN / NEMO_TRANSDUCER / MOONSHINE_V1 은 text.trim())
          */
         fun resultText(family: SherpaFamily, text: String, tokens: Array<String>): String = when (family) {
             SherpaFamily.ZIPFORMER -> SherpaStreamingTranscriber.textFromTokens(tokens.map { it.replace('▁', ' ') }.toTypedArray())
-            SherpaFamily.MOONSHINE_V2 -> text.replace('▁', ' ').replace(WHITESPACE, " ").trim()
             else -> text.trim()
         }
 
-        private val WHITESPACE = Regex("\\s+")                                      // add-hyungchul-20261011-0150 : 연속 공백
+        // change-hyungchul-20261104-1750 : WHITESPACE(연속 공백 정규식) 제거 — MOONSHINE_V2 분기에서만 썼다
 
         /**
          * add-hyungchul-20261011-0150
@@ -391,7 +426,10 @@ class SherpaOfflineTranscriber(private val context: Context) : AutoCloseable {
             // add-hyungchul-20261011-0150 : 2-3
             SherpaFamily.ZIPFORMER, SherpaFamily.ZIPFORMER_STREAMING -> "zipformer-ko (한국어 전용, 언어 지정 없음)"
             SherpaFamily.SENSE_VOICE -> "sensevoice language=${senseVoiceLanguage(locale)} itn=on"
-            SherpaFamily.MOONSHINE_V2 -> "moonshine-tiny-ko (한국어 전용, 언어 지정 없음)"
+            // change-hyungchul-20261104-1750 : MOONSHINE_V2 표기 제거, 영어 전용 3계열 추가
+            SherpaFamily.ZIPFORMER_EN -> "zipformer-en (영어 전용, 언어 지정 없음)"
+            SherpaFamily.NEMO_TRANSDUCER -> "parakeet-tdt (영어 전용, 언어 지정 없음)"
+            SherpaFamily.MOONSHINE_V1 -> "moonshine-v1 ${spec.dirName.substringAfter("moonshine-").substringBefore("-")} (영어 전용, 언어 지정 없음)"
             SherpaFamily.VOSK -> "vosk (언어별 모델 ${spec.dirName}, 언어 지정 없음)"   // add-hyungchul-20261011-0301
         }
     }

@@ -11,7 +11,7 @@
 #     - FunASR FSMN-VAD     fsmn_vad_quant.onnx, fsmn_vad_am.mvn  (Apache-2.0, ModelScope)
 #     - FireRedVAD          fireredvad_vad.onnx, fireredvad_cmvn.ark (Apache-2.0, GitHub)
 #     - TEN VAD             app/src/main/jniLibs/<abi>/libten_vad.so (Apache-2.0 + 추가 조건, GitHub)
-#     - WebRTC VAD 는 Gradle 의존성(android-vad)이라 받을 파일이 없다.
+#     - (change-hyungchul-20261104-1750 : WebRTC VAD 는 v3.0.0 에서 제거했다)
 # 사용법: 프로젝트 루트에서  bash tools/download_models.sh  [all|vad|vads|gtcrn|dpdfnet|nsnet2]
 #         인자를 안 주면 꼭 필요한 것(vad + vads + gtcrn + dpdfnet_baseline)만 받는다.
 # add-hyungchul-20260826-1100

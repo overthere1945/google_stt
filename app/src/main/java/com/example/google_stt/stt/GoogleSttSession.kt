@@ -10,6 +10,9 @@
  *
  * change-hyungchul-20261009-1514
  *   MainActivity.kt 의 위 4개 함수와 sttSessionCount 를 내용 변경 없이 옮겼다.
+ *
+ * change-hyungchul-20261104-1750 — v3.0.0: Android 플랫폼 on-device 경로를 없앴다(Google 은 ML Kit Basic 만 — 사용자 요청).
+ *   생성자의 platform 인자와 transcribeOne() 의 ANDROID_PLATFORM_ON_DEVICE 분기를 지웠다.
  */
 package com.example.google_stt.stt
 
@@ -21,11 +24,11 @@ import java.util.Locale
 
 /**
  * 목적: Google 계열 STT 세션 관리자.
- * 입력(생성자): mlKit — ML Kit 전사기, platform — 플랫폼 on-device 전사기, log — 화면 로그 함수
+ * 입력(생성자): mlKit — ML Kit 전사기, log — 화면 로그 함수
+ *   (change-hyungchul-20261104-1750 : platform — 플랫폼 on-device 전사기 인자 제거)
  */
 class GoogleSttSession(
     private val mlKit: MlKitTranscriber,
-    private val platform: PlatformOnDeviceTranscriber,
     private val log: (String) -> Unit,
 ) {
 
@@ -73,8 +76,7 @@ class GoogleSttSession(
                 mlKit.transcribeMlKit(pcm, locale, mode, feed, onFed)
             }
 
-            SttEngine.ANDROID_PLATFORM_ON_DEVICE ->
-                platform.transcribeAndroidOnDevice(pcm, locale, feed, onFed)
+            // change-hyungchul-20261104-1750 : ANDROID_PLATFORM_ON_DEVICE 분기 제거(경로 삭제)
 
             // add-hyungchul-20261010-1800 : sherpa-onnx 는 Google 세션(SODA 할당량)을 쓰지 않는다 — BatchRunner 가 SherpaOfflineTranscriber 로 직접 부른다
             // change-hyungchul-20261011-0031 : 스트리밍(SHERPA_STREAMING, Nemotron)도 같다 — BatchRunner 가 SherpaStreamingTranscriber 로 직접 부른다

@@ -10,7 +10,8 @@
  *   PYANNOTE_DEFAULT / PYANNOTE_S500 / PYANNOTE_S2000
  *   FSMN_DEFAULT / FSMN_S500 (+ FSMN_CONFIG)
  *   FIRERED_DEFAULT / FIRERED_S500 / FIRERED_S2000
- *   (앱 신규) WEBRTC_DEFAULT / WEBRTC_LIB / WEBRTC_ASR, TEN_DEFAULT / TEN_SHERPA / TEN_ASR
+ *   (앱 신규) TEN_DEFAULT / TEN_SHERPA / TEN_ASR
+ *   (change-hyungchul-20261104-1750 : WEBRTC_DEFAULT / WEBRTC_LIB / WEBRTC_ASR 제거, 서버 SILERO_FILE 추가)
  *   <엔진>_CUSTOM_<값> — 사용자가 고친 값(값을 이름에 넣어 실행끼리 덮어쓰지 않게 한다)
  *
  * 값의 출처(2026-10-09 공식 소스 확인):
@@ -20,10 +21,15 @@
  *   pyannote: pyannote-audio pipelines/voice_activity_detection.py (min_duration_on/off 0.0), S500/S2000 은 PC GUI v8.1
  *   FSMN    : FunASR funasr_vad.h(동적 무음 기준) / 모델 config.yaml(800 ms·0.6·60000 ms), S500 은 PC GUI v8.1
  *   FireRed : FireRedVAD fireredvad/vad.py FireRedVadConfig, S500/S2000 은 PC GUI v8.1
- *   WebRTC  : WebRTC VAD 코어 기본 mode 0, android-vad README 권장값(20 ms·VERY_AGGRESSIVE·300/50)
+ *   (change-hyungchul-20261104-1750 : WebRTC 줄 삭제 — WebRTC VAD 제거)
  *   TEN     : ten-vad README(hop 256, threshold 0.5), sherpa-onnx ten-vad-model-config.h(0.5/0.5 s/0.25 s/20 s)
  *
  * add-hyungchul-20261009-1530
+ *
+ * change-hyungchul-20261104-1750 — v3.0.0 (사용자 요청: VAD 는 Silero · pyannote · FSMN-VAD · FireRedVAD · TEN, 값은 서버를 참고)
+ *   · WebRTC VAD(엔진·항목·프리셋) 제거
+ *   · SILERO_FILE 추가: 서버 stt_all_gui_server 의 'VAD 단계 Silero(파일)' 조건 — 값은 서버처럼 SILERO 와 같다(0.5/250/400/150).
+ *     앱은 모든 VAD 를 엔진 앞에서 따로 돌리므로 계산도 SILERO 와 같다. 서버 결과 폴더(…_SILERO_FILE)와 이름을 1:1 로 맞추기 위한 조건이다.
  */
 package com.example.google_stt.vad
 
@@ -45,7 +51,7 @@ enum class VadEngine(
 ) {
     NONE("사용 안 함 (기존 baseline)", "NOVAD", "", ""),
     SILERO("Silero VAD v6 (ONNX)", "SILERO", "MIT", "allowed"),
-    WEBRTC("Google WebRTC VAD (GMM)", "WEBRTC", "BSD-3 (android-vad: MIT)", "allowed"),
+    // change-hyungchul-20261104-1750 : WEBRTC("Google WebRTC VAD (GMM)") 제거
     PYANNOTE("pyannote segmentation-3.0 (ONNX)", "PYANNOTE", "MIT (모델 HF 동의 필요)", "allowed"),
     FSMN("FunASR FSMN-VAD (ONNX)", "FSMN", "Apache-2.0 + 출처·모델명 표기", "allowed"),
     FIRERED("FireRedVAD (ONNX)", "FIRERED", "Apache-2.0", "allowed"),
@@ -175,8 +181,7 @@ object VadKeys {
     const val PAD_MS = "pad_ms"                       // 앞뒤 여유(ms)
     const val MAX_SPEECH_SEC = "max_speech_sec"       // 최대 말 길이(초, 0 = 무제한)
     const val JOIN_MS = "join_ms"                     // 구간 사이 무음(ms)
-    const val WEBRTC_MODE = "mode"                    // WebRTC 공격성 0~3
-    const val FRAME_MS = "frame_ms"                   // WebRTC 프레임 10/20/30 ms
+    // change-hyungchul-20261104-1750 : WEBRTC_MODE("mode") / FRAME_MS("frame_ms") 제거(WebRTC VAD 삭제)
     const val HOP = "hop"                             // TEN hop(샘플)
     const val ONSET = "onset"                         // pyannote 시작 임계값
     const val OFFSET = "offset"                       // pyannote 끝 임계값
@@ -200,7 +205,7 @@ object VadParamCatalog {
     // 공통 항목 — 모든 엔진이 구간을 이어 붙일 때 쓴다(PC GUI 의 --vad-join-silence-ms)
     private val JOIN = VadParamSpec(VadKeys.JOIN_MS, "구간 사이 무음 (ms, 0 = 삽입 안 함)", "join", 0.0, 5000.0, true)
 
-    // Silero 방식(get_speech_timestamps 상태 기계) 공통 항목 — Silero / WebRTC / TEN 이 같이 쓴다
+    // Silero 방식(get_speech_timestamps 상태 기계) 공통 항목 — Silero / TEN 이 같이 쓴다(change-hyungchul-20261104-1750 : WebRTC 제거)
     private val THR = VadParamSpec(VadKeys.THRESHOLD, "Threshold (0.01 ~ 0.99)", "t", 0.01, 0.99, false, scale100 = true)
     private val MIN_SP = VadParamSpec(VadKeys.MIN_SPEECH_MS, "Min Speech (ms)", "sp", 0.0, 60000.0, true)
     private val MIN_SI = VadParamSpec(VadKeys.MIN_SILENCE_MS, "Min Silence (ms)", "si", 0.0, 60000.0, true)
@@ -215,11 +220,7 @@ object VadParamCatalog {
     fun specs(engine: VadEngine): List<VadParamSpec> = when (engine) {
         VadEngine.NONE -> emptyList()
         VadEngine.SILERO -> listOf(THR, MIN_SP, MIN_SI, PAD, MAX_SP, JOIN)
-        VadEngine.WEBRTC -> listOf(
-            VadParamSpec(VadKeys.WEBRTC_MODE, "Mode (0 NORMAL ~ 3 VERY_AGGRESSIVE)", "m", 0.0, 3.0, true),
-            VadParamSpec(VadKeys.FRAME_MS, "Frame (ms: 10 / 20 / 30)", "f", 10.0, 30.0, true),
-            MIN_SP, MIN_SI, PAD, MAX_SP, JOIN,
-        )
+        // change-hyungchul-20261104-1750 : VadEngine.WEBRTC 항목(Mode / Frame + Silero 방식) 제거
         VadEngine.TEN -> listOf(
             THR,
             VadParamSpec(VadKeys.HOP, "Hop (samples: 160 / 256)", "h", 160.0, 256.0, true),
@@ -267,10 +268,7 @@ object VadParamCatalog {
         }
         // 엔진별 추가 규칙
         when (engine) {
-            VadEngine.WEBRTC -> {
-                val f = values.getValue(VadKeys.FRAME_MS).roundToInt()
-                require(f == 10 || f == 20 || f == 30) { "WebRTC Frame 은 10 / 20 / 30 ms 만 됩니다." }
-            }
+            // change-hyungchul-20261104-1750 : VadEngine.WEBRTC Frame 검사 제거
             VadEngine.TEN -> {
                 val h = values.getValue(VadKeys.HOP).roundToInt()
                 require(h == 160 || h == 256) { "TEN VAD Hop 은 160 / 256 만 권장됩니다(공식 README)." }
@@ -285,7 +283,7 @@ object VadPresetCatalog {
     private const val UNLIMITED = 0.0                 // Max Speech 0 = 무제한(PC GUI 와 같은 표기)
 
     /**
-     * 목적: Silero 방식 값 맵을 만든다(Silero / WebRTC / TEN 공통 키).
+     * 목적: Silero 방식 값 맵을 만든다(Silero / TEN 공통 키 — change-hyungchul-20261104-1750 : WebRTC 제거).
      * 입력: thr, sp, si, pad, max(0=무제한), join
      * 리턴: 값 맵
      */
@@ -298,10 +296,7 @@ object VadPresetCatalog {
         VadKeys.JOIN_MS to join.toDouble(),
     )
 
-    /** WebRTC 값 맵(threshold 는 이진 판정이라 0.5 로 고정해 둔다) */
-    private fun w(mode: Int, frame: Int, sp: Int, si: Int, pad: Int, max: Double = UNLIMITED, join: Int = 200) =
-        s(0.5, sp, si, pad, max, join) - VadKeys.THRESHOLD +
-            mapOf(VadKeys.WEBRTC_MODE to mode.toDouble(), VadKeys.FRAME_MS to frame.toDouble())
+    // change-hyungchul-20261104-1750 : WebRTC 값 맵 w() 제거
 
     /** TEN 값 맵 */
     private fun t(thr: Double, hop: Int, sp: Int, si: Int, pad: Int, max: Double = UNLIMITED, join: Int = 200) =
@@ -345,17 +340,13 @@ object VadPresetCatalog {
         VadPreset("SILERO_QWEN3", VadEngine.SILERO, "Qwen3-ASR-Toolkit 0.5/1500/500/30", s(0.5, 1500, 500, 30)),
         VadPreset("SILERO_WS", VadEngine.SILERO, "whisper_streaming VADIterator 0.5/0/500/100", s(0.5, 0, 500, 100)),
         VadPreset("SILERO_USER", VadEngine.SILERO, "사용자 정의 0.4/250/300/100", s(0.4, 250, 300, 100)),
+        // add-hyungchul-20261104-1750 : 서버 VAD 단계 Silero(파일) 조건 — 서버처럼 SILERO 와 같은 값(README_SERVER 12-3 표)
+        VadPreset("SILERO_FILE", VadEngine.SILERO, "서버 VAD 단계 Silero(파일) — SILERO 와 같은 값 0.5/250/400/150", s(0.5, 250, 400, 150)),
         // Custom 시작값은 SILERO(기준선)와 같다(Q8 결정)
         VadPreset("SILERO_CUSTOM", VadEngine.SILERO, "Custom (값 직접 입력)", s(0.5, 250, 400, 150), isCustom = true),
     )
 
-    // ── WebRTC: 코어 기본(mode 0, 30 ms, 후처리 없음) / android-vad README 권장 / 프로젝트 제안 ──
-    private val WEBRTC_PRESETS = listOf(
-        VadPreset("WEBRTC_DEFAULT", VadEngine.WEBRTC, "WebRTC 코어 기본 mode 0 · 30 ms · 후처리 없음", w(0, 30, 0, 0, 0)),
-        VadPreset("WEBRTC_LIB", VadEngine.WEBRTC, "android-vad 권장 mode 3 · 20 ms · speech 50 / silence 300", w(3, 20, 50, 300, 0)),
-        VadPreset("WEBRTC_ASR", VadEngine.WEBRTC, "프로젝트 제안 mode 2 · 30 ms · 250/400/150 (공식 근거 없음)", w(2, 30, 250, 400, 150)),
-        VadPreset("WEBRTC_CUSTOM", VadEngine.WEBRTC, "Custom (값 직접 입력)", w(0, 30, 0, 0, 0), isCustom = true),
-    )
+    // change-hyungchul-20261104-1750 : WEBRTC_PRESETS(WEBRTC_DEFAULT / LIB / ASR / CUSTOM) 제거
 
     // ── TEN: README 기본 / sherpa-onnx 기본 / 프로젝트 제안 ──
     private val TEN_PRESETS = listOf(
@@ -400,7 +391,7 @@ object VadPresetCatalog {
     fun presets(engine: VadEngine): List<VadPreset> = when (engine) {
         VadEngine.NONE -> listOf(NONE_PRESET)
         VadEngine.SILERO -> SILERO_PRESETS
-        VadEngine.WEBRTC -> WEBRTC_PRESETS
+        // change-hyungchul-20261104-1750 : VadEngine.WEBRTC -> WEBRTC_PRESETS 제거
         VadEngine.TEN -> TEN_PRESETS
         VadEngine.PYANNOTE -> PYANNOTE_PRESETS
         VadEngine.FSMN -> FSMN_PRESETS

@@ -206,7 +206,7 @@ object VadDetectorFactory {
     fun create(context: Context, engine: VadEngine): VadDetector = when (engine) {
         VadEngine.NONE -> throw IllegalArgumentException("VAD 를 쓰지 않는 설정입니다.")
         VadEngine.SILERO -> SileroVadProcessor(context)
-        VadEngine.WEBRTC -> WebRtcVadDetector()
+        // change-hyungchul-20261104-1750 : WEBRTC(WebRtcVadDetector) 제거 — VAD 는 Silero·pyannote·FSMN·FireRed·TEN 만(사용자 요청)
         VadEngine.PYANNOTE -> PyannoteVadDetector(context)
         VadEngine.FSMN -> FsmnVadDetector(context)
         VadEngine.FIRERED -> FireRedVadDetector(context)

@@ -5,7 +5,7 @@
  * - 비교 가능한 3개 경로:
  *     (1) ML Kit GenAI Speech Recognition — MODE_BASIC   → 폴더 base
  *     (2) (삭제) ML Kit GenAI — MODE_ADVANCED(Pixel 10 전용) — change-hyungchul-20261009-1524 : Galaxy S25 Ultra 평가에서 쓸 수 없어 제거
- *     (3) Android Platform SpeechRecognizer.createOnDeviceSpeechRecognizer() → 폴더 android_ondevice
+ *     (3) (삭제) Android Platform SpeechRecognizer.createOnDeviceSpeechRecognizer() — change-hyungchul-20261104-1750 : Google 은 ML Kit Basic 만(사용자 요청)
  * - 결과 저장:
  *     output/google/<모드>/<입력 하위 폴더>/<파일명>.txt
  *     output/google/<모드>/result.csv    (파일별 지연/자원 계측, utf-8-sig)
@@ -63,7 +63,7 @@
  *       stt/SttUtil.kt            ms / describe / isEngineDead / isNoSpeechError / expectedFeedMs / sttTimeoutSec
  *       stt/PcmFeeder.kt          PCM 공급기
  *       stt/MlKitTranscriber.kt   ML Kit 전사 + 인식기 닫기 시간 제한
- *       stt/PlatformOnDeviceTranscriber.kt  Android 플랫폼 on-device 전사
+ *       stt/PlatformOnDeviceTranscriber.kt  Android 플랫폼 on-device 전사 (change-hyungchul-20261104-1750 : v3.0.0 에서 파일 삭제)
  *       stt/GoogleSttSession.kt   transcribeOne / 할당량 재시도 / 조각 합치기 / warm-up / 세션 수
  *       io/AudioInput.kt          입력 폴더 탐색
  *       io/ResultStore.kt         결과 폴더·TXT·CSV 저장
@@ -92,7 +92,16 @@
  * add-hyungchul-20261012-0310 — v2.6.0: 고른 입력·출력 폴더를 저장하고(plan/PlanState), 다시 열 때 권한이 남아 있으면 되살린다(Q44).
  *   프로세스가 새로 시작됐을 때(PlanState.checkedThisProcess) PlanUi.checkResumeOnStart() — 꺼진 이유 기록·이어 하기 창.
  *
- * ※ 이 3개 경로 중 어느 것도 Google Cloud 인증(서비스 계정 JSON, API Key, OAuth 토큰)을 사용하지 않는다.
+ * change-hyungchul-20261104-1750 — v3.0.0 (사용자 요청 2026-11-04: 서버 stt_all_gui_server 와 같은 엔진·VAD·결과 폴더)
+ *   · Google 은 ML Kit GenAI Basic 만: Android 플랫폼 on-device 전사기(PlatformOnDeviceTranscriber)와 Model 항목을 지웠다.
+ *   · Lang 스피너의 'auto (기기 언어)' 를 '폴더 이름으로 자동 (kr / en)' 으로 바꾸고 기본값으로 둔다.
+ *       입력 폴더 아래 kr / en 폴더(서버 규칙: kr·ko·kor·korea·korean·한국어·*_KR / en·eng·english·영어·*_EN)를 찾아
+ *       언어 폴더마다 차례로 배치를 돌린다(BatchRequest.inSub / outSub — 목록 실행이 쓰던 길을 그대로 쓴다).
+ *       결과: <출력>/<언어 폴더>/<엔진>_<모델>_<조건>/<입력 하위 폴더>/<음원>.txt (서버 v8.4.0 '결과 = <결과>/<언어 폴더>/' 와 같다)
+ *       입력 폴더 자체가 언어 폴더(예: …/input_sound/kr)면 결과 폴더를 나누지 않는다(서버와 같음).
+ *     English / 한국어 를 직접 고르면 예전처럼 고른 폴더 전체를 그 언어로 돌린다.
+ *
+ * ※ 이 경로들 중 어느 것도 Google Cloud 인증(서비스 계정 JSON, API Key, OAuth 토큰)을 사용하지 않는다.
  */
 package com.example.google_stt
 
@@ -102,6 +111,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings                 // add-hyungchul-20260916-1800
 import android.os.Bundle
+import android.provider.DocumentsContract        // add-hyungchul-20261104-1750 : 입력 폴더 경로(문서 ID)로 언어 짐작
 import android.util.Log
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -115,20 +125,26 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.documentfile.provider.DocumentFile   // add-hyungchul-20261104-1750 : 입력 폴더 바로 아래 하위 폴더 읽기
 import androidx.lifecycle.lifecycleScope
 import com.example.google_stt.batch.BatchHost                        // change-hyungchul-20261009-1514
 import com.example.google_stt.batch.BatchRequest                     // change-hyungchul-20261009-1514
 import com.example.google_stt.batch.BatchRunner                      // change-hyungchul-20261009-1514
 import com.example.google_stt.io.ResultStore                         // change-hyungchul-20261009-1514
+import com.example.google_stt.io.LangPlan                            // add-hyungchul-20261104-1750 : 언어 자동 계획
+import com.example.google_stt.io.AudioItem                           // add-hyungchul-20261104-1750 : 언어 폴더에 음원이 있는지 확인
+import com.example.google_stt.io.collectAudio                        // add-hyungchul-20261104-1750
+import com.example.google_stt.io.planLanguageFolders                 // add-hyungchul-20261104-1750 : 서버와 같은 언어 폴더 규칙
 import com.example.google_stt.stt.GoogleSttSession                   // change-hyungchul-20261009-1514
 import com.example.google_stt.stt.MlKitTranscriber                   // change-hyungchul-20261009-1514
-import com.example.google_stt.stt.PlatformOnDeviceTranscriber        // change-hyungchul-20261009-1514
+// change-hyungchul-20261104-1750 : PlatformOnDeviceTranscriber import 제거(Google 은 ML Kit Basic 만)
 import com.example.google_stt.stt.SttCatalog                         // change-hyungchul-20261009-1514
 import com.example.google_stt.stt.describe                           // change-hyungchul-20261009-1514
 import com.example.google_stt.ui.EpdUi                               // change-hyungchul-20261009-1514
 import com.example.google_stt.ui.NoiseUi                             // change-hyungchul-20261009-1514
 import com.example.google_stt.ui.VadUi                               // change-hyungchul-20261009-1514
 import com.example.google_stt.denoise.NoiseAlgorithm                 // add-hyungchul-20261011-2000 : 목록은 노이즈 저감 없음만
+import com.example.google_stt.plan.PlanCheck                         // add-hyungchul-20261104-1750 : 언어 전용 모델 확인(KO_ONLY / EN_ONLY)
 import com.example.google_stt.plan.PlanJob                           // add-hyungchul-20261011-2000 : 목록 작업
 import com.example.google_stt.plan.PlanRunner                        // add-hyungchul-20261011-2000 : 목록 실행기
 import com.example.google_stt.plan.PlanState                         // add-hyungchul-20261012-0310 : 폴더 기억·이어 하기
@@ -136,7 +152,11 @@ import com.example.google_stt.plan.SEG_10                            // add-hyun
 import com.example.google_stt.plan.SEG_MAX                           // add-hyungchul-20261011-2000
 import com.example.google_stt.ui.PlanUi                              // add-hyungchul-20261011-2000 : 목록 화면
 import com.example.google_stt.vad.SegMode                            // add-hyungchul-20261011-2000
+import kotlinx.coroutines.Dispatchers                                // add-hyungchul-20261104-1750 : 하위 폴더 읽기(IO)
+import kotlinx.coroutines.currentCoroutineContext                    // add-hyungchul-20261104-1750 : 언어 폴더 사이 취소 확인
+import kotlinx.coroutines.ensureActive                               // add-hyungchul-20261104-1750
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext                               // add-hyungchul-20261104-1750
 import java.util.Locale
 
 // change-hyungchul-20261009-1514 : 배치 실행기(BatchRunner)가 화면에 요청하는 일을 받기 위해 BatchHost 를 구현한다.
@@ -174,6 +194,9 @@ class MainActivity : AppCompatActivity(), BatchHost {
     private lateinit var progressText: TextView
 
     private var running = false
+
+    /** add-hyungchul-20261104-1750 : 언어 폴더를 차례로 돌리는 중이면 true — 배치 하나가 끝날 때 START 를 되살리지 않는다 */
+    private var langSequence = false
 
     /** change-hyungchul-20261009-1514 : BatchHost — 배치 실행기가 DocumentFile / getString 에 쓸 Activity */
     override val activity: AppCompatActivity get() = this
@@ -242,12 +265,11 @@ class MainActivity : AppCompatActivity(), BatchHost {
 
         // change-hyungchul-20261009-1514 : 전사기와 배치 실행기를 만든다(기존 MainActivity 멤버 함수들을 옮긴 클래스).
         val mlKit = MlKitTranscriber(::appendLog)
-        val platform = PlatformOnDeviceTranscriber(this)
+        // change-hyungchul-20261104-1750 : PlatformOnDeviceTranscriber 생성과 platform 인자 제거(Google 은 ML Kit Basic 만)
         batchRunner = BatchRunner(
             host = this,
-            session = GoogleSttSession(mlKit, platform, ::appendLog),
+            session = GoogleSttSession(mlKit, ::appendLog),
             mlKit = mlKit,
-            platform = platform,
             store = ResultStore(contentResolver),   // change-hyungchul-20261009-1530 : 평탄화 규칙 — algoName 인자 제거
             algoName = algoName,
         )
@@ -268,6 +290,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
                 getString(R.string.lang_auto),
             ),
         )
+        langSpinner.setSelection(LANG_AUTO_POS)   // add-hyungchul-20261104-1750 : 기본 = 폴더 이름으로 자동(사용자 요청)
 
         modelSpinner.adapter = ArrayAdapter(
             this,
@@ -275,8 +298,8 @@ class MainActivity : AppCompatActivity(), BatchHost {
             listOf(
                 getString(R.string.model_base),
                 // change-hyungchul-20261009-1524 : Pixel 10 전용 Advanced 항목 제거(SttCatalog.models 와 순서를 맞춘다)
-                getString(R.string.model_android_ondevice),
-            ) + models.mapNotNull { it.sherpa?.displayName },   // add-hyungchul-20261010-1800 : sherpa-onnx 모델(SttCatalog 순서 그대로, Google 2개 뒤)
+                // change-hyungchul-20261104-1750 : Android Platform On-device 항목 제거(SttCatalog.models 와 순서를 맞춘다)
+            ) + models.mapNotNull { it.sherpa?.displayName },   // add-hyungchul-20261010-1800 : sherpa-onnx 모델(SttCatalog 순서 그대로, Google 1개 뒤)
         )
 
         // change-hyungchul-20260824
@@ -306,7 +329,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
             ui = this,
             store = planStore,
             newRunner = { laneHost ->
-                BatchRunner(laneHost, GoogleSttSession(mlKit, platform, laneHost::appendLog), mlKit, platform, planStore, algoName)
+                BatchRunner(laneHost, GoogleSttSession(mlKit, laneHost::appendLog), mlKit, planStore, algoName)   // change-hyungchul-20261104-1750 : platform 인자 제거
             },
             onStatus = { planUiRef.showStatus(it) },
         )
@@ -353,7 +376,9 @@ class MainActivity : AppCompatActivity(), BatchHost {
         if (inUri == null || outUri == null) {
             toast(getString(R.string.msg_pick_folders)); return
         }
-        val locale = localeForSelection(langSpinner.selectedItemPosition)
+        // change-hyungchul-20261104-1750 : '폴더 이름으로 자동' 이면 언어는 언어 폴더마다 정한다(null)
+        val autoLang = langSpinner.selectedItemPosition == LANG_AUTO_POS
+        val locale = if (autoLang) null else localeForSelection(langSpinner.selectedItemPosition)
 
         val modelIndex = modelSpinner.selectedItemPosition.coerceIn(0, models.size - 1)
         val modelConfig = models[modelIndex]
@@ -407,21 +432,102 @@ class MainActivity : AppCompatActivity(), BatchHost {
         updateProgress(0.0)
         toast(getString(R.string.msg_stt_started))
 
+        // add-hyungchul-20261104-1750 : 언어·하위 폴더만 다른 실행 조건을 만든다(언어 폴더 자동이 여러 번 쓴다)
+        fun request(loc: Locale, inSub: List<String>, outSub: List<String>) = BatchRequest(
+            inUri = inUri,
+            outUri = outUri,
+            locale = loc,
+            modelConfig = modelConfig,
+            feed = feed,
+            vadSelection = vadSelection,
+            epdSelection = epdSelection,
+            noiseConfig = noiseConfig,
+            condition = condition,   // change-hyungchul-20261009-1530
+            inSub = inSub,           // add-hyungchul-20261104-1750 : 언어 폴더(빈 목록 = 고른 폴더 그대로)
+            outSub = outSub,         // add-hyungchul-20261104-1750 : 결과도 같은 이름의 하위 폴더(빈 목록 = 고른 폴더 그대로)
+        )
+
         lifecycleScope.launch {
             // change-hyungchul-20261009-1514 : 배치 본문은 batch/BatchRunner.run() 으로 옮겼다(내용 동일).
-            batchRunner.run(
-                BatchRequest(
-                    inUri = inUri,
-                    outUri = outUri,
-                    locale = locale,
-                    modelConfig = modelConfig,
-                    feed = feed,
-                    vadSelection = vadSelection,
-                    epdSelection = epdSelection,
-                    noiseConfig = noiseConfig,
-                    condition = condition,   // change-hyungchul-20261009-1530
-                ),
-            )
+            if (locale != null) {                                            // English / 한국어 를 직접 고름 = 예전과 같다
+                batchRunner.run(request(locale, emptyList(), emptyList()))
+                return@launch
+            }
+            runLanguageFolders(inUri, modelConfig.folder) { loc, sub -> batchRunner.run(request(loc, sub, sub)) }   // add-hyungchul-20261104-1750
+        }
+    }
+
+    /**
+     * add-hyungchul-20261104-1750
+     * 목적: '폴더 이름으로 자동' — 입력 폴더 아래 언어 폴더(kr / en …)를 찾아 언어 폴더마다 차례로 배치를 돌린다(서버 v8.4.0 과 같은 규칙).
+     * 입력: inUri — 고른 입력 폴더, modelFolder — 고른 모델 이름(언어 전용 모델이면 맞지 않는 언어 폴더를 건너뛴다),
+     *       runOne — (인식 언어, 하위 폴더 조각) 으로 배치 1회를 돌리는 함수(하위 폴더 조각은 입력·출력에 같이 쓴다)
+     * 출력: 화면 로그 / 결과 파일(<출력>/<언어 폴더>/…)
+     * 리턴: 없음
+     * 규칙: 차례로만 돈다(동시에 돌리지 않음). 한 언어 폴더가 끝까지 돌지 못하면(모델 없음·엔진 먹통 등) 남은 언어 폴더는 돌리지 않는다.
+     *       이름으로 언어를 모르는 폴더는 건너뛰고 로그로 알린다(서버는 묻는 창을 띄운다 — 앱은 묻지 않음).
+     */
+    private suspend fun runLanguageFolders(inUri: Uri, modelFolder: String, runOne: suspend (Locale, List<String>) -> Unit) {
+        langSequence = true                                                  // 배치 하나가 끝나도 START 를 되살리지 않는다
+        try {
+            val scanned: Pair<LangPlan, Set<String>>? = withContext(Dispatchers.IO) {
+                val root = DocumentFile.fromTreeUri(this@MainActivity, inUri) ?: return@withContext null
+                val dirs = root.listFiles().filter { it.isDirectory }                 // 바로 아래 하위 폴더
+                val subs = dirs.mapNotNull { it.name }                                // 그 이름
+                // 입력 폴더 경로: SAF 문서 ID(예: primary:Documents/input_sound/kr) + 폴더 표시 이름.
+                //   문서 ID 에 경로가 없는 제공자(예: 다운로드 'msf:123')도 있어 표시 이름을 마디로 함께 넣는다(독립 검토 L1)
+                val treeId = runCatching { DocumentsContract.getTreeDocumentId(inUri) }.getOrNull() ?: ""
+                val p = planLanguageFolders(treeId + "/" + (root.name ?: ""), subs)
+                // 독립 검토 M1: 음원이 있는 언어 폴더 이름("" = 입력 폴더 자체) — 빈 폴더는 배치를 부르지 않고 건너뛴다
+                val withAudio = p.groups.filter { g ->
+                    val dir = if (g.name.isEmpty()) root else dirs.firstOrNull { it.name == g.name }
+                    dir != null && ArrayList<AudioItem>().also { collectAudio(dir, emptyList(), it) }.isNotEmpty()
+                }.map { it.name }.toSet()
+                Pair(p, withAudio)
+            }
+            val plan = scanned?.first
+            val withAudio = scanned?.second ?: emptySet()
+            if (plan == null) {
+                toast(getString(R.string.msg_folder_open_fail)); return
+            }
+            if (plan.unknown.isNotEmpty()) {
+                appendLog("[lang] 이름으로 언어를 모르는 폴더는 건너뛴다: " + plan.unknown.joinToString(", ") { it.ifEmpty { "(입력 폴더 자체)" } })
+            }
+            if (plan.groups.isEmpty()) {
+                appendLog("[lang][중단] 언어 폴더(kr / en …)를 찾지 못했다. input_sound 처럼 kr·en 을 담은 폴더를 고르거나 Lang 을 직접 고를 것.")
+                toast("언어 폴더(kr / en)를 찾지 못했습니다. Lang 을 직접 고르세요.")
+                return
+            }
+            appendLog("[lang] 폴더 이름으로 자동: " + plan.groups.joinToString(", ") {
+                "${it.name.ifEmpty { "(입력 폴더)" }} → ${if (it.lang == "ko") "한국어" else "영어"}"
+            })
+            var ran = 0                                                        // 실제로 돌린 언어 폴더 수(독립 검토 L3)
+            for ((i, g) in plan.groups.withIndex()) {
+                currentCoroutineContext().ensureActive()                       // 화면이 닫혀 취소됐으면 다음 언어 폴더로 가지 않는다
+                val label = g.name.ifEmpty { "(입력 폴더)" }
+                // 언어 전용 모델이 맞지 않는 언어 폴더는 건너뛴다(결과가 무의미 — 목록 실행 PlanCheck 와 같은 표)
+                if ((g.lang == "en" && modelFolder in PlanCheck.KO_ONLY) || (g.lang == "ko" && modelFolder in PlanCheck.EN_ONLY)) {
+                    appendLog("[lang] $label 건너뜀 — '$modelFolder' 는 ${if (g.lang == "en") "한국어" else "영어"} 전용 모델이다.")
+                    continue
+                }
+                // 독립 검토 M1: 음원이 없는 언어 폴더는 배치를 부르지 않고 건너뛴다(부르면 '중단' 으로 판정돼 뒤 언어 폴더까지 멈춘다)
+                if (g.name !in withAudio) {
+                    appendLog("[lang] $label 건너뜀 — 음원 파일이 없다.")
+                    continue
+                }
+                val loc = if (g.lang == "ko") Locale.KOREA else Locale.US      // 목록 실행 PlanRunner.localeOf 와 같은 값
+                appendLog("[lang] (${i + 1}/${plan.groups.size}) $label → ${loc.toLanguageTag()} 시작")
+                runOne(loc, if (g.name.isEmpty()) emptyList() else listOf(g.name))   // 입력·결과 모두 <언어 폴더>/
+                ran++
+                if (!batchRunner.lastCompleted) {                              // 끝까지 돌지 못함 → 남은 언어 폴더는 돌리지 않는다
+                    appendLog("[lang][중단] $label 이(가) 끝까지 돌지 못해 남은 언어 폴더는 돌리지 않는다.")
+                    break
+                }
+            }
+            if (ran == 0) toast("돌린 언어 폴더가 없습니다(로그 [lang] 참고).")   // 독립 검토 L3: 모두 건너뛰면 알린다
+        } finally {
+            langSequence = false
+            onBatchFinished()                                                // 여기서 한 번만 START 를 되살린다
         }
     }
 
@@ -432,6 +538,7 @@ class MainActivity : AppCompatActivity(), BatchHost {
      * 비고: 원래 startTranscription() 의 finally 마지막 두 줄(running = false / startButton.isEnabled = true)이다.
      */
     override fun onBatchFinished() {
+        if (langSequence) return   // add-hyungchul-20261104-1750 : 언어 폴더를 차례로 도는 중이면 마지막에 runLanguageFolders() 가 부른다
         running = false
         startButton.isEnabled = true
     }
@@ -545,5 +652,8 @@ class MainActivity : AppCompatActivity(), BatchHost {
 
         /** add-hyungchul-20261011-2000 : 화면 로그 최대 글자 수(넘으면 앞 절반을 잘라 낸다) */
         private const val LOG_VIEW_MAX_CHARS = 200_000
+
+        /** add-hyungchul-20261104-1750 : Lang 스피너의 '폴더 이름으로 자동 (kr / en)' 위치(0 English / 1 한국어 / 2 자동) */
+        private const val LANG_AUTO_POS = 2
     }
 }

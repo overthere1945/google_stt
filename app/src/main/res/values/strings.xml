@@ -77,11 +77,12 @@
 
     <string name="lang_english">English (en-US)</string>
     <string name="lang_korean">한국어 (ko-KR)</string>
-    <string name="lang_auto">auto (기기 언어)</string>
+    <!-- change-hyungchul-20261104-1750 : 'auto (기기 언어)' → 입력 폴더 이름(kr / en)으로 자동 — 서버 stt_all_gui_server v8.4.0 과 같은 규칙 -->
+    <string name="lang_auto">폴더 이름으로 자동 (kr / en)</string>
 
     <string name="model_base">ML Kit GenAI — Basic (API 31+)</string>
     <!-- change-hyungchul-20261009-1524 : model_advanced(ML Kit GenAI — Advanced, Pixel 10 전용) 제거 -->
-    <string name="model_android_ondevice">Android Platform On-device (API 33+)</string>
+    <!-- change-hyungchul-20261104-1750 : model_android_ondevice(Android Platform On-device) 제거 — Google 은 ML Kit Basic 만(사용자 요청) -->
 
     <string name="msg_already_running">이미 실행 중입니다.</string>
     <string name="msg_pick_folders">입력/출력 폴더를 먼저 선택하세요.</string>

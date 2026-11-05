@@ -12,12 +12,16 @@
 #   bash tools/download_stt_models.sh                 # 기본: aar + whisper-base + qwen3asr-0.6b + omnilingual-300m + nemotron3.5-560ms
 #   bash tools/download_stt_models.sh aar             # AAR 만
 #   bash tools/download_stt_models.sh whisper-tiny whisper-small   # 고른 모델만
-#   bash tools/download_stt_models.sh all             # aar + 모델 15종 전부(약 5.6 GB)  (change-hyungchul-20261011-0150 : 12종 → 9종 → 2-3 4종 추가 13종 / change-hyungchul-20261011-0301 : Vosk 2종 추가 15종)
+#   bash tools/download_stt_models.sh all             # aar + 모델 18종 전부(약 6.6 GB)  (change-hyungchul-20261011-0150 : 12종 → 9종 → 2-3 4종 추가 13종 / change-hyungchul-20261011-0301 : Vosk 2종 추가 15종
+#                                                     #  / change-hyungchul-20261104-1750 : moonshine-tiny-ko 제거, 영어 4종 추가 18종)
 #   --no-push 를 붙이면 PC 에만 받고 휴대폰에는 넣지 않는다
 # 모델 이름: whisper-tiny / whisper-base / whisper-small / whisper-medium / whisper-turbo / qwen3asr-0.6b / omnilingual-300m
 #           nemotron3.5-320ms / nemotron3.5-560ms (스트리밍, 각 약 0.7 GB)
-#           [상업 조건부] zipformer-ko / zipformer-ko-stream / sensevoice-small / moonshine-tiny-ko (add-hyungchul-20261011-0150 : 2-3, 기본 묶음에는 넣지 않음)
+#           [상업 조건부] zipformer-ko / zipformer-ko-stream / sensevoice-small (add-hyungchul-20261011-0150 : 2-3, 기본 묶음에는 넣지 않음)
 #           vosk-small-ko / vosk-small-en (add-hyungchul-20261011-0301 : 2-4, alphacephei.com zip 을 폴더째 푼다, 기본 묶음에는 넣지 않음)
+#           [영어 전용] zipformer-en / parakeet-tdt-0.6b-v2 / moonshine-tiny-en / moonshine-base-en
+#             (add-hyungchul-20261104-1750 : v3.0.0 — 서버 stt_all_gui_server 와 같은 가중치, 기본 묶음에는 넣지 않음)
+#           (change-hyungchul-20261104-1750 : moonshine-tiny-ko 제거 — Moonshine Community License, 상업 사용 불가 조건)
 # add-hyungchul-20261010-1800
 # change-hyungchul-20261011-0031 : 2단계 2-2 — Nemotron 3.5 스트리밍 5종 추가(사용자 결정 Q26: 기본 받기는 560 ms)
 # change-hyungchul-20261011-0150 : Nemotron 은 320 / 560 ms 2종만(사용자 결정 Q28 — 80 / 160 / 1120 ms 삭제)
@@ -50,8 +54,10 @@ done
 if [ "${TARGETS[0]}" = "all" ]; then
   TARGETS=(aar whisper-tiny whisper-base whisper-small whisper-medium whisper-turbo qwen3asr-0.6b omnilingual-300m \
            nemotron3.5-320ms nemotron3.5-560ms \
-           zipformer-ko zipformer-ko-stream sensevoice-small moonshine-tiny-ko \
-           vosk-small-ko vosk-small-en)   # change-hyungchul-20261011-0150 : 80 / 160 / 1120 ms 삭제, 2-3 4종 추가 / change-hyungchul-20261011-0301 : Vosk 2종
+           zipformer-ko zipformer-ko-stream sensevoice-small \
+           vosk-small-ko vosk-small-en \
+           zipformer-en parakeet-tdt-0.6b-v2 moonshine-tiny-en moonshine-base-en)   # change-hyungchul-20261011-0150 : 80 / 160 / 1120 ms 삭제, 2-3 4종 추가 / change-hyungchul-20261011-0301 : Vosk 2종
+  # change-hyungchul-20261104-1750 : moonshine-tiny-ko 제거, 영어 전용 4종 추가
 fi
 
 # 목적: 모델 이름 → "패키지 이름|앱이 쓰는 파일(공백 구분)" 을 출력한다(앱 stt/SherpaModels.kt 와 같은 값)
@@ -76,8 +82,15 @@ spec_of() {
       echo "sherpa-onnx-streaming-zipformer-korean-2024-06-16|encoder-epoch-99-avg-1.int8.onnx decoder-epoch-99-avg-1.int8.onnx joiner-epoch-99-avg-1.int8.onnx tokens.txt" ;;
     sensevoice-small)
       echo "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17|model.int8.onnx tokens.txt LICENSE" ;;
-    moonshine-tiny-ko)
-      echo "sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27|encoder_model.ort decoder_model_merged.ort tokens.txt LICENSE" ;;
+    # change-hyungchul-20261104-1750 : moonshine-tiny-ko(sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27) 제거
+    # add-hyungchul-20261104-1750 : v3.0.0 영어 전용 4종(앱 SherpaCatalog 와 같은 패키지·파일 — 서버 sherpa_onnx_stt.py / moonshine_stt.py 와 같은 가중치)
+    zipformer-en)
+      echo "sherpa-onnx-zipformer-en-2023-06-26|encoder-epoch-99-avg-1.int8.onnx decoder-epoch-99-avg-1.onnx joiner-epoch-99-avg-1.int8.onnx tokens.txt" ;;
+    parakeet-tdt-0.6b-v2)
+      echo "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8|encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt" ;;
+    moonshine-tiny-en|moonshine-base-en)
+      local m="${1#moonshine-}"; m="${m%-en}"                # tiny / base
+      echo "sherpa-onnx-moonshine-$m-en-int8|preprocess.onnx encode.int8.onnx uncached_decode.int8.onnx cached_decode.int8.onnx tokens.txt" ;;
     # add-hyungchul-20261011-0301 : 2-4 Vosk(앱 SherpaCatalog.vosk 와 같은 폴더·필수 파일). zip 을 폴더째 푼다(fetch_model 의 vosk 분기)
     vosk-small-ko)
       echo "vosk-model-small-ko-0.22|am/final.mdl conf/model.conf" ;;

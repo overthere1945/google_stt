@@ -592,3 +592,16 @@ result.csv 컬럼은 **바뀌지 않았다**(99열 그대로). Vosk 는 7장(스
 - `_plan_exits.csv`(목록 실행 도중 꺼졌을 때, 다음 실행에서 한 줄): `logged,exit_time,reason,status,pss_mb,rss_mb,low_memory_report_supported,plan_was_running,description`
   - reason = `ApplicationExitInfo` 종료 이유(LOW_MEMORY·CRASH_NATIVE·CRASH·SIGNALED·USER_REQUESTED 등), status = 종료 코드 또는 신호 번호
   - low_memory_report_supported = 이 기기가 메모리 부족 종료를 LOW_MEMORY 로 보고하는지(`isLowMemoryKillReportSupported`). false 인 기기에서 SIGNALED + 신호 9 는 메모리 부족으로 본다.
+
+## 13. v3.0.0 — 엔진·VAD 정리와 언어 폴더 자동 (change-hyungchul-20261104-1750)
+
+- result.csv(99열)·run_meta 키는 바뀌지 않았다. 값만 아래처럼 달라진다.
+- `engine` 열: `ANDROID_PLATFORM_ON_DEVICE` 는 더 나오지 않는다(경로 삭제). `mode` 열에 `android_ondevice`·`moonshine-tiny-ko` 도 나오지 않는다.
+- 새 `mode` 값(영어 전용 sherpa 오프라인, `engine=SHERPA_OFFLINE`): `zipformer-en`, `parakeet-tdt-0.6b-v2`, `moonshine-tiny-en`, `moonshine-base-en`.
+  - 값의 뜻은 6장(sherpa 오프라인)과 같다: `feed_ms=-1`, `tail_ms=stt_wall_ms`, `stt_session_index=-1`.
+  - run_meta `stt_chunk_max_sec`: 15.0 / 30.0 / 25.0 / 25.0(SEG10 이면 10.0). `stt_language`: 예) `zipformer-en (영어 전용, 언어 지정 없음)`, `moonshine-v1 tiny (영어 전용, 언어 지정 없음)`.
+  - run_meta `stt_license` / `stt_commercial`: `Apache-2.0(icefall)/LibriSpeech CC-BY-4.0`·`CC-BY-4.0`·`MIT` / `allowed`.
+- `vad_engine` 열: `WEBRTC` 는 더 나오지 않는다. `vad_preset` 에 `SILERO_FILE`(값은 SILERO 와 같음)이 생겼다.
+- `lang` 열: Lang '폴더 이름으로 자동' 이면 언어 폴더마다 `ko-KR`(kr 계열) / `en-US`(en 계열)가 들어간다.
+  - 같은 실행이어도 CSV 는 `<출력>/<언어 폴더>/<엔진>_<조건>_result.csv` 로 언어 폴더마다 따로 생긴다.
+- `path` 열(입력 하위 폴더/파일명)은 언어 폴더 안에서의 경로다. 예: `Customer_Service_KR/01`. 언어 폴더 이름은 결과 폴더 위치로 구분한다.

@@ -42,8 +42,11 @@ android {
         // change-hyungchul-20261011-0340 : 2.4.0 → 2.4.1 (Patch) — result.csv execution 열 따옴표(열 밀림 수정) + sherpa-onnx 1.13.7 → 1.13.8. 릴리스 노트: docs/RELEASE_NOTES_v2.4.1.md
         // change-hyungchul-20261011-2000 : 2.4.1 → 2.5.0 (Minor) — 목록 실행(동시 3개·오프라인 1개, 이어 하기, 중지 선택 창) 추가(기존 START·결과 형식과 호환). 릴리스 노트: docs/RELEASE_NOTES_v2.5.0.md
         // change-hyungchul-20261012-0310 : 2.5.0 → 2.6.0 (Minor) — 목록 실행 이어 하기 보강(폴더 기억·이어 하기 창·꺼진 이유/메모리 기록·동시 작업 수 선택·끝나지 않은 결과 숨김). 릴리스 노트: docs/RELEASE_NOTES_v2.6.0.md
-        versionCode = 10
-        versionName = "2.6.0"
+        // change-hyungchul-20261104-1750 : 2.6.0 → 3.0.0 (Major) — Android 플랫폼 on-device STT·WebRTC VAD·Moonshine tiny KO 제거(기능 삭제),
+        //   Lang '폴더 이름으로 자동'(kr / en) 결과 폴더 <출력>/<언어 폴더>/… (예전 결과 위치와 다름) + 영어 sherpa 4종·SILERO_FILE 추가.
+        //   릴리스 노트: docs/RELEASE_NOTES_v3.0.0.md
+        versionCode = 11
+        versionName = "3.0.0"
 
         // add-hyungchul-20261010-1855 : APK 에 넣을 ABI 를 arm64-v8a 하나로 제한(사용자 결정 Q21)
         //   · 이유: sherpa-onnx 정적 링크 AAR 1.13.7 은 x86 에서만 libonnxruntime.so(ORT 1.27.1)를 따로 동적 링크해 넣는데,
@@ -118,10 +121,8 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.25.1")
 
     // ★ add-hyungchul-20261009-1530 : VAD 엔진 추가
-    //   · Google WebRTC VAD — gkonovalov/android-vad 의 webrtc 모듈(MIT, 내부 WebRTC 코드 BSD-3).
-    //     JitPack 배포라 settings.gradle.kts 에 https://jitpack.io 저장소를 추가했다.
-    //     2.0.10 은 NDK r28 로 빌드되어 16 KB 페이지 정렬 요건을 충족한다(모듈 build.gradle 확인).
-    implementation("com.github.gkonovalov.android-vad:webrtc:2.0.10")
+    //   · change-hyungchul-20261104-1750 : Google WebRTC VAD(com.github.gkonovalov.android-vad:webrtc:2.0.10, JitPack) 제거
+    //     — VAD 는 Silero · pyannote · FSMN-VAD · FireRedVAD · TEN 만 쓴다(사용자 요청 2026-11-04)
     //   · TEN VAD — 공식 libten_vad.so(C API)를 부르기 위한 JNA. 공식 Java 래퍼(TenVad.java)도 JNA 를 쓴다.
     //     Android 16 KB 페이지 대응(libjnidispatch.so)은 5.16.0 이상에서 들어갔다 → 5.17.0 으로 고정.
     //     @aar 를 붙여야 Android 용 libjnidispatch.so 가 함께 들어온다.

@@ -181,7 +181,7 @@ data class SttRow(
     var sttSessionIndex: Int = -1,
 
     // add-hyungchul-20261009-1530 : VAD 엔진 선택 / 구간 처리(SEG) / 조건 이름 — 기존 컬럼 뒤에 append 한다(앞 index 유지)
-    /** VAD 엔진(NONE / SILERO / WEBRTC / PYANNOTE / FSMN / FIRERED / TEN) */
+    /** VAD 엔진(NONE / SILERO / PYANNOTE / FSMN / FIRERED / TEN) — change-hyungchul-20261104-1750 : WEBRTC 제거 */
     var vadEngine: String = "",
     /** VAD 프리셋 이름(SILERO_SAFE …, Custom 이면 값이 붙은 이름) */
     var vadPreset: String = "",

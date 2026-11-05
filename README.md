@@ -4,8 +4,9 @@
 지연·자원을 계측하는 평가 앱입니다. 결과는 PC "STT 통합 실행기"와 같은 폴더·조건 이름 규칙으로 저장되어
 PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
-- 현재 판: **2.6.0** (2026-10-12) — 변경 내용은 [`docs/RELEASE_NOTES_v2.6.0.md`](docs/RELEASE_NOTES_v2.6.0.md) (이전: [`v2.5.0`](docs/RELEASE_NOTES_v2.5.0.md), [`v2.4.1`](docs/RELEASE_NOTES_v2.4.1.md), [`v2.4.0`](docs/RELEASE_NOTES_v2.4.0.md), [`v2.3.0`](docs/RELEASE_NOTES_v2.3.0.md), [`v2.2.0`](docs/RELEASE_NOTES_v2.2.0.md), [`v2.1.1`](docs/RELEASE_NOTES_v2.1.1.md), [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
+- 현재 판: **3.0.0** (2026-11-04) — 변경 내용은 [`docs/RELEASE_NOTES_v3.0.0.md`](docs/RELEASE_NOTES_v3.0.0.md), 인계는 [`docs/HANDOFF_20261104_v3.0.0.md`](docs/HANDOFF_20261104_v3.0.0.md) (이전: [`v2.6.0`](docs/RELEASE_NOTES_v2.6.0.md), [`v2.5.0`](docs/RELEASE_NOTES_v2.5.0.md), [`v2.4.1`](docs/RELEASE_NOTES_v2.4.1.md), [`v2.4.0`](docs/RELEASE_NOTES_v2.4.0.md), [`v2.3.0`](docs/RELEASE_NOTES_v2.3.0.md), [`v2.2.0`](docs/RELEASE_NOTES_v2.2.0.md), [`v2.1.1`](docs/RELEASE_NOTES_v2.1.1.md), [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
 - 대상 기기: Galaxy S25 Ultra (arm64-v8a), minSdk 31 / targetSdk 35 — APK 는 **arm64-v8a 전용**(`abiFilters`, 에뮬레이터·32비트 기기 설치 불가)
+- 평가 기준(v3.0.0, 사용자 요청 2026-11-04): 서버 `stt_all_gui_server` 의 엔진 중 **갤럭시에서 도는 것 · 무료 · 상업 이용 가능한 것만**. Google 은 **ML Kit GenAI Basic 만**, VAD 는 **Silero · pyannote · FSMN-VAD · FireRedVAD · TEN**(값은 서버와 같게).
 - 네트워크: **INTERNET 권한 없음**(온디바이스 실행 증명용). VAD·노이즈 저감 모델은 APK 에 넣고, STT 모델(sherpa-onnx)은 휴대폰 공용 폴더 `/sdcard/Documents/stt_models` 에 넣고 앱은 **'모든 파일 접근'** 권한으로 읽습니다(v2.1.1).
 
 ## 1. 처리 순서
@@ -16,20 +17,20 @@ PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
 | 단계 | 선택지 |
 |---|---|
-| STT | ML Kit GenAI Speech Recognition **Basic**(API 31+), Android 플랫폼 on-device(API 33+), **sherpa-onnx 오프라인**: Whisper tiny/base/small/medium/turbo, Qwen3-ASR 0.6B, Omnilingual 300M, **sherpa-onnx 스트리밍**: Nemotron 3.5 0.6B(지연 320 / 560 ms), **상업 조건부(v2.3.0)**: Zipformer KO(오프라인·스트리밍), SenseVoice Small, Moonshine tiny KO, **Vosk(v2.4.0)**: small KO 0.22 / EN-US 0.15 |
+| STT | ML Kit GenAI Speech Recognition **Basic**(API 31+), **sherpa-onnx 오프라인**: Whisper tiny/base/small/medium/turbo, Qwen3-ASR 0.6B, Omnilingual 300M, **영어 전용(v3.0.0)**: Zipformer EN, Parakeet-TDT 0.6B v2, Moonshine tiny/base EN, **sherpa-onnx 스트리밍**: Nemotron 3.5 0.6B(지연 320 / 560 ms), **상업 조건부(v2.3.0)**: Zipformer KO(오프라인·스트리밍), SenseVoice Small, **Vosk(v2.4.0)**: small KO 0.22 / EN-US 0.15 |
 | 노이즈 저감 | 사용 안 함 / GTCRN / DPDFNet / NSNet2 / MMSE-STSA / Wiener / Spectral Subtraction |
-| VAD 엔진 | 사용 안 함 / **Silero** / **WebRTC** / **pyannote** / **FSMN** / **FireRed** / **TEN** |
+| 언어 | **폴더 이름으로 자동 (kr / en)**(v3.0.0 기본) / English / 한국어 |
+| VAD 엔진 | 사용 안 함 / **Silero** / **pyannote** / **FSMN** / **FireRed** / **TEN** |
 | 구간 처리 | **엔진별 최대 길이**(Google = 기존: 이어 붙여 1세션 + EPD) / **모든 엔진 10초 통일**(SEG10) |
 | Speech EPD | OFF / A안(세션 분할) / B안(긴 무음) — ML Kit 61초 앞부분 유실 결함 회피용, SEG10·sherpa 엔진에서는 쓰지 않음 |
 
-> v2.0.0 에서 **ML Kit Advanced(Pixel 10 전용)** 를 제거했습니다.
+> v2.0.0 에서 **ML Kit Advanced(Pixel 10 전용)** 를, v3.0.0 에서 **Android 플랫폼 on-device STT · WebRTC VAD · Moonshine tiny KO**(상업 사용 불가 라이선스)를 제거했습니다.
 
 ## 2. VAD 엔진과 프리셋
 
 | 엔진 | 라이선스(상업) | 실행 방식 | 프리셋(조건 이름) |
 |---|---|---|---|
-| Silero v6.2 | MIT (allowed) | ONNX Runtime | SILERO, SILERO_SAFE, SILERO_FW, SILERO_DEFAULT, SILERO_SHERPA, SILERO_QWEN3, SILERO_WS, SILERO_USER, SILERO_CUSTOM |
-| WebRTC VAD | BSD-3 / android-vad MIT (allowed) | android-vad 2.0.10 | WEBRTC_DEFAULT, WEBRTC_LIB, WEBRTC_ASR, WEBRTC_CUSTOM |
+| Silero v6.2 | MIT (allowed) | ONNX Runtime | SILERO, SILERO_SAFE, SILERO_FW, SILERO_DEFAULT, SILERO_SHERPA, SILERO_QWEN3, SILERO_WS, SILERO_USER, SILERO_FILE(v3.0.0), SILERO_CUSTOM |
 | pyannote seg-3.0 | MIT, HF 동의 필요 (allowed) | ONNX Runtime(직접 이식) | PYANNOTE_DEFAULT, PYANNOTE_S500, PYANNOTE_S2000, PYANNOTE_CUSTOM |
 | FunASR FSMN-VAD | Apache-2.0 + 출처 표기 (allowed) | ONNX Runtime(직접 이식) | FSMN_DEFAULT(동적 무음), FSMN_CONFIG(800/0.6), FSMN_S500, FSMN_CUSTOM |
 | FireRedVAD | Apache-2.0 (allowed) | ONNX Runtime(직접 이식) | FIRERED_DEFAULT, FIRERED_S500, FIRERED_S2000, FIRERED_CUSTOM |
@@ -47,6 +48,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 | SILERO_QWEN3 | 0.5 / 1500 / 500 / 30 | Qwen3-ASR-Toolkit |
 | SILERO_WS | 0.5 / 0 / 500 / 100 | whisper_streaming VADIterator |
 | SILERO_USER | 0.4 / 250 / 300 / 100 | 사용자 정의 |
+| SILERO_FILE (v3.0.0) | 0.5 / 250 / 400 / 150 | 서버 'VAD 단계 Silero(파일)' 조건 — 서버처럼 SILERO 와 같은 값(이름을 서버 결과 폴더와 맞추기 위함) |
 
 - 값을 직접 고치면 자동으로 `<엔진>_CUSTOM` 으로 바뀌고, 결과 조건 이름에 값이 들어갑니다(예: `SILERO_CUSTOM_t40_sp250_si300_pad100`).
 - Picovoice Cobra 는 AccessKey·인터넷이 필요하고 무료 플랜이 없어 넣지 않았습니다.
@@ -63,12 +65,17 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 | Zipformer KO 스트리밍 (v2.3.0) | `zipformer-ko-stream` | 위와 같음 (**conditional**) | 없음(스트리밍) | 없음(한국어 전용) | 약 0.13 GB |
 | SenseVoice Small (v2.3.0) | `sensevoice-small` | FunASR MODEL_LICENSE (**conditional**) | 30 s (PC FSMN-VAD 최대 구간과 같게) | `ko` / `en`, ITN 켬 | 약 0.24 GB |
 | Vosk small KO 0.22 / EN-US 0.15 (v2.4.0, vosk-android 0.3.75) | `vosk-small-ko` / `vosk-small-en` (모델 이름 `vosk`) | Apache-2.0 (allowed) | 없음(스트리밍, Feed 설정) | 없음(언어별 모델 — Language 와 맞는 쪽을 고른다) | 82 MB / 40 MB |
-| Moonshine tiny KO (v2.3.0) | `moonshine-tiny-ko` | Moonshine Community License (**conditional** — 연매출 100만 달러 이상 상업 사용 불가) | **9 s** (실측: 9.3 s 이상 빈 결과) | 없음(한국어 전용) | 약 0.07 GB |
+| **Zipformer EN** (v3.0.0) | `zipformer-en` | Apache-2.0(icefall) / LibriSpeech CC-BY-4.0 (allowed) | 15 s (실측) | 없음(영어 전용) | 약 0.07 GB |
+| **Parakeet-TDT 0.6B v2 EN** (v3.0.0) | `parakeet-tdt-0.6b-v2` | CC-BY-4.0 (allowed) | 30 s (실측: 48.7 s 까지 정상, 73 s 부터 뒷부분 빠짐) | 없음(영어 전용, 구두점·대소문자 포함) | 약 0.66 GB |
+| **Moonshine tiny / base EN** (v3.0.0) | `moonshine-tiny-en` / `moonshine-base-en` | MIT (allowed) | 25 s (서버 moonshine_stt.py 기본과 같게) | 없음(영어 전용) | 약 0.12 / 0.29 GB |
+
+- v3.0.0 에서 **Moonshine tiny KO 를 뺐습니다** — Moonshine Community License 는 연매출 100만 달러를 넘으면 상업 사용을 할 수 없습니다(사용자 기준 '상업 이용 가능한 것만').
+- 영어 전용 4종은 서버(`stt_all_gui_server`)의 sherpa `zipformer-en`·`parakeet-tdt-0.6b-v2`, moonshine 영어 Tiny/Base 와 **같은 가중치**입니다. 조각 상한 근거는 `docs/RELEASE_NOTES_v3.0.0.md` 2장.
 
 - 런타임: sherpa-onnx **1.13.8 정적 링크 AAR**(v2.4.1 부터, onnxruntime 1.28.2 내장 — 앱의 onnxruntime-android 1.25.1 과 따로 돈다), CPU 4 스레드.
 - 실행: 실시간 공급 없이 **최대 속도로 디코딩**한다. 모델은 배치 시작 때 1번 불러 끝에 해제한다(불러온 시간은 run_meta `stt_model_load_ms`).
 - **Nemotron(스트리밍)** 은 Feed 설정대로 100 ms 조각을 넣는다(REALTIME = 실시간). 지연 비교는 `tail_ms`·`first_result_ms` 로 한다. 결과 글자는 토큰을 이어 만든다(sherpa 스트리밍 `text` 가 한국어 띄어쓰기를 지우는 문제 회피). 값 뜻은 `STT_계측_CSV_설명서.md` 7장.
-- **상업 조건부 4종**(v2.3.0, 사용자 결정 Q5): 화면 이름 끝에 `[상업 조건부]`, run_meta `stt_commercial=conditional`. Zipformer KO 스트리밍은 Nemotron 과 같은 스트리밍 경로(Feed 설정)이고, Zipformer KO 두 종은 토큰으로 띄어쓰기를 만든다. **Moonshine 은 "10초 통일" 에서도 9 s 조각**으로 줄인다(run_meta `stt_chunk_max_sec=9.0`). 근거는 `docs/RELEASE_NOTES_v2.3.0.md`.
+- **상업 조건부 3종**(v2.3.0, 사용자 결정 Q5 — v3.0.0 에서 Moonshine tiny KO 를 빼서 3종): 화면 이름 끝에 `[상업 조건부]`, run_meta `stt_commercial=conditional`. Zipformer KO 스트리밍은 Nemotron 과 같은 스트리밍 경로(Feed 설정)이고, Zipformer KO 두 종은 토큰으로 띄어쓰기를 만든다. 근거는 `docs/RELEASE_NOTES_v2.3.0.md`.
 - Cohere Transcribe 2B 는 **보류**(v2.2.0, 사용자 결정 Q25): sherpa int8 판이 실제 한국어 대화 음원에서 반복·영어 섞임이 심하고 메모리 약 3.4 GB — 근거는 `docs/HANDOFF_20261011_v2.2.0.md`.
 - 구간 처리: "엔진별 최대 길이" = 위 조각 상한으로 말 구간을 묶고 자른다. "10초 통일" = 10 s. Speech EPD 는 쓰지 않는다.
 - 결과 이름: `whisper-base_sherpa-int8_<조건>/…`, `whisper-base_<조건>_result.csv` (모델마다 CSV 가 따로 생긴다).
@@ -90,13 +97,18 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
    ```bash
    bash tools/download_stt_models.sh aar             # app/libs/sherpa-onnx-static-link-onnxruntime-1.13.8.aar (v2.4.1 — 예전 1.13.7.aar 는 지워도 된다)
    ```
-3. Android Studio 에서 Gradle Sync → Run(실기기). WebRTC VAD 는 JitPack 저장소에서 받습니다.
+3. Android Studio 에서 Gradle Sync → Run(실기기). (v3.0.0: WebRTC VAD 를 빼서 JitPack 저장소는 더 쓰지 않습니다.)
 4. USB 디버깅을 연결하고 STT 모델을 휴대폰 공용 폴더에 넣기(앱 설치 여부와 무관, MTP·파일 관리자로 `Documents/stt_models` 에 복사해도 된다):
    ```bash
    bash tools/download_stt_models.sh                 # 기본: whisper-base + qwen3asr-0.6b + omnilingual-300m + nemotron3.5-560ms (+aar)
-   bash tools/download_stt_models.sh whisper-tiny zipformer-ko vosk-small-ko   # 고른 모델만 / all = 15종 전부(약 5.6 GB)
+   bash tools/download_stt_models.sh whisper-tiny zipformer-ko vosk-small-ko   # 고른 모델만 / all = 18종 전부(약 6.6 GB)
+   bash tools/download_stt_models.sh zipformer-en parakeet-tdt-0.6b-v2 moonshine-tiny-en moonshine-base-en   # v3.0.0 영어 전용 4종
    ```
 5. 앱에서 입력 폴더·출력 폴더 선택 → 언어·Model·Feed·노이즈 저감·VAD 엔진·프리셋·구간 처리·EPD 선택 → START.
+   - **언어 = 폴더 이름으로 자동 (kr / en)**(v3.0.0 기본): 입력 폴더로 `input_sound`(안에 `kr`·`en`)를 고르면 `en` → `kr` 차례로 돌고,
+     결과는 `<출력>/en/…`, `<출력>/kr/…` 에 서버와 같은 구조로 생긴다(4장). 입력 폴더로 `input_sound/kr` 하나를 고르면 그 폴더만 한국어로 돌고 결과 폴더를 나누지 않는다.
+     이름 규칙(서버 v8.4.0 과 같음): 한국어 `kr`·`ko`·`kor`·`korea`·`korean`·`한국어`·`*_KR` / 영어 `en`·`eng`·`english`·`영어`·`*_EN`. 모르는 폴더는 건너뛴다(로그 `[lang]`).
+   - English / 한국어 를 직접 고르면 예전처럼 고른 폴더 전체를 그 언어로 돌린다.
    - sherpa 모델로 처음 START 하면 '모든 파일 접근 허용' 설정 화면이 열린다 → 이 앱을 켜고 돌아와 다시 START.
 6. **목록 실행(v2.5.0)** — 여러 조건을 한 번에: 아래 3-1장.
 7. 문제가 생기면 Android Studio **Logcat** 에서 `tag:GoogleStt` 로 봅니다. 화면 로그와 같은 줄(Log.i)에 더해 `[D]` 로 시작하는 디버그 줄(Log.d)이 함께 나옵니다(디버그 줄은 화면 로그창에는 나오지 않습니다).
@@ -109,7 +121,7 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 
 1. 목록 만들기 — 둘 중 편한 쪽(같은 CSV 형식):
    - 화면: 설정을 고르고 **[목록에 추가]** → **[목록 저장]** (`/sdcard/Documents/stt_plan/plan_<시각>.csv`)
-   - PC: `docs/stt_plan_samples/plan_kr_en_app_REALTIME_VAD21.csv`(kr/en × 앱 엔진 전체 × REALTIME × VAD 21개 = 525 작업)를 고쳐
+   - PC: `docs/stt_plan_samples/plan_kr_en_app_REALTIME_VAD22.csv`(kr 13 / en 15 모델 × REALTIME × VAD 22개 = 616 작업 — v3.0.0)를 고쳐
      휴대폰 `Documents/stt_plan/` 에 복사 → **[목록 불러오기]**
    ```
    lang,model,feed,vad,seg                         ← 머리줄(고정)
@@ -144,16 +156,20 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 - PC 평가기(`output_stt/<lang>/<date>/<엔진>_<모델>_<조건>/<시나리오>/<NN>.txt`)에는 `kr/20261012_REALTIME` 을 날짜 폴더 하나로 넣는다.
 - 동시 실행이라 result.csv 의 시간·CPU·메모리 열은 다른 작업과 섞인 값이다(run_meta `parallel_jobs=3`). 전사 글자 비교 용도.
 
-## 4. 결과 폴더 (PC GUI v7.7 평탄화 규칙)
+## 4. 결과 폴더 (PC GUI v7.7 평탄화 규칙 + 서버 v8.4.0 언어 폴더)
 
 ```
 <출력 폴더>/
-  google-mlkit_basic_<조건>/<입력 하위폴더>/<파일명>.txt
-  google-platform_ondevice_<조건>/…
-  whisper-base_sherpa-int8_<조건>/…    ← sherpa 엔진(CSV 는 whisper-base_<조건>_result.csv)
-  google-mlkit_<조건>_result.csv        ← 파일별 계측(utf-8-sig)
-  google-mlkit_<조건>_run_meta.csv      ← 실행 1회 환경 요약
+  kr/                                    ← v3.0.0 '폴더 이름으로 자동' 이면 언어 폴더마다(서버 '결과 = <결과>/<언어 폴더>/' 와 같음)
+    google-mlkit_basic_<조건>/Customer_Service_KR/01.txt
+    whisper-base_sherpa-int8_<조건>/Customer_Service_KR/01.txt   ← sherpa 엔진(CSV 는 whisper-base_<조건>_result.csv)
+    google-mlkit_<조건>_result.csv        ← 파일별 계측(utf-8-sig)
+    google-mlkit_<조건>_run_meta.csv      ← 실행 1회 환경 요약
+  en/
+    parakeet-tdt-0.6b-v2_sherpa-int8_<조건>/vLog_EN/01.txt
 ```
+- Lang 을 English / 한국어 로 직접 고르거나 입력 폴더가 언어 폴더 자체(`…/input_sound/kr`)면 언어 단계 없이 `<출력 폴더>/<엔진>_<모델>_<조건>/…` 다(예전과 같음).
+- TXT 는 전사문만 들어 있다(화자 분리·시간 없음 — 서버 `--plain-text` 와 같은 형식). 빈 결과는 0바이트.
 
 - `<조건>` = `[NS_<노이즈>_]<VAD 프리셋 또는 NOVAD>[_SEG10][_EPD_…]`
   예) `NOVAD`, `SILERO_SAFE`, `NS_GTCRN_LIM12_SILERO`, `PYANNOTE_S500_SEG10`, `SILERO_EPD_SPLIT_T45_M55`
@@ -165,11 +181,11 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 |---|---|
 | `MainActivity.kt` | 화면 초기화, 폴더 선택, 권한, START 입력 검증, 조건 이름 조합, 로그·진행률 |
 | `batch/BatchRunner.kt` | 배치 실행 본문(디코딩 → 노이즈 저감 → VAD → 구간 처리 → EPD → STT → 저장), preflight, CSV 공통 열 |
-| `stt/` | `SttModels`(경로·공급 속도·결과형), `SttConstants`, `SttUtil`, `PcmFeeder`, `MlKitTranscriber`, `PlatformOnDeviceTranscriber`, `GoogleSttSession`(세션 수·할당량 재시도·조각 합치기·warm-up), `SherpaModels`(sherpa 모델 목록), `SherpaOfflineTranscriber`(sherpa 불러오기·디코딩) |
+| `stt/` | `SttModels`(경로·공급 속도·결과형), `SttConstants`, `SttUtil`, `PcmFeeder`, `MlKitTranscriber`, `GoogleSttSession`(세션 수·할당량 재시도·조각 합치기·warm-up), `SherpaModels`(sherpa 모델 목록), `SherpaOfflineTranscriber`(sherpa 불러오기·디코딩) |
 | `vad/` | `VadModels`(엔진·항목·프리셋), `VadPipeline`(공통 계약·이어 붙이기·팩토리), `FrameSegmenter`(Silero 방식 구간 규칙), `KaldiFbank`, `SegmentPacker`(10초 조각), 엔진별 `*VadDetector` |
 | `ui/` | `VadUi`, `EpdUi`, `NoiseUi`, `UiUtils`, `Selections`, `PlanUi`(목록 실행 화면, v2.5.0) |
 | `plan/` | `PlanModels`(목록 CSV·검증·진행 기록 — 순수 Kotlin), `PlanRunner`(동시 실행·이어 하기·발열 대기·메모리 기록·결과 폴더 이름 바꾸기) (v2.5.0~), `PlanState`(폴더·동시 작업 수 기억, 꺼진 이유 읽기) (v2.6.0) |
-| `io/` | `AudioInput`(입력 폴더 탐색), `ResultStore`(결과 저장) |
+| `io/` | `AudioInput`(입력 폴더 탐색, 폴더 이름으로 언어 짐작 — v3.0.0), `ResultStore`(결과 저장) |
 | `SileroVadProcessor.kt` | Silero ONNX 실행기(VadDetector 구현), `VadConfig`, `VadSegment`, `VadResult` |
 | `SpeechEpd.kt`, `SttTelemetry.kt`, `AudioDecoder.kt`, `denoise/` | 기존 그대로(계측 열 추가만) |
 
@@ -191,9 +207,10 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 
 ## 7. 라이선스 메모
 
-앱 코드에서 쓰는 외부 모델·라이브러리의 라이선스는 각 원본을 따릅니다(Silero MIT, android-vad MIT/WebRTC BSD-3,
+앱 코드에서 쓰는 외부 모델·라이브러리의 라이선스는 각 원본을 따릅니다(Silero MIT,
 pyannote segmentation-3.0 MIT(HF 동의), FunASR 모델 Apache-2.0 + 출처·모델명 표기, FireRedVAD Apache-2.0,
 TEN VAD Apache-2.0 + 추가 조건("Powered by ten-vad" 표기 권장, Agora 경쟁 배포 금지), ONNX Runtime MIT, JNA Apache-2.0/LGPL,
 sherpa-onnx Apache-2.0, vosk-android·Vosk 모델 Apache-2.0, Whisper 가중치 MIT, Qwen3-ASR 가중치 Apache-2.0, Omnilingual ASR 가중치 Apache-2.0,
-Nemotron 3.5 OpenMDW-1.1, 상업 조건부: Zipformer KO(icefall Apache-2.0 / KsponSpeech 약관 미확인), SenseVoice(FunASR MODEL_LICENSE — 출처·모델명 유지, "reference and learning purposes only" 문구),
-Moonshine 한국어(Moonshine AI Community License — 상업 사용 시 등록, 연매출 100만 달러 이상이면 종료, "Powered by Moonshine AI" 표시)).
+Nemotron 3.5 OpenMDW-1.1, Parakeet-TDT 0.6B v2 CC-BY-4.0(출처 표기), Zipformer EN Apache-2.0(icefall)/LibriSpeech CC-BY-4.0, Moonshine 영어 Tiny·Base MIT,
+상업 조건부: Zipformer KO(icefall Apache-2.0 / KsponSpeech 약관 미확인), SenseVoice(FunASR MODEL_LICENSE — 출처·모델명 유지, "reference and learning purposes only" 문구)).
+v3.0.0 에서 Moonshine 한국어(Moonshine AI Community License — 연매출 100만 달러 이상이면 상업 사용 불가)는 뺐습니다.

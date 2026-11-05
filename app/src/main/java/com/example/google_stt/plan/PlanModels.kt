@@ -161,11 +161,11 @@ object PlanCheck {
     /** 지원 언어 = 입력 하위 폴더 이름 */
     val LANGS = setOf("kr", "en")
 
-    /** 한국어 전용 모델(영어 음원에 쓰면 결과가 무의미) */
-    val KO_ONLY = setOf("zipformer-ko", "zipformer-ko-stream", "moonshine-tiny-ko", "vosk-small-ko")
+    /** 한국어 전용 모델(영어 음원에 쓰면 결과가 무의미) — change-hyungchul-20261104-1750 : moonshine-tiny-ko 제거(모델 삭제) */
+    val KO_ONLY = setOf("zipformer-ko", "zipformer-ko-stream", "vosk-small-ko")
 
-    /** 영어 전용 모델 */
-    val EN_ONLY = setOf("vosk-small-en")
+    /** 영어 전용 모델 — change-hyungchul-20261104-1750 : 서버와 같은 영어 전용 sherpa 모델 4종 추가 */
+    val EN_ONLY = setOf("vosk-small-en", "zipformer-en", "parakeet-tdt-0.6b-v2", "moonshine-tiny-en", "moonshine-base-en")
 
     /**
      * 목적: 작업 목록의 오류를 찾는다.

@@ -2,7 +2,8 @@
  * 파일명: ui/VadUi.kt
  * 목적 및 기능:
  * - 화면의 VAD 영역을 초기화하고 서로 연동한다.
- *     · VAD 엔진 스피너 : 사용 안 함 / Silero / WebRTC / pyannote / FSMN / FireRed / TEN
+ *     · VAD 엔진 스피너 : 사용 안 함 / Silero / pyannote / FSMN / FireRed / TEN
+ *       (change-hyungchul-20261104-1750 : WebRTC 제거 — 사용자 요청 VAD 5종)
  *     · 프리셋 스피너   : 고른 엔진의 공식 기본값·추천값 프리셋 + Custom
  *     · 설정값 입력칸   : 고른 엔진의 항목만 동적으로 만든다(값을 고치면 자동으로 Custom 으로 바뀐다)
  *     · 구간 처리 스피너 : 엔진별 최대 길이 / 모든 엔진 10초 통일
@@ -240,9 +241,7 @@ class VadUi(
         val setting = VadSetting(currentEngine, preset, values)
         if (currentEngine == VadEngine.SILERO || currentEngine == VadEngine.TEN) {
             VadConfig.fromSetting(setting)                                  // Silero 방식 추가 규칙(Max Speech 하한) 검증
-        } else if (currentEngine == VadEngine.WEBRTC) {
-            VadConfig.fromSetting(setting, thresholdOverride = 0.5f)
-        }
+        }   // change-hyungchul-20261104-1750 : WEBRTC 분기 제거(WebRTC VAD 삭제)
         return VadSelection(setting, segMode)
     }
 

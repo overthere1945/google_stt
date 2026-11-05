@@ -27,6 +27,15 @@
  * add-hyungchul-20261011-0301 — 2단계 2-4: Vosk small ko 0.22 / en-us 0.15 (SherpaFamily.VOSK)
  *   · 런타임은 sherpa 가 아니라 vosk-android(Kaldi)지만, 모델 폴더 위치·필수 파일 점검·run_meta 기록 규칙이 같아 이 정의를 함께 쓴다.
  *   · 모델은 폴더째로 쓰며 필수 파일은 am/final.mdl + conf/model.conf(vosk-api src/model.cc 의 v2 배치 확인 규칙). Apache-2.0(commercial=allowed)
+ *
+ * change-hyungchul-20261104-1750 — v3.0.0 (사용자 요청 2026-11-04: 서버 stt_all_gui_server 엔진 중 갤럭시에서 도는 것, 상업 사용 가능한 것만)
+ *   · 제거: Moonshine v2 tiny KO(MOONSHINE_TINY_KO, 계열 MOONSHINE_V2) — Moonshine Community License 는 연매출 100만 달러 초과 시 상업 사용 불가
+ *   · 추가(모두 영어 전용, 서버와 같은 가중치·같은 공식 패키지 — k2-fsa/sherpa-onnx releases "asr-models"):
+ *       ZIPFORMER_EN        sherpa-onnx-zipformer-en-2023-06-26 (서버 sherpa_onnx_stt.py zipformer-en, LibriSpeech, icefall Apache-2.0)
+ *       PARAKEET_TDT_06B_V2 sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 (서버 parakeet-tdt-0.6b-v2, NVIDIA CC-BY-4.0)
+ *       MOONSHINE_TINY_EN / MOONSHINE_BASE_EN  sherpa-onnx-moonshine-{tiny,base}-en-int8 (서버 moonshine_stt.py 영어 Tiny/Base 와 같은 v1 가중치, MIT)
+ *   · 파일 이름 근거: sherpa-onnx v1.13.8 kotlin-api/OfflineRecognizer.kt getOfflineModelConfig(type 21·22·30),
+ *     서버 sherpa_onnx_stt.py MODEL_MAP(zipformer-en int8 조합: encoder·joiner int8 + decoder fp32), HF csukuangfj/sherpa-onnx-zipformer-en-2023-06-26 파일 목록
  */
 package com.example.google_stt.stt
 
@@ -35,8 +44,12 @@ package com.example.google_stt.stt
 // change-hyungchul-20261011-0150 : 2-3 계열 4개 추가 + streaming 표시(true = OnlineRecognizer 로 Feed 간격 공급, SherpaStreamingTranscriber 가 맡는다)
 enum class SherpaFamily(val streaming: Boolean = false) {
     WHISPER, QWEN3_ASR, OMNILINGUAL, NEMOTRON_STREAMING(true),
-    ZIPFORMER, ZIPFORMER_STREAMING(true), SENSE_VOICE, MOONSHINE_V2,      // add-hyungchul-20261011-0150
+    ZIPFORMER, ZIPFORMER_STREAMING(true), SENSE_VOICE,                    // add-hyungchul-20261011-0150 / change-hyungchul-20261104-1750 : MOONSHINE_V2 제거(Moonshine tiny KO 삭제)
     VOSK(true),                                                           // add-hyungchul-20261011-0301 : Vosk(Kaldi) — VoskTranscriber 가 맡는다
+    // add-hyungchul-20261104-1750 : 서버와 같은 영어 전용 오프라인 모델 계열
+    ZIPFORMER_EN,                                                         // zipformer transducer(영어) — 결과는 result.text 그대로(서버와 같음)
+    NEMO_TRANSDUCER,                                                      // NeMo Parakeet-TDT(modelType "nemo_transducer")
+    MOONSHINE_V1,                                                         // Moonshine v1(preprocess / encode / uncached·cached decode)
 }
 
 /**
@@ -68,6 +81,9 @@ object SherpaRole {
     const val TOKENIZER = "tokenizer"       // Qwen3-ASR 토크나이저 폴더(merges.txt / vocab.json / tokenizer_config.json)
     const val JOINER = "joiner"             // add-hyungchul-20261011-0031 : transducer(Nemotron) joiner
     const val CONF = "conf"                 // add-hyungchul-20261011-0301 : Vosk conf/model.conf(필수 파일 점검용)
+    const val PREPROCESSOR = "preprocessor"         // add-hyungchul-20261104-1750 : Moonshine v1 preprocess.onnx
+    const val UNCACHED_DECODER = "uncached_decoder" // add-hyungchul-20261104-1750 : Moonshine v1 uncached_decode.int8.onnx
+    const val CACHED_DECODER = "cached_decoder"     // add-hyungchul-20261104-1750 : Moonshine v1 cached_decode.int8.onnx
 }
 
 /** 모델 목록 */
@@ -232,25 +248,8 @@ object SherpaCatalog {
         displayName = "SenseVoice Small (sherpa-onnx int8) [상업 조건부]",
     )
 
-    /**
-     * Moonshine v2 tiny 한국어(sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27, ORT 형식 encoder + merged decoder).
-     * 조각 상한 9 초: 실측 — 9.3 초 이상 조각은 onnxruntime 오류("Attempting to broadcast an axis …")로 빈 결과가 나왔고
-     * 9.25 초 이하는 정상(customer·friend·vLog 01). SEG10(10 초)에서도 이 상한을 넘지 않게 BatchRunner 가 줄인다.
-     * 결과 text 앞에 "▁" 가 남는 경우가 있어 지운다(SherpaOfflineTranscriber.resultText). 언어 지정 없음(한국어 전용).
-     */
-    val MOONSHINE_TINY_KO = SherpaModelSpec(
-        family = SherpaFamily.MOONSHINE_V2,
-        dirName = "sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27",
-        files = mapOf(
-            SherpaRole.ENCODER to "encoder_model.ort",
-            SherpaRole.DECODER to "decoder_model_merged.ort",               // merged decoder(OfflineMoonshineModelConfig.mergedDecoder)
-            SherpaRole.TOKENS to "tokens.txt",
-        ),
-        maxChunkSec = 9.0,
-        license = "Moonshine-Community-License",
-        commercial = "conditional",
-        displayName = "Moonshine tiny KO (sherpa-onnx int8) [상업 조건부]",
-    )
+    // change-hyungchul-20261104-1750 : MOONSHINE_TINY_KO(sherpa-onnx-moonshine-tiny-ko-quantized-2026-02-27, Moonshine Community License) 제거
+    //   — 연매출 100만 달러 초과 시 상업 사용 불가라 '상업 이용 가능한 것만' 기준에 맞지 않는다(사용자 요청 2026-11-04)
 
     // ─────────── add-hyungchul-20261011-0301 : 2단계 2-4 — Vosk(Kaldi) small 모델 ───────────
 
@@ -276,4 +275,76 @@ object SherpaCatalog {
     val VOSK_SMALL_KO = vosk("vosk-model-small-ko-0.22", "Vosk small KO 0.22 (Kaldi)")
     /** 영어(미국) small 0.15 (40 MB, 공식 WER 9.85 — LibriSpeech test-clean) */
     val VOSK_SMALL_EN = vosk("vosk-model-small-en-us-0.15", "Vosk small EN-US 0.15 (Kaldi)")
+
+    // ─────────── add-hyungchul-20261104-1750 : v3.0.0 — 서버와 같은 가중치의 영어 전용 오프라인 모델 4종 ───────────
+
+    /**
+     * Zipformer EN 오프라인(sherpa-onnx-zipformer-en-2023-06-26, LibriSpeech 960h). 영어 전용, 언어 지정 없음.
+     * 파일 조합은 서버 sherpa_onnx_stt.py MODEL_MAP "zipformer-en" int8 과 같다(공식 int8 명령: encoder·joiner int8 + decoder fp32).
+     * 조각 상한 15 초: 공식 수치가 없어 실측으로 정했다(2026-11-04, sherpa-onnx 1.13.8 리눅스 CLI, 패키지 test_wavs 0·1 을 0.5 초 쉼으로 이어 붙인 음원):
+     *   15 초 조각은 빠짐없음, 24.3 초(문장 2개)는 첫 문장 뒷부분이 빠짐(66→57 단어), 97 초 통째는 264→193 단어 — Zipformer KO 실측(15 초)과 같은 현상.
+     *   서버 sherpa_onnx_stt.py 는 파일 전체를 한 번에 넣는다(긴 음원에서 같은 빠짐이 생길 수 있음). 결과는 구두점 없는 대문자(서버와 같이 원문 그대로 저장).
+     */
+    val ZIPFORMER_EN = SherpaModelSpec(
+        family = SherpaFamily.ZIPFORMER_EN,
+        dirName = "sherpa-onnx-zipformer-en-2023-06-26",
+        files = mapOf(
+            SherpaRole.ENCODER to "encoder-epoch-99-avg-1.int8.onnx",
+            SherpaRole.DECODER to "decoder-epoch-99-avg-1.onnx",            // 서버·공식 int8 조합과 같게 decoder 는 fp32
+            SherpaRole.JOINER to "joiner-epoch-99-avg-1.int8.onnx",
+            SherpaRole.TOKENS to "tokens.txt",
+        ),
+        maxChunkSec = 15.0,
+        license = "Apache-2.0(icefall)/LibriSpeech CC-BY-4.0",
+        commercial = "allowed",
+        displayName = "Zipformer EN (sherpa-onnx int8)",
+    )
+
+    /**
+     * NVIDIA Parakeet-TDT 0.6B v2 int8(sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8). 영어 전용, 구두점·대소문자 포함 출력.
+     * 공식 Kotlin 예제(getOfflineModelConfig type 30)와 같이 transducer + modelType "nemo_transducer".
+     * 조각 상한 30 초: 실측(2026-11-04, sherpa-onnx 1.13.8 리눅스 CLI, 위 Zipformer EN 과 같은 이어 붙인 음원) — 24.3 / 48.7 초는 빠짐없음(66 / 132 단어),
+     *   73 초는 198→155 단어, 97 초 통째는 264→156 단어로 뒷부분이 빠졌다. 그래서 서버(파일 전체를 한 번에)와 달리 30 초 이하로 나눠 넣는다.
+     * SEG10 이면 10 초 조각. 라이선스 CC-BY-4.0(HF nvidia/parakeet-tdt-0.6b-v2 — 상업·비상업 사용 가능, 출처 표기).
+     */
+    val PARAKEET_TDT_06B_V2 = SherpaModelSpec(
+        family = SherpaFamily.NEMO_TRANSDUCER,
+        dirName = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+        files = mapOf(
+            SherpaRole.ENCODER to "encoder.int8.onnx",
+            SherpaRole.DECODER to "decoder.int8.onnx",
+            SherpaRole.JOINER to "joiner.int8.onnx",
+            SherpaRole.TOKENS to "tokens.txt",
+        ),
+        maxChunkSec = 30.0,
+        license = "CC-BY-4.0",
+        commercial = "allowed",
+        displayName = "Parakeet-TDT 0.6B v2 EN (sherpa-onnx int8)",
+    )
+
+    /**
+     * 목적: Moonshine v1 영어 int8 모델 정의를 만든다(sherpa-onnx-moonshine-<size>-en-int8, 공식 Kotlin 예제 type 21·22 와 같은 파일).
+     * 입력: size — tiny / base
+     * 리턴: SherpaModelSpec(조각 상한 25 초 — 서버 moonshine_stt.py DEFAULT_CHUNK_SEC 25 와 같게, Moonshine 학습 구간 4~30 초 안)
+     *   실측(2026-11-04, sherpa-onnx 1.13.8 리눅스 CLI, tiny): 24.3 초 66/66 단어, 97 초 통째는 264 단어 음원에서 410 단어(반복)가 나와 상한이 필요하다.
+     * 라이선스: MIT(moonshine LICENSE — 모든 영어 모델과 영어 Tiny·Base 는 MIT)
+     */
+    private fun moonshineEn(size: String) = SherpaModelSpec(
+        family = SherpaFamily.MOONSHINE_V1,
+        dirName = "sherpa-onnx-moonshine-$size-en-int8",
+        files = mapOf(
+            SherpaRole.PREPROCESSOR to "preprocess.onnx",
+            SherpaRole.ENCODER to "encode.int8.onnx",
+            SherpaRole.UNCACHED_DECODER to "uncached_decode.int8.onnx",
+            SherpaRole.CACHED_DECODER to "cached_decode.int8.onnx",
+            SherpaRole.TOKENS to "tokens.txt",
+        ),
+        maxChunkSec = 25.0,
+        license = "MIT",
+        commercial = "allowed",
+        displayName = "Moonshine $size EN (sherpa-onnx int8)",
+    )
+
+    val MOONSHINE_TINY_EN = moonshineEn("tiny")
+    val MOONSHINE_BASE_EN = moonshineEn("base")
 }

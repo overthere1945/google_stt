@@ -61,15 +61,20 @@
  *   · run_meta 끝에 parallel_jobs(동시에 돈 배치 수) 키 추가 — 2 이상이면 시간·메모리 컬럼은 다른 작업과 섞인 값이다.
  *
  * add-hyungchul-20261012-0310 — v2.6.0: BatchRequest.runDirPrefix(목록 실행 "_") 를 TXT 결과 폴더 이름 앞에 붙인다. CSV·run_meta 이름은 그대로.
+ *
+ * change-hyungchul-20261104-1750 — v3.0.0 (사용자 요청: Google 은 ML Kit Basic 만, VAD 는 Silero·pyannote·FSMN·FireRed·TEN)
+ *   · Android 플랫폼 on-device 경로 제거: 생성자 platform 인자, executionLabel·preflight 의 ANDROID_PLATFORM_ON_DEVICE 분기, 관련 import.
+ *   · WebRTC VAD 제거: sileroStyleConfig() 의 WEBRTC 분기.
+ *   · 배치 본문(파일 루프·계측·저장)은 바꾸지 않았다. 언어 폴더 자동(kr/en)은 MainActivity 가 inSub/outSub 로 이 실행기를 차례로 부른다.
  */
 package com.example.google_stt.batch
 
 import android.content.Intent                             // add-hyungchul-20261010-2238 : '모든 파일 접근' 설정 화면 열기
 import android.net.Uri
-import android.os.Build                                   // preflight 의 API 레벨 확인
+// change-hyungchul-20261104-1750 : android.os.Build import 제거(플랫폼 on-device preflight 분기 삭제로 쓰지 않음)
 import android.os.Environment                             // add-hyungchul-20261010-2238 : isExternalStorageManager()
 import android.provider.Settings                          // add-hyungchul-20261010-2238 : ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
-import android.speech.SpeechRecognizer as AndroidSpeechRecognizer
+// change-hyungchul-20261104-1750 : android.speech.SpeechRecognizer import 제거(플랫폼 on-device 경로 삭제)
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
@@ -102,7 +107,7 @@ import com.example.google_stt.stt.MLKIT_SEGMENT_TRUNCATION_SEC
 import com.example.google_stt.stt.MLKIT_TRUNCATION_CHARS_PER_SEC
 import com.example.google_stt.stt.MlKitTranscriber
 import com.example.google_stt.stt.ModelConfig
-import com.example.google_stt.stt.PlatformOnDeviceTranscriber
+// change-hyungchul-20261104-1750 : PlatformOnDeviceTranscriber import 제거(플랫폼 on-device 경로 삭제)
 import com.example.google_stt.stt.QUOTA_BUDGET_SESSIONS
 import com.example.google_stt.stt.QUOTA_COOLDOWN_MS
 import com.example.google_stt.stt.SherpaOfflineTranscriber   // add-hyungchul-20261010-1800
@@ -175,13 +180,13 @@ data class BatchRequest(
 /**
  * 목적: 배치 실행기.
  * 입력(생성자): host — 화면 연동, session — Google STT 세션 관리자,
- *              mlKit / platform — preflight 에 쓰는 전사기, store — 결과 저장기, algoName — "google"
+ *              mlKit — preflight 에 쓰는 전사기, store — 결과 저장기, algoName — "google"
+ *              (change-hyungchul-20261104-1750 : platform — 플랫폼 on-device 전사기 인자 제거)
  */
 class BatchRunner(
     private val host: BatchHost,
     private val session: GoogleSttSession,
     private val mlKit: MlKitTranscriber,
-    private val platform: PlatformOnDeviceTranscriber,
     private val store: ResultStore,
     private val algoName: String,
 ) {
@@ -1174,7 +1179,7 @@ class BatchRunner(
         // change-hyungchul-20261009-1524 : MODE_ADVANCED("ON_DEVICE(MLKit GenAI)") 분기 제거 — ML Kit 경로는 BASIC 만 남았다.
         SttEngine.ML_KIT -> "ON_DEVICE(MLKit basic=platform SpeechRecognizer)"
 
-        SttEngine.ANDROID_PLATFORM_ON_DEVICE -> "ON_DEVICE(platform on-device service)"
+        // change-hyungchul-20261104-1750 : ANDROID_PLATFORM_ON_DEVICE("ON_DEVICE(platform on-device service)") 분기 제거
 
         // add-hyungchul-20261010-1800 : sherpa-onnx 오프라인(앱 안에서 직접 추론)
         SttEngine.SHERPA_OFFLINE ->
@@ -1224,17 +1229,7 @@ class BatchRunner(
                 }
             }
 
-            SttEngine.ANDROID_PLATFORM_ON_DEVICE -> {
-                val avail = AndroidSpeechRecognizer.isOnDeviceRecognitionAvailable(activity)
-                val line1 = "isOnDeviceRecognitionAvailable=$avail"
-                appendLog("[preflight] $line1")
-                sb.append(line1).append(" ; ")
-                if (avail && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val line2 = platform.checkAndroidOnDeviceSupport(locale)
-                    appendLog("[preflight] $line2")
-                    sb.append(line2)
-                }
-            }
+            // change-hyungchul-20261104-1750 : ANDROID_PLATFORM_ON_DEVICE 점검(isOnDeviceRecognitionAvailable / checkAndroidOnDeviceSupport) 분기 제거
 
             // add-hyungchul-20261010-1800 : sherpa-onnx — 모델 파일이 휴대폰 모델 폴더에 있는지 본다
             //   (change-hyungchul-20261010-2238 : 앱 전용 폴더 → 공용 /sdcard/Documents/stt_models, 사용자 결정 Q24)
@@ -1295,13 +1290,13 @@ class BatchRunner(
 
     /**
      * add-hyungchul-20261009-1530
-     * 목적: Silero 방식 항목을 가진 엔진(Silero / WebRTC / TEN)이면 VadConfig 로 바꿔 준다.
+     * 목적: Silero 방식 항목을 가진 엔진(Silero / TEN)이면 VadConfig 로 바꿔 준다.
+     *   (change-hyungchul-20261104-1750 : WebRTC VAD 제거로 WEBRTC 분기를 지웠다)
      * 입력: selection
      * 리턴: VadConfig 또는 null(VAD OFF 이거나 다른 엔진)
      */
     private fun sileroStyleConfig(selection: VadSelection): VadConfig? = when (selection.setting.engine) {
         VadEngine.SILERO, VadEngine.TEN -> VadConfig.fromSetting(selection.setting)
-        VadEngine.WEBRTC -> VadConfig.fromSetting(selection.setting, thresholdOverride = 0.5f)
         else -> null
     }
 

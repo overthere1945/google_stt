@@ -7,6 +7,13 @@
  * change-hyungchul-20261009-1514
  *   MainActivity.kt 에 있던 SttEngine / ModelConfig / models / FeedConfig / feeds / SttOutcome 를
  *   기능별 파일 분리를 위해 그대로 옮겼다(내용·순서 변경 없음, private → internal/public 만 변경).
+ *
+ * change-hyungchul-20261104-1750 — v3.0.0 (사용자 요청 2026-11-04: 서버 stt_all_gui_server 와 엔진 맞추기)
+ *   · Google 은 ML Kit GenAI Basic 만 쓴다 → Android 플랫폼 on-device(ANDROID_PLATFORM_ON_DEVICE) 경로 제거
+ *   · 상업 사용 불가(연매출 100만 달러 초과 시) Moonshine tiny KO 제거
+ *   · 서버 엔진과 같은 가중치의 영어 전용 sherpa-onnx 모델 4종 추가:
+ *       zipformer-en(서버 sherpa zipformer-en) / parakeet-tdt-0.6b-v2(서버 sherpa parakeet-tdt-0.6b-v2) /
+ *       moonshine-tiny-en · moonshine-base-en(서버 moonshine 영어 Tiny/Base)
  */
 package com.example.google_stt.stt
 
@@ -16,7 +23,8 @@ import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
 // change-hyungchul-20261011-0031 : 2단계 2-2 — sherpa-onnx 스트리밍 엔진(SHERPA_STREAMING, Nemotron 3.5) 추가
 //   (add-hyungchul-20261011-0150 : 2-3 의 Zipformer KO 스트리밍도 SHERPA_STREAMING)
 // change-hyungchul-20261011-0301 : 2단계 2-4 — Vosk(Kaldi) 엔진(VOSK) 추가
-enum class SttEngine { ML_KIT, ANDROID_PLATFORM_ON_DEVICE, SHERPA_OFFLINE, SHERPA_STREAMING, VOSK }
+// change-hyungchul-20261104-1750 : ANDROID_PLATFORM_ON_DEVICE 제거(Google 은 ML Kit Basic 만 — 사용자 요청)
+enum class SttEngine { ML_KIT, SHERPA_OFFLINE, SHERPA_STREAMING, VOSK }
 
 data class ModelConfig(
     val folder: String,
@@ -74,8 +82,7 @@ object SttCatalog {
         // change-hyungchul-20261009-1530 : 결과 폴더 이름(google-mlkit_basic_<조건>) 추가
         ModelConfig("base", SttEngine.ML_KIT, SpeechRecognizerOptions.Mode.MODE_BASIC, "google-mlkit", "basic"),
         // change-hyungchul-20261009-1524 : Pixel 10 전용 ML Kit MODE_ADVANCED("advanced") 경로 제거
-        // change-hyungchul-20261009-1530 : 결과 폴더 이름(google-platform_ondevice_<조건>) 추가
-        ModelConfig("android_ondevice", SttEngine.ANDROID_PLATFORM_ON_DEVICE, null, "google-platform", "ondevice"),
+        // change-hyungchul-20261104-1750 : Android 플랫폼 on-device("android_ondevice", google-platform_ondevice_<조건>) 제거 — Google 은 ML Kit Basic 만(사용자 요청)
         // add-hyungchul-20261010-1800 : 2단계 2-1 — sherpa-onnx 오프라인 엔진(사용자 결정: Whisper / Qwen3-ASR 0.6B / Omnilingual 300M 먼저)
         //   결과 이름(사용자 결정 "엔진 = 계열-크기"): <엔진>=whisper-base 등, <모델>=sherpa-int8(런타임-정밀도)
         //   → 폴더 whisper-base_sherpa-int8_<조건>/ , CSV whisper-base_<조건>_result.csv (모델마다 CSV 가 따로 생겨 덮어쓰지 않는다)
@@ -92,11 +99,17 @@ object SttCatalog {
         sherpaModel("nemotron3.5-320ms", SherpaCatalog.NEMOTRON_320MS, SttEngine.SHERPA_STREAMING),
         sherpaModel("nemotron3.5-560ms", SherpaCatalog.NEMOTRON_560MS, SttEngine.SHERPA_STREAMING),
         // add-hyungchul-20261011-0150 : 2단계 2-3 — 상업 조건부 엔진 4종(사용자 결정 Q5: 포함하되 commercial=conditional 표시)
-        //   결과 이름(Q20 "엔진 = 계열-크기", '_' 금지): zipformer-ko / zipformer-ko-stream / sensevoice-small / moonshine-tiny-ko
+        //   결과 이름(Q20 "엔진 = 계열-크기", '_' 금지): zipformer-ko / zipformer-ko-stream / sensevoice-small / moonshine-tiny-ko(v3.0.0 삭제)
         sherpaModel("zipformer-ko", SherpaCatalog.ZIPFORMER_KO),
         sherpaModel("zipformer-ko-stream", SherpaCatalog.ZIPFORMER_KO_STREAMING, SttEngine.SHERPA_STREAMING),
         sherpaModel("sensevoice-small", SherpaCatalog.SENSE_VOICE_SMALL),
-        sherpaModel("moonshine-tiny-ko", SherpaCatalog.MOONSHINE_TINY_KO),
+        // change-hyungchul-20261104-1750 : moonshine-tiny-ko 제거 — Moonshine Community License(연매출 100만 달러 초과 시 상업 사용 불가)
+        // add-hyungchul-20261104-1750 : 서버(stt_all_gui_server)와 같은 가중치의 영어 전용 오프라인 모델 4종(MIT / CC-BY-4.0 / Apache-2.0 — 상업 사용 가능)
+        //   결과 이름(Q20 "엔진 = 계열-크기", '_' 금지): zipformer-en / parakeet-tdt-0.6b-v2(서버 모델 키와 같음) / moonshine-tiny-en / moonshine-base-en
+        sherpaModel("zipformer-en", SherpaCatalog.ZIPFORMER_EN),
+        sherpaModel("parakeet-tdt-0.6b-v2", SherpaCatalog.PARAKEET_TDT_06B_V2),
+        sherpaModel("moonshine-tiny-en", SherpaCatalog.MOONSHINE_TINY_EN),
+        sherpaModel("moonshine-base-en", SherpaCatalog.MOONSHINE_BASE_EN),
         // add-hyungchul-20261011-0301 : 2단계 2-4 — Vosk small(한국어 / 영어 — 모델이 언어별이라 Language 와 맞는 쪽을 고른다)
         //   결과 이름(Q20 "엔진 = 계열-크기"): vosk-small-ko / vosk-small-en, <모델> = vosk → vosk-small-ko_vosk_<조건>/
         ModelConfig("vosk-small-ko", SttEngine.VOSK, null, "vosk-small-ko", "vosk", SherpaCatalog.VOSK_SMALL_KO),
