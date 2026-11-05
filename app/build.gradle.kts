@@ -19,11 +19,12 @@
 plugins {
     id("com.android.application")
     // id("org.jetbrains.kotlin.android")   ← AGP 9 built-in Kotlin 과 충돌하므로 넣지 않는다
+    id("org.jetbrains.kotlin.plugin.compose")   // add-hyungchul-20261105-1625 : [T0-2] Compose 컴파일러 플러그인(판은 최상위 build.gradle.kts 에서 2.4.21 로 고정)
 }
 
 android {
     namespace = "com.example.google_stt"
-    compileSdk = 35
+    compileSdk = 37   // change-hyungchul-20261105-1625 : [T0-2] 35 → 37 — Compose 1.12 가 compileSdk 37 을 요구한다(D20). targetSdk 는 35 유지
 
     defaultConfig {
         applicationId = "com.example.google_stt"
@@ -45,8 +46,10 @@ android {
         // change-hyungchul-20261104-1750 : 2.6.0 → 3.0.0 (Major) — Android 플랫폼 on-device STT·WebRTC VAD·Moonshine tiny KO 제거(기능 삭제),
         //   Lang '폴더 이름으로 자동'(kr / en) 결과 폴더 <출력>/<언어 폴더>/… (예전 결과 위치와 다름) + 영어 sherpa 4종·SILERO_FILE 추가.
         //   릴리스 노트: docs/RELEASE_NOTES_v3.0.0.md
-        versionCode = 11
-        versionName = "3.0.0"
+        // change-hyungchul-20261105-1625 : 3.0.0 → 4.0.0-dev (Major 재작성 진행 중, 브랜치 v4-rewrite) — [T0-2] versionCode 11 → 12(D24).
+        //   완료 때(T8-3) versionName 을 4.0.0 으로 바꾼다. 설계: docs/AI_analyze/04_아키텍처_상세설계_20261105.md
+        versionCode = 12
+        versionName = "4.0.0-dev"
 
         // add-hyungchul-20261010-1855 : APK 에 넣을 ABI 를 arm64-v8a 하나로 제한(사용자 결정 Q21)
         //   · 이유: sherpa-onnx 정적 링크 AAR 1.13.7 은 x86 에서만 libonnxruntime.so(ORT 1.27.1)를 따로 동적 링크해 넣는데,
@@ -67,6 +70,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    // add-hyungchul-20261105-1625 : [T0-2] Jetpack Compose 사용(D3). 기존 XML 화면(v3)은 WP8 까지 그대로 함께 빌드된다
+    buildFeatures {
+        compose = true   // add-hyungchul-20261105-1625 : Compose 컴파일 켬
     }
 
     // add-hyungchul-20261010-1926 : 네이티브 라이브러리 합치기(mergeDebugNativeLibs) 중복 해결
@@ -97,7 +105,18 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.documentfile:documentfile:1.0.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")   // change-hyungchul-20261105-1625 : [T0-2] 1.9.0 → 1.11.0(5단계 2장 판 고정)
+
+    // add-hyungchul-20261105-1625 : [T0-2] v4.0.0 신규 의존성(5단계 2장, D20). 기존 의존성은 WP8(T8-3)까지 유지한다
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))        // Compose BOM — ui·foundation 1.12.1, material3 1.4.0 (BOM POM 으로 확인)
+    implementation("androidx.compose.ui:ui")                                    // Compose UI(판은 BOM 이 정함)
+    implementation("androidx.compose.material3:material3")                      // Material 3 컴포넌트(판은 BOM 이 정함)
+    implementation("androidx.compose.ui:ui-tooling-preview")                    // @Preview 주석(판은 BOM 이 정함)
+    implementation("androidx.activity:activity-compose:1.13.0")                 // setContent·ActivityResult 연동
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")     // viewModel() 컴포저블
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")       // collectAsStateWithLifecycle()
+    implementation("androidx.datastore:datastore-preferences:1.3.0")            // 설정·언어 기억·실측 RTF 저장(PlanState 대체)
+    implementation("org.apache.commons:commons-compress:1.28.0")                // 모델 tar.bz2 해제(Apache-2.0)
 
     // ★ 추가 1: themes.xml 의 Theme.Material3.DayNight.NoActionBar 를 제공한다.
     //   1.12.0 은 compileSdk 34+ 에서 안전하게 동작하는 검증된 조합이다.
@@ -150,4 +169,7 @@ dependencies {
 
     // ※ Google Cloud STT 관련 의존성(google-cloud-speech, grpc, 서비스계정 JSON 등)은
     //    이 앱에 필요 없다. 세 경로 모두 온디바이스이며 네트워크 자격증명을 쓰지 않는다.
+
+    // add-hyungchul-20261105-1625 : [T0-2] JVM 단위 시험(L1) — 지금까지 선언이 없어 testDebugUnitTest 가 컴파일 오류로 실패했다(사용자 승인 2026-11-05)
+    testImplementation("junit:junit:4.13.2")   // JUnit 4(app/src/test)
 }
