@@ -1,5 +1,5 @@
 /*
- * 파일명: vad/FrameSegmenter.kt
+ * 파일명: domain/vad/FrameSegmenter.kt
  * 목적 및 기능:
  * - "프레임별 말 확률" 을 받아 Silero 공식 get_speech_timestamps() 와 같은 규칙으로 말 구간을 만든다.
  *     · threshold / neg_threshold(= max(threshold-0.15, 0.01)) 히스테리시스
@@ -13,7 +13,7 @@
  * 공식 근거: https://github.com/snakers4/silero-vad  src/silero_vad/utils_vad.py
  *            get_speech_timestamps() / get_speech_timestamps_from_probs() (v6.2.3, 2026-09-23 확인)
  */
-package com.example.google_stt.vad
+package com.example.google_stt.domain.vad   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동 (옛 위치 vad/FrameSegmenter.kt)
 
 import com.example.google_stt.domain.vad.VadSegment   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
 import kotlin.math.max

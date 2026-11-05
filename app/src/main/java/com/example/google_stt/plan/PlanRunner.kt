@@ -43,11 +43,11 @@ import com.example.google_stt.stt.SttEngine
 import com.example.google_stt.stt.describe
 import com.example.google_stt.ui.EpdSelection
 import com.example.google_stt.ui.VadSelection
-import com.example.google_stt.vad.SegMode
-import com.example.google_stt.vad.VadEngine
-import com.example.google_stt.vad.VadPreset
-import com.example.google_stt.vad.VadPresetCatalog
-import com.example.google_stt.vad.VadSetting
+import com.example.google_stt.domain.vad.SegMode   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadEngine   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadPreset   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadPresetCatalog   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadSetting   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable

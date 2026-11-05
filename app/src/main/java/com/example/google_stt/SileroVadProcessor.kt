@@ -40,11 +40,11 @@ import android.content.Context
 import com.example.google_stt.domain.vad.SILERO_WINDOW_SAMPLES   // add-hyungchul-20261105-1915 : [T1-1] 프레임 길이 상수(domain/vad/VadTypes.kt)
 import com.example.google_stt.domain.vad.VAD_SAMPLE_RATE         // add-hyungchul-20261105-1915 : [T1-1] 표본화 주파수 상수
 import com.example.google_stt.domain.vad.VadConfig               // add-hyungchul-20261105-1915 : [T1-1] 옮겨 간 자료형
-import com.example.google_stt.vad.FrameSegmenter   // change-hyungchul-20261009-1530
+import com.example.google_stt.domain.vad.FrameSegmenter   // change-hyungchul-20261009-1530   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
 import com.example.google_stt.vad.VadAudio   // change-hyungchul-20261009-1530
 import com.example.google_stt.vad.VadDetector   // change-hyungchul-20261009-1530
-import com.example.google_stt.vad.VadEngine   // change-hyungchul-20261009-1530
-import com.example.google_stt.vad.VadSetting   // change-hyungchul-20261009-1530
+import com.example.google_stt.domain.vad.VadEngine   // change-hyungchul-20261009-1530   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadSetting   // change-hyungchul-20261009-1530   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.FloatBuffer

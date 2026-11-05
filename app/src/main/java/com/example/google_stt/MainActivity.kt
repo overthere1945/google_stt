@@ -151,7 +151,7 @@ import com.example.google_stt.plan.PlanState                         // add-hyun
 import com.example.google_stt.plan.SEG_10                            // add-hyungchul-20261011-2000
 import com.example.google_stt.plan.SEG_MAX                           // add-hyungchul-20261011-2000
 import com.example.google_stt.ui.PlanUi                              // add-hyungchul-20261011-2000 : 목록 화면
-import com.example.google_stt.vad.SegMode                            // add-hyungchul-20261011-2000
+import com.example.google_stt.domain.vad.SegMode                            // add-hyungchul-20261011-2000   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
 import kotlinx.coroutines.Dispatchers                                // add-hyungchul-20261104-1750 : 하위 폴더 읽기(IO)
 import kotlinx.coroutines.currentCoroutineContext                    // add-hyungchul-20261104-1750 : 언어 폴더 사이 취소 확인
 import kotlinx.coroutines.ensureActive                               // add-hyungchul-20261104-1750

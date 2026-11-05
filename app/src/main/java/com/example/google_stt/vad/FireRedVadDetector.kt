@@ -27,6 +27,10 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import com.example.google_stt.domain.vad.FrameSegmenter   // add-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadEngine   // add-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadKeys   // add-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadSetting   // add-hyungchul-20261105-1918 : [T1-2] 패키지 이동
 
 /**
  * 목적: FireRedVAD 실행기.

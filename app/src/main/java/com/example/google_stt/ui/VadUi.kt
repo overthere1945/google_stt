@@ -30,14 +30,14 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.example.google_stt.R
 import com.example.google_stt.domain.vad.VadConfig   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
-import com.example.google_stt.vad.SegMode
+import com.example.google_stt.domain.vad.SegMode   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
 import com.example.google_stt.vad.VadDetectorFactory
-import com.example.google_stt.vad.VadEngine
-import com.example.google_stt.vad.VadParamCatalog
-import com.example.google_stt.vad.VadParamSpec
-import com.example.google_stt.vad.VadPreset
-import com.example.google_stt.vad.VadPresetCatalog
-import com.example.google_stt.vad.VadSetting
+import com.example.google_stt.domain.vad.VadEngine   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadParamCatalog   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadParamSpec   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadPreset   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadPresetCatalog   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.VadSetting   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
 
 /**
  * 목적: VAD 화면 컨트롤러.

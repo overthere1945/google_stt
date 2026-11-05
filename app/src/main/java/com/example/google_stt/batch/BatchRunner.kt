@@ -123,11 +123,11 @@ import com.example.google_stt.stt.isEngineDead
 import com.example.google_stt.stt.sttTimeoutSec
 import com.example.google_stt.ui.EpdSelection
 import com.example.google_stt.ui.VadSelection
-import com.example.google_stt.vad.SegMode                 // change-hyungchul-20261009-1530
-import com.example.google_stt.vad.SegmentPacker           // change-hyungchul-20261009-1530
+import com.example.google_stt.domain.vad.SegMode                 // change-hyungchul-20261009-1530   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
+import com.example.google_stt.domain.vad.SegmentPacker           // change-hyungchul-20261009-1530   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
 import com.example.google_stt.vad.VadDetector             // change-hyungchul-20261009-1530
 import com.example.google_stt.vad.VadDetectorFactory      // change-hyungchul-20261009-1530
-import com.example.google_stt.vad.VadEngine               // change-hyungchul-20261009-1530
+import com.example.google_stt.domain.vad.VadEngine               // change-hyungchul-20261009-1530   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동
 import com.example.google_stt.vad.VadRunner               // change-hyungchul-20261009-1530
 import com.google.mlkit.genai.speechrecognition.SpeechRecognition
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions

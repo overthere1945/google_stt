@@ -11,8 +11,6 @@
  */
 package com.example.google_stt.domain.vad
 
-import com.example.google_stt.vad.VadKeys      // VAD 설정 키 이름(threshold, min_speech_ms …)
-import com.example.google_stt.vad.VadSetting   // 화면에서 고른 VAD 설정 snapshot
 import java.util.Locale                        // 오류 문구 숫자 형식 고정
 import kotlin.math.max                         // negThreshold 계산
 import kotlin.math.roundToInt                  // 설정 값(Double) → Int

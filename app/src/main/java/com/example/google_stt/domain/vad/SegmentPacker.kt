@@ -1,5 +1,5 @@
 /*
- * 파일명: vad/SegmentPacker.kt
+ * 파일명: domain/vad/SegmentPacker.kt
  * 목적 및 기능:
  * - "구간 처리" 선택에 따라 STT 에 넣을 조각(PCM 목록)을 만든다.
  *     · ENGINE_MAX (엔진별 최대 길이) : 엔진이 한 번에 받을 수 있는 길이까지 조각을 키운다.
@@ -13,7 +13,7 @@
  *
  * add-hyungchul-20261009-1530
  */
-package com.example.google_stt.vad
+package com.example.google_stt.domain.vad   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동 (옛 위치 vad/SegmentPacker.kt)
 
 import com.example.google_stt.domain.vad.VadSegment   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
 import java.io.ByteArrayOutputStream

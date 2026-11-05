@@ -1,5 +1,5 @@
 /*
- * 파일명: vad/VadModels.kt
+ * 파일명: domain/vad/VadModels.kt
  * 목적 및 기능:
  * - 앱에서 고를 수 있는 VAD 엔진 목록(VadEngine), 엔진별 설정 항목 정의(VadParamSpec),
  *   엔진별 프리셋(공식 기본값 + 추천값 + Custom) 목록(VadPresetCatalog)을 한곳에 모은다.
@@ -31,7 +31,7 @@
  *   · SILERO_FILE 추가: 서버 stt_all_gui_server 의 'VAD 단계 Silero(파일)' 조건 — 값은 서버처럼 SILERO 와 같다(0.5/250/400/150).
  *     앱은 모든 VAD 를 엔진 앞에서 따로 돌리므로 계산도 SILERO 와 같다. 서버 결과 폴더(…_SILERO_FILE)와 이름을 1:1 로 맞추기 위한 조건이다.
  */
-package com.example.google_stt.vad
+package com.example.google_stt.domain.vad   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동 (옛 위치 vad/VadModels.kt)
 
 import java.util.Locale
 import kotlin.math.roundToInt
