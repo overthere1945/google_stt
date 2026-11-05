@@ -43,11 +43,11 @@ class CsvFormatTest {
         val cols = listOf(CsvColumn<Pair<String, Int>>("name") { it.first }, CsvColumn("n") { it.second.toString() })
         val rows = listOf("a,b" to 1, "c" to 2)
         val csv = CsvFormat.table(cols, rows)
-        assertEquals("﻿name,n\r\n\"a,b\",1\r\nc,2\r\n", csv)
-        assertEquals(1, csv.count { it == '﻿' })                          // BOM 은 한 번
+        assertEquals("\uFEFFname,n\r\n\"a,b\",1\r\nc,2\r\n", csv)
+        assertEquals(1, csv.count { it == '\uFEFF' })                          // BOM 은 한 번
         assertEquals(csv, CsvFormat.table(cols, rows))                         // 다시 만들어도 같다
-        assertEquals("﻿name,n\r\n", CsvFormat.table(cols, emptyList()))   // 행이 없어도 머리줄은 있다
-        assertEquals("﻿key,value\r\napp_version,4.0.0\r\nnote,\"a,b\"\r\n",
+        assertEquals("\uFEFFname,n\r\n", CsvFormat.table(cols, emptyList()))   // 행이 없어도 머리줄은 있다
+        assertEquals("\uFEFFkey,value\r\napp_version,4.0.0\r\nnote,\"a,b\"\r\n",
             CsvFormat.keyValue(listOf("app_version" to "4.0.0", "note" to "a,b")))
     }
 

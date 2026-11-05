@@ -26,7 +26,7 @@ class CsvColumn<T>(val name: String, val value: (T) -> String)
 object CsvFormat {
 
     /** UTF-8 BOM(utf-8-sig) — 엑셀에서 한글이 깨지지 않게 파일 맨 앞에 1회만 쓴다 */
-    const val BOM = "﻿"
+    const val BOM = "\uFEFF"
 
     /** 줄 끝(파이썬 csv 모듈 기본값과 같다) */
     const val EOL = "\r\n"

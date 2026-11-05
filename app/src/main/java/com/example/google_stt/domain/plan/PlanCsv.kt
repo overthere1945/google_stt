@@ -86,7 +86,7 @@ object PlanCsv {
         val errors = mutableListOf<String>()                 // 오류 문장
         var duplicates = 0                                   // 중복 수
         var headerSeen = false                               // 머리줄을 읽었는지
-        val lines = text.removePrefix("﻿").split("\n")  // BOM 제거 후 줄로 나눈다
+        val lines = text.removePrefix("\uFEFF").split("\n")  // BOM 제거 후 줄로 나눈다
         for ((i, raw) in lines.withIndex()) {
             val lineNo = i + 1                               // 사람이 보는 줄 번호(1부터)
             val line = raw.trim().removeSuffix("\r").trim()  // CRLF·앞뒤 공백 제거
@@ -136,7 +136,7 @@ object PlanCsv {
      * 리턴: String - UTF-8 BOM 으로 시작하는 CSV 글(엑셀에서 한글이 깨지지 않게)
      */
     fun format(rows: List<PlanRow>, comment: String): String =
-        "﻿# ${comment.replace("\n", " ")}\n$HEADER\n" +          // BOM + 주석 + 머리줄
+        "\uFEFF# ${comment.replace("\n", " ")}\n$HEADER\n" +          // BOM + 주석 + 머리줄
             rows.joinToString("") { it.csvLine + "\n" }              // 한 줄씩
 
     /**

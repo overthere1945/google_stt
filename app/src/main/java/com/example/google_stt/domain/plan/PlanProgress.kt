@@ -59,7 +59,7 @@ object PlanProgress {
      * 리턴: String - UTF-8 BOM + "# plan=" + 머리줄 + 줄들
      */
     fun format(plan: String, rows: Collection<PlanProgressRow>): String {
-        val sb = StringBuilder("﻿")                                   // BOM
+        val sb = StringBuilder("\uFEFF")                                   // BOM
         sb.append("# plan=").append(clean(plan)).append('\n')              // 참고용 목록 이름
         sb.append(HEADER).append('\n')
         for (r in rows) {
@@ -78,7 +78,7 @@ object PlanProgress {
     fun parse(text: String): PlanProgressParse {
         val rows = LinkedHashMap<String, PlanProgressRow>()               // key → 마지막 기록
         val warnings = ArrayList<String>()                                // 깨진 줄 경고
-        for ((i, raw) in text.removePrefix("﻿").split("\n").withIndex()) {
+        for ((i, raw) in text.removePrefix("\uFEFF").split("\n").withIndex()) {
             val line = raw.trim().removeSuffix("\r")                      // CRLF·앞뒤 공백 제거
             if (line.isEmpty() || line.startsWith("#") || line == HEADER) continue   // 빈 줄·주석·머리줄
             val c = line.split(",")

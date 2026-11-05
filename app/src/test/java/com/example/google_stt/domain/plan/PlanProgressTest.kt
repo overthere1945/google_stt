@@ -21,7 +21,7 @@ class PlanProgressTest {
      */
     @Test
     fun progress_doneOnly_andBrokenLinesWarn() {
-        val text = "﻿# date=20261105\n# plan=x.csv\n" + PlanProgress.HEADER + "\n" +   // v3 파일의 "# date=" 줄은 주석으로 지나간다
+        val text = "\uFEFF# date=20261105\n# plan=x.csv\n" + PlanProgress.HEADER + "\n" +   // v3 파일의 "# date=" 줄은 주석으로 지나간다
             "kr/a,DONE,1,2026-11-06 00:00:00,2026-11-06 00:00:09,1,0,\n" +
             "kr/b,FAILED,1,2026-11-06 00:00:09,2026-11-06 00:00:10,0,1,ERR_MODEL_LOAD\n" +
             "kr/c,INTERRUPTED,1,2026-11-06 00:00:10,,0,0,\n" +
@@ -38,6 +38,6 @@ class PlanProgressTest {
         val again = PlanProgress.parse(PlanProgress.format("목록, 이름", p.rows.values))   // 다시 쓰고 읽어도 같다
         assertEquals(p.rows, again.rows)
         assertTrue(again.warnings.isEmpty())
-        assertTrue(PlanProgress.format("목록, 이름", emptyList()).startsWith("﻿# plan=목록  이름\n"))   // 쉼표는 공백으로
+        assertTrue(PlanProgress.format("목록, 이름", emptyList()).startsWith("\uFEFF# plan=목록  이름\n"))   // 쉼표는 공백으로
     }
 }

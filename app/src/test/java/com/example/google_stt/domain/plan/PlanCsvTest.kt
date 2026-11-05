@@ -82,7 +82,7 @@ class PlanCsvTest {
         val opts = listOf(RunOptions(), RunOptions(seg = SegMode.SEG10, feed = FeedChoice.D50))
         val jobs = ComboGenerator.generate(krEn, models, vads, opts).jobs
         val text = PlanCsv.format(PlanCsv.fromJobs(jobs), "왕복 시험")
-        assertTrue(text.startsWith("﻿# 왕복 시험\nlang,model,feed,vad,seg\n"))   // BOM + 주석 + 머리줄
+        assertTrue(text.startsWith("\uFEFF# 왕복 시험\nlang,model,feed,vad,seg\n"))   // BOM + 주석 + 머리줄
         val back = PlanCsv.toJobs(PlanCsv.parse(text).rows, krEn)
         assertEquals(emptyList<String>(), back.errors)
         assertEquals(jobs, back.jobs)                                         // 순서와 내용이 같다
