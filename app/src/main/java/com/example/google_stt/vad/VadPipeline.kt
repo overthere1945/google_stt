@@ -17,8 +17,8 @@ package com.example.google_stt.vad
 
 import android.content.Context
 import com.example.google_stt.SileroVadProcessor
-import com.example.google_stt.VadResult
-import com.example.google_stt.VadSegment
+import com.example.google_stt.domain.vad.VadResult   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
+import com.example.google_stt.domain.vad.VadSegment   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
 import java.io.IOException

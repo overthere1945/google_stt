@@ -26,7 +26,7 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
-import com.example.google_stt.VadSegment
+import com.example.google_stt.domain.vad.VadSegment   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
 import java.nio.FloatBuffer
 import kotlin.math.PI
 import kotlin.math.cos

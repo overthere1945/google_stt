@@ -37,142 +37,25 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
+import com.example.google_stt.domain.vad.SILERO_WINDOW_SAMPLES   // add-hyungchul-20261105-1915 : [T1-1] 프레임 길이 상수(domain/vad/VadTypes.kt)
+import com.example.google_stt.domain.vad.VAD_SAMPLE_RATE         // add-hyungchul-20261105-1915 : [T1-1] 표본화 주파수 상수
+import com.example.google_stt.domain.vad.VadConfig               // add-hyungchul-20261105-1915 : [T1-1] 옮겨 간 자료형
 import com.example.google_stt.vad.FrameSegmenter   // change-hyungchul-20261009-1530
 import com.example.google_stt.vad.VadAudio   // change-hyungchul-20261009-1530
 import com.example.google_stt.vad.VadDetector   // change-hyungchul-20261009-1530
 import com.example.google_stt.vad.VadEngine   // change-hyungchul-20261009-1530
-import com.example.google_stt.vad.VadKeys   // change-hyungchul-20261009-1530
 import com.example.google_stt.vad.VadSetting   // change-hyungchul-20261009-1530
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
-import java.util.Locale
-import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt   // change-hyungchul-20261009-1530
 
 // change-hyungchul-20261009-1530 : VadProfile(Default/Safe/Custom) 제거 → vad/VadModels.kt 의 VadPresetCatalog 로 대체
 
-/**
- * 목적: Silero get_speech_timestamps() 에 넘길 파라미터 묶음.
- * 비고: maxSpeechDurationSec 이 null 이면 Unlimited(공식 기본값 float('inf')) 를 뜻한다.
- */
-data class VadConfig(
-    val threshold: Float,               // 이 값 이상이면 speech 로 본다
-    val minSpeechDurationMs: Int,       // 이보다 짧은 speech 구간은 버린다
-    val minSilenceDurationMs: Int,      // 이보다 짧은 무음은 구간을 끊지 않는다
-    val speechPadMs: Int,               // 구간 앞뒤로 붙여줄 여유 (앞말/뒷말 잘림 방지)
-    val maxSpeechDurationSec: Double?,  // null = Unlimited
-    // add-hyungchul-20260914-2130 : 구간 사이 무음(ms)
-    //   PC GUI 의 --vad-join-silence-ms 와 같은 뜻이다(GUI 기본값 200).
-    //   speech 구간만 그대로 이어 붙이면 문장 경계가 사라져서 인식기가 한 덩어리로 붙여 읽는다.
-    //   구간 사이에 이 길이만큼 digital silence 를 끼워 넣어 문장 경계를 남긴다.
-    //   0 이면 예전 동작(무음 삽입 없음)과 완전히 같다.
-    val joinSilenceMs: Int = 200,
-) {
-    /** Silero 공식 기본 동작: neg_threshold = max(threshold - 0.15, 0.01) */
-    val negThreshold: Float
-        get() = max(threshold - 0.15f, 0.01f)
-
-    // change-hyungchul-20261009-1530
-    companion object {
-        /**
-         * 목적: 화면에서 고른 VAD 설정(VadSetting) 값을 Silero 파라미터로 바꾼다(init 의 범위 검증을 그대로 탄다).
-         * 입력: s — Silero 방식 키(threshold / min_speech_ms / min_silence_ms / pad_ms / max_speech_sec / join_ms)를 가진 설정
-         *       thresholdOverride — threshold 항목이 없는 엔진(WebRTC)이 넘기는 고정 임계값
-         * 리턴: VadConfig
-         * 비고: max_speech_sec 0 이하 = Unlimited(null) — 기존 화면 규칙과 같다.
-         */
-        fun fromSetting(s: VadSetting, thresholdOverride: Float? = null): VadConfig {
-            val maxSpeech = s[VadKeys.MAX_SPEECH_SEC]                     // 0 이하면 무제한
-            return VadConfig(
-                threshold = thresholdOverride ?: s[VadKeys.THRESHOLD].toFloat(),
-                minSpeechDurationMs = s[VadKeys.MIN_SPEECH_MS].roundToInt(),
-                minSilenceDurationMs = s[VadKeys.MIN_SILENCE_MS].roundToInt(),
-                speechPadMs = s[VadKeys.PAD_MS].roundToInt(),
-                maxSpeechDurationSec = if (maxSpeech <= 0.0) null else maxSpeech,
-                joinSilenceMs = s[VadKeys.JOIN_MS].roundToInt(),
-            )
-        }
-    }
-
-    init {
-        // UI 입력값을 여기서 한 번 더 검증한다(잘못된 값으로 배치가 돌면 결과 전체를 버려야 하므로).
-        require(threshold in 0.01f..0.99f) { "Threshold 는 0.01 ~ 0.99 범위여야 합니다." }
-        require(minSpeechDurationMs >= 0) { "Min Speech 는 0 이상이어야 합니다." }
-        require(minSilenceDurationMs >= 0) { "Min Silence 는 0 이상이어야 합니다." }
-        require(speechPadMs >= 0) { "Speech Padding 은 0 이상이어야 합니다." }
-        // add-hyungchul-20260914-2130 : 구간 사이 무음 검증 (0 ~ 5000 ms)
-        require(joinSilenceMs in 0..5_000) { "구간 사이 무음은 0 ~ 5000 ms 여야 합니다." }
-        require(maxSpeechDurationSec == null || maxSpeechDurationSec > 0.0) {
-            "Max Speech 는 0(Unlimited) 이거나 0보다 커야 합니다."
-        }
-        if (maxSpeechDurationSec != null) {
-            // 공식 식: max_speech_samples = sr*max - window - 2*pad.
-            // 이 값이 0 이하가 되면 매 frame 마다 강제 분할이 일어나 의미가 없다. 미리 막는다.
-            val minimumUsefulSec =
-                SileroVadProcessor.WINDOW_SAMPLES.toDouble() / SileroVadProcessor.SAMPLE_RATE +
-                    2.0 * speechPadMs / 1000.0
-            require(maxSpeechDurationSec > minimumUsefulSec) {
-                String.format(
-                    Locale.US,
-                    "Max Speech 는 현재 Padding 기준 %.3f 초보다 커야 합니다.",
-                    minimumUsefulSec,
-                )
-            }
-        }
-    }
-}
+// change-hyungchul-20261105-1915 : [T1-1] VadConfig / VadSegment / VadResult 를 domain/vad/VadTypes.kt 로 옮겼다(내용 그대로)
 
 // change-hyungchul-20261009-1530 : VadPresets(Default/Safe/Custom 값) 제거 → vad/VadModels.kt 의 VadPresetCatalog(SILERO 8종 + Custom)로 대체
-
-/** 원본 PCM 기준 sample 좌표. endSample 은 exclusive(그 sample 은 포함하지 않음). */
-data class VadSegment(
-    val startSample: Int,
-    val endSample: Int,
-)
-
-/**
- * 목적: 파일 1건의 VAD 처리 결과를 나른다.
- * 비고: ByteArray 를 담으므로 data class 로 만들지 않는다(equals/hashCode 가 참조 비교라 오해를 부른다).
- */
-class VadResult(
-    /** speech 구간만 이어 붙인 16 kHz/mono/PCM16 LE */
-    val pcm: ByteArray,
-    /** padding 까지 적용된 최종 구간 목록 */
-    val segments: List<VadSegment>,
-    /** VAD 추론 + PCM 재구성에 걸린 시간(ms) */
-    val processMs: Long,
-    val originalSamples: Int,
-    val outputSamples: Int,
-    /** padding 적용 전, 순수하게 검출된 speech sample 합 */
-    val detectedSpeechSamples: Int,
-    // add-hyungchul-20260914-2130 : 구간 사이에 끼워 넣은 무음 sample 합(계측/CSV 용)
-    val joinSilenceSamples: Int = 0,
-    /**
-     * add-hyungchul-20260914-2350
-     * Speech EPD 가 쓸 "안전한 절단 후보" 좌표(출력 PCM 기준 sample).
-     * 구간 사이 무음 한가운데이므로 여기서 자르면 말이 잘리지 않는다.
-     */
-    val seams: List<Int> = emptyList(),
-) {
-    val originalSec: Double get() = originalSamples / SAMPLE_RATE_D
-    val outputSec: Double get() = outputSamples / SAMPLE_RATE_D
-    val detectedSpeechSec: Double get() = detectedSpeechSamples / SAMPLE_RATE_D
-    // add-hyungchul-20260914-2130 : 끼워 넣은 무음 길이(초)
-    val joinSilenceSec: Double get() = joinSilenceSamples / SAMPLE_RATE_D
-    val removedSec: Double get() = (originalSec - outputSec).coerceAtLeast(0.0)
-
-    /** 제거 비율(%) — 0 이면 아무것도 안 지웠다는 뜻이다. */
-    val removedRatio: Double
-        get() = if (originalSamples <= 0) 0.0
-        else (originalSamples - outputSamples).coerceAtLeast(0) * 100.0 / originalSamples
-
-    private companion object {
-        const val SAMPLE_RATE_D = 16_000.0
-    }
-}
 
 /**
  * 목적: Silero VAD ONNX 실행기.
@@ -191,8 +74,8 @@ class SileroVadProcessor(context: Context) : VadDetector {
         /** CSV/run_meta 에 남길 모델 이름 */
         const val MODEL_LABEL = "silero_vad_16k_op15.onnx"
 
-        const val SAMPLE_RATE = 16_000
-        const val WINDOW_SAMPLES = 512      // 32 ms @ 16 kHz (공식 규격, 바꾸면 안 된다)
+        const val SAMPLE_RATE = VAD_SAMPLE_RATE              // change-hyungchul-20261105-1915 : [T1-1] 값(16000)은 domain/vad/VadTypes.kt 상수 하나로 둔다
+        const val WINDOW_SAMPLES = SILERO_WINDOW_SAMPLES     // 32 ms @ 16 kHz (공식 규격, 바꾸면 안 된다)  change-hyungchul-20261105-1915 : [T1-1] 값(512)은 VadTypes.kt 상수
         const val CONTEXT_SAMPLES = 64      // 공식 규격 (16 kHz 기준)
 
         /** state tensor 총 float 개수: 2 x batch(1) x 128 */

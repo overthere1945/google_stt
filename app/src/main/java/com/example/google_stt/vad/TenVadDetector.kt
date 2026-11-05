@@ -21,7 +21,7 @@
  */
 package com.example.google_stt.vad
 
-import com.example.google_stt.VadConfig
+import com.example.google_stt.domain.vad.VadConfig   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
 import com.sun.jna.Library
 import com.sun.jna.Native
 import com.sun.jna.NativeLong

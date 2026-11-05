@@ -15,7 +15,7 @@
  */
 package com.example.google_stt.vad
 
-import com.example.google_stt.VadSegment
+import com.example.google_stt.domain.vad.VadSegment   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
 import java.io.ByteArrayOutputStream
 
 /** 구간 처리 방식 */

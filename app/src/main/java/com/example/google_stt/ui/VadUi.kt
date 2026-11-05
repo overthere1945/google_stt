@@ -29,7 +29,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.example.google_stt.R
-import com.example.google_stt.VadConfig
+import com.example.google_stt.domain.vad.VadConfig   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
 import com.example.google_stt.vad.SegMode
 import com.example.google_stt.vad.VadDetectorFactory
 import com.example.google_stt.vad.VadEngine

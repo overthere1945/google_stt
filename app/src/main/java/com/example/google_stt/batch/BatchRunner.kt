@@ -86,7 +86,7 @@ import com.example.google_stt.SpeechEpd
 import com.example.google_stt.SttResourceSnapshot
 import com.example.google_stt.SttRow
 import com.example.google_stt.SttTelemetry
-import com.example.google_stt.VadConfig
+import com.example.google_stt.domain.vad.VadConfig   // change-hyungchul-20261105-1915 : [T1-1] domain/vad/VadTypes.kt 로 이동
 import com.example.google_stt.denoise.NoiseAlgorithm
 import com.example.google_stt.denoise.NoiseReduceConfig
 import com.example.google_stt.denoise.NoiseReducer
@@ -752,7 +752,7 @@ class BatchRunner(
                 // 그때 EPD 는 32 ms 역방향 탐색만으로 절단 지점을 찾는다.
                 var vadSeams: List<Int> = emptyList()
                 // add-hyungchul-20261009-1530 : VAD 말 구간(원본 좌표, 패딩 후) — 구간 처리 SEG10 이 쓴다. VAD OFF 면 null(파일 전체)
-                var vadSegmentsForSeg: List<com.example.google_stt.VadSegment>? = null
+                var vadSegmentsForSeg: List<com.example.google_stt.domain.vad.VadSegment>? = null   // change-hyungchul-20261105-1915 : [T1-1] VadSegment 위치 이동
                 if (vadSelection.enabled) {
                     try {
                         val processor = vadProcessor
