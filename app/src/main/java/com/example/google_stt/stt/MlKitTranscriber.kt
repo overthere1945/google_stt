@@ -31,6 +31,15 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
+import com.example.google_stt.engine.stt.CHUNK_BYTES   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.FEATURE_STATUS_TIMEOUT_MS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.MODEL_DOWNLOAD_TIMEOUT_MS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.PcmFeeder   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.RECOGNIZER_CLOSE_TIMEOUT_MS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.STOP_RECOGNITION_TIMEOUT_MS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.isNoSpeechError   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.ms   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.sttTimeoutSec   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 
 /**
  * 목적: ML Kit GenAI Speech Recognition 전사기.

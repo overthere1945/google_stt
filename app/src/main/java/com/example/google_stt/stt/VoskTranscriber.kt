@@ -30,6 +30,9 @@ import org.vosk.Model
 import org.vosk.Recognizer
 import java.io.IOException
 import java.util.Locale
+import com.example.google_stt.engine.stt.BYTES_PER_SEC   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.CHUNK_BYTES   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.ms   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 
 /**
  * 목적: Vosk 전사기(배치 1회에 1개).

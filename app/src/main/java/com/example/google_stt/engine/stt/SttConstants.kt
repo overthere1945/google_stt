@@ -1,5 +1,5 @@
 /*
- * 파일명: stt/SttConstants.kt
+ * 파일명: engine/stt/SttConstants.kt
  * 목적 및 기능:
  * - Google 계열 STT 배치 실행에 쓰는 상수(PCM 규격, 타임아웃, SODA 세션 한도, 잘림 판정 기준 등)를 모은다.
  *
@@ -9,7 +9,7 @@
  *   함께 쓰므로 패키지 최상위 상수로 둔다. private → 공개(const val) 만 바뀌었다.
  *   (SPEECH_SERVICE_PACKAGE 는 MainActivity, DPDFNET_* 는 NoiseUi 로 옮겼다)
  */
-package com.example.google_stt.stt
+package com.example.google_stt.engine.stt   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동 (옛 위치 stt/SttConstants.kt)
 
 /** 16 kHz × 2바이트 = 32,000 바이트/초 */
 const val BYTES_PER_SEC = 32_000

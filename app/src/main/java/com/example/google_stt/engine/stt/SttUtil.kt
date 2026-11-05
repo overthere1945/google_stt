@@ -1,5 +1,5 @@
 /*
- * 파일명: stt/SttUtil.kt
+ * 파일명: engine/stt/SttUtil.kt
  * 목적 및 기능:
  * - STT 배치에서 공통으로 쓰는 작은 계산/판정 함수를 모은다.
  *     · ms()             : 두 nanoTime 사이를 ms 로 환산(미측정 -1)
@@ -12,9 +12,10 @@
  * change-hyungchul-20261009-1514
  *   MainActivity.kt 의 private 함수들을 내용 변경 없이 옮겼다(private → 패키지 공개).
  */
-package com.example.google_stt.stt
+package com.example.google_stt.engine.stt   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동 (옛 위치 stt/SttUtil.kt)
 
 import kotlinx.coroutines.TimeoutCancellationException
+import com.example.google_stt.stt.FeedConfig   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 
 /** 두 nanoTime 사이를 ms 로. 끝값이 0(미측정)이면 -1 을 돌려 CSV 에서 구분되게 한다. */
 fun ms(fromNs: Long, toNs: Long): Long =

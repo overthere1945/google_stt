@@ -47,7 +47,7 @@ import com.example.google_stt.plan.PlanExit                  // add-hyungchul-20
 import com.example.google_stt.plan.PlanRunner
 import com.example.google_stt.plan.PlanState                 // add-hyungchul-20261012-0310
 import com.example.google_stt.stt.SttCatalog
-import com.example.google_stt.stt.describe
+import com.example.google_stt.engine.stt.describe   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job

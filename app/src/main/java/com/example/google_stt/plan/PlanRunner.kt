@@ -40,7 +40,7 @@ import com.example.google_stt.stt.ModelConfig
 import com.example.google_stt.stt.SherpaOfflineTranscriber
 import com.example.google_stt.stt.SttCatalog
 import com.example.google_stt.stt.SttEngine
-import com.example.google_stt.stt.describe
+import com.example.google_stt.engine.stt.describe   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 import com.example.google_stt.ui.EpdSelection
 import com.example.google_stt.ui.VadSelection
 import com.example.google_stt.domain.vad.SegMode   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동

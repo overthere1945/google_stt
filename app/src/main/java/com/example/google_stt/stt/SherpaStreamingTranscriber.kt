@@ -40,6 +40,9 @@ package com.example.google_stt.stt
 import android.content.Context
 import android.util.Log
 import com.example.google_stt.vad.VadAudio
+import com.example.google_stt.engine.stt.BYTES_PER_SEC   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.CHUNK_BYTES   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.ms   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig

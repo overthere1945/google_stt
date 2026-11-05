@@ -1,5 +1,5 @@
 /*
- * 파일명: stt/PcmFeeder.kt
+ * 파일명: engine/stt/PcmFeeder.kt
  * 목적 및 기능:
  * - 16 kHz/mono/PCM16 바이트를 파이프(ParcelFileDescriptor)에 일정 속도로 흘려보내는 공급기.
  * - ML Kit / Android 플랫폼 인식기에 "파일을 마이크처럼" 넣을 때 쓴다.
@@ -7,7 +7,7 @@
  * change-hyungchul-20261009-1514
  *   MainActivity.kt 안의 private 중첩 클래스를 내용 변경 없이 별도 파일로 옮겼다.
  */
-package com.example.google_stt.stt
+package com.example.google_stt.engine.stt   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동 (옛 위치 stt/PcmFeeder.kt)
 
 import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.CompletableDeferred

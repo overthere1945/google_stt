@@ -44,6 +44,7 @@ import android.content.Context
 import android.os.Environment                             // add-hyungchul-20261010-2238 : 공용 Documents 폴더 / 모든 파일 접근 확인
 import android.util.Log                                   // add-hyungchul-20261010-1951 : Logcat 디버그 출력
 import com.example.google_stt.vad.VadAudio
+import com.example.google_stt.engine.stt.ms   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig                 // add-hyungchul-20261011-0150 : Moonshine v2
 import com.k2fsa.sherpa.onnx.OfflineOmnilingualAsrCtcModelConfig

@@ -96,31 +96,31 @@ import com.example.google_stt.io.AudioItem
 import com.example.google_stt.io.ResultStore
 import com.example.google_stt.io.collectAudio
 import com.example.google_stt.io.displayRel
-import com.example.google_stt.stt.BYTES_PER_SEC
-import com.example.google_stt.stt.CONSECUTIVE_TIMEOUT_ABORT
-import com.example.google_stt.stt.CSV_FLUSH_EVERY
-import com.example.google_stt.stt.FEATURE_STATUS_TIMEOUT_MS
-import com.example.google_stt.stt.FEED_STALL_WARN_RATIO
+import com.example.google_stt.engine.stt.BYTES_PER_SEC   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.CONSECUTIVE_TIMEOUT_ABORT   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.CSV_FLUSH_EVERY   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.FEATURE_STATUS_TIMEOUT_MS   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.FEED_STALL_WARN_RATIO   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 import com.example.google_stt.stt.FeedConfig
 import com.example.google_stt.stt.GoogleSttSession
-import com.example.google_stt.stt.MLKIT_SEGMENT_TRUNCATION_SEC
-import com.example.google_stt.stt.MLKIT_TRUNCATION_CHARS_PER_SEC
+import com.example.google_stt.engine.stt.MLKIT_SEGMENT_TRUNCATION_SEC   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.MLKIT_TRUNCATION_CHARS_PER_SEC   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 import com.example.google_stt.stt.MlKitTranscriber
 import com.example.google_stt.stt.ModelConfig
 // change-hyungchul-20261104-1750 : PlatformOnDeviceTranscriber import 제거(플랫폼 on-device 경로 삭제)
-import com.example.google_stt.stt.QUOTA_BUDGET_SESSIONS
-import com.example.google_stt.stt.QUOTA_COOLDOWN_MS
+import com.example.google_stt.engine.stt.QUOTA_BUDGET_SESSIONS   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.QUOTA_COOLDOWN_MS   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 import com.example.google_stt.stt.SherpaOfflineTranscriber   // add-hyungchul-20261010-1800
 import com.example.google_stt.stt.SherpaFamily               // add-hyungchul-20261011-0031
 import com.example.google_stt.stt.SherpaStreamingTranscriber // add-hyungchul-20261011-0031
 import com.example.google_stt.stt.StreamingSttTranscriber    // add-hyungchul-20261011-0301 : 스트리밍 전사기 공통 약속
 import com.example.google_stt.stt.VoskTranscriber            // add-hyungchul-20261011-0301 : Vosk(Kaldi)
 import com.example.google_stt.stt.SttEngine
-import com.example.google_stt.stt.WARMUP_TIMEOUT_MS
-import com.example.google_stt.stt.describe
-import com.example.google_stt.stt.expectedFeedMs
-import com.example.google_stt.stt.isEngineDead
-import com.example.google_stt.stt.sttTimeoutSec
+import com.example.google_stt.engine.stt.WARMUP_TIMEOUT_MS   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.describe   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.expectedFeedMs   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.isEngineDead   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.sttTimeoutSec   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 import com.example.google_stt.ui.EpdSelection
 import com.example.google_stt.ui.VadSelection
 import com.example.google_stt.domain.vad.SegMode                 // change-hyungchul-20261009-1530   // change-hyungchul-20261105-1918 : [T1-2] 패키지 이동

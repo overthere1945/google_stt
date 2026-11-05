@@ -21,6 +21,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import java.util.Locale
+import com.example.google_stt.engine.stt.BYTES_PER_SEC   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.QUOTA_BUDGET_SESSIONS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.QUOTA_COOLDOWN_MS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.QUOTA_RETRY_MAX   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.QUOTA_WARN_SESSIONS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.WARMUP_FEED_DELAY_MS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.WARMUP_SECONDS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
+import com.example.google_stt.engine.stt.WARMUP_TIMEOUT_MS   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 
 /**
  * 목적: Google 계열 STT 세션 관리자.

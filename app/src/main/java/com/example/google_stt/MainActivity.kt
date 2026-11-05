@@ -139,7 +139,7 @@ import com.example.google_stt.stt.GoogleSttSession                   // change-h
 import com.example.google_stt.stt.MlKitTranscriber                   // change-hyungchul-20261009-1514
 // change-hyungchul-20261104-1750 : PlatformOnDeviceTranscriber import 제거(Google 은 ML Kit Basic 만)
 import com.example.google_stt.stt.SttCatalog                         // change-hyungchul-20261009-1514
-import com.example.google_stt.stt.describe                           // change-hyungchul-20261009-1514
+import com.example.google_stt.engine.stt.describe                           // change-hyungchul-20261009-1514   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 import com.example.google_stt.ui.EpdUi                               // change-hyungchul-20261009-1514
 import com.example.google_stt.ui.NoiseUi                             // change-hyungchul-20261009-1514
 import com.example.google_stt.ui.VadUi                               // change-hyungchul-20261009-1514
