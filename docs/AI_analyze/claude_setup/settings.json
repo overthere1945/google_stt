@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew *)",
+      "Bash(adb devices)",
+      "Bash(adb logcat *)",
+      "Bash(adb install *)",
+      "Bash(adb shell *)",
+      "Bash(adb pull *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git mv *)",
+      "Bash(git commit *)"
+    ],
+    "ask": [
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git tag *)",
+      "Bash(git branch *)",
+      "Bash(git stash *)",
+      "Bash(adb push *)",
+      "Bash(adb uninstall *)"
+    ],
+    "deny": [
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean *)",
+      "Edit(//home/hyungchul/workspace/python/asr_stt/stt_all_gui_server/**)"
+    ]
+  }
+}
