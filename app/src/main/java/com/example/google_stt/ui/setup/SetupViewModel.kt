@@ -371,4 +371,51 @@ class SetupViewModel(private val c: AppContainer, private val context: Context) 
         }
         _state.update { it.copy(message = if (ok) "조합 ${jobs.size}개를 저장했다: $name" else "조합 CSV 를 저장하지 못했다") }
     }
+
+    // ───────────── add-hyungchul-20261106-2330 : [T7-5] 시작 전 점검 ─────────────
+
+    /** 목적: 안내 문구를 바꾼다(실행을 시작할 수 없는 이유 등). 입력: text / 출력: 상태 / 리턴: 없음 */
+    fun setMessage(text: String) = _state.update { it.copy(message = text) }
+
+    /** 지금 조합이 ML Kit 을 쓰는지(마이크 권한이 필요하다) */
+    val usesMlKit: Boolean get() = jobs.any { it.model.runtime == com.example.google_stt.domain.catalog.Runtime.MLKIT }
+
+    /**
+     * 목적: 시작 전 점검 항목을 만든다(4단계 4-4 — ①⑤⑥과 마이크 권한은 통과해야 시작할 수 있고, 나머지는 경고).
+     * 입력: 없음 / 출력: VAD 실행기를 한 번 만들어 본다(적재 시험) / 리턴: List<PreflightCheck>
+     */
+    suspend fun preflight(): List<PreflightCheck> = withContext(Dispatchers.IO) {
+        val out = ArrayList<PreflightCheck>()
+        fun granted(permission: String) = androidx.core.content.ContextCompat.checkSelfPermission(context, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        out += PreflightCheck("알림 권한", granted(android.Manifest.permission.POST_NOTIFICATIONS), true, "실행 중 진행 알림과 [중지] 버튼에 필요하다")
+        if (usesMlKit) out += PreflightCheck("마이크 권한(ML Kit)", granted(android.Manifest.permission.RECORD_AUDIO), true, "ML Kit 은 파일을 넣을 때도 이 권한을 요구한다")
+        val power = context.getSystemService(android.os.PowerManager::class.java)
+        out += PreflightCheck("배터리 최적화 예외", power.isIgnoringBatteryOptimizations(context.packageName), false, "긴 실행이 절전으로 끊기지 않게 한다")
+        out += PreflightCheck("충전 연결", c.probe.charging().isNotEmpty(), false, "긴 실행은 충전기를 연결하고 돌린다")
+        out += PreflightCheck("\"절대 잠자지 않는 앱\" 등록", null, false, "삼성 기기: 설정 → 배터리 → 백그라운드 사용 제한 → 절대 잠자지 않는 앱에 이 앱을 넣는다")
+        // ⑤ VAD 적재 시험: 자산이 준비된 엔진만 만들어 본다(없는 것은 받은 뒤 작업 시작 때 드러난다)
+        val failed = ArrayList<String>()
+        for (engine in jobs.map { it.vad.engine }.distinct()) {
+            val id = Catalog.vadAssetId(engine)
+            if (id != null && c.assetSpecs[id]?.let { c.assetStore.isReady(it) } != true) continue
+            try {
+                com.example.google_stt.engine.vad.VadDetectorFactory.create(engine, c.assetStore::dir)?.close()
+            } catch (e: com.example.google_stt.domain.AppError.VadLoad) {
+                failed += "${engine.token}: ${e.message}"
+            }
+        }
+        out += PreflightCheck("VAD 적재 시험", failed.isEmpty(), true, if (failed.isEmpty()) "고른 VAD 엔진을 만들 수 있다" else failed.joinToString("; "))
+        // ⑥ 저장공간: 받아야 할 자산의 필요 용량(압축 × 2 + 1 GB)
+        val missing = c.assets.missing(jobs.flatMap { it.assetIds }.distinct().filter { it in c.assetSpecs })
+        val need = com.example.google_stt.data.assets.AssetStore.requiredBytes(missing); val free = c.assetStore.freeBytes()
+        out += PreflightCheck("저장공간", free >= need, true, "모델 받기에 필요 ${need / 1024 / 1024} MB · 여유 ${free / 1024 / 1024} MB")
+        out
+    }
 }
+
+/**
+ * add-hyungchul-20261106-2330 : [T7-5]
+ * 목적: 시작 전 점검 항목 하나.
+ * 필드: title - 항목 이름, ok - 통과 여부(null = 앱이 확인할 수 없는 안내 항목), required - 통과해야 시작할 수 있는지, detail - 설명
+ */
+data class PreflightCheck(val title: String, val ok: Boolean?, val required: Boolean, val detail: String)
