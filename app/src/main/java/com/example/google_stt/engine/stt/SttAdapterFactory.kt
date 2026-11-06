@@ -21,7 +21,7 @@ object SttAdapterFactory {
      * 리턴: SttEngineAdapter
      */
     fun create(spec: ModelSpec, log: (String) -> Unit = {}): SttEngineAdapter = when (spec.runtime) {
-        Runtime.SHERPA_OFFLINE -> TODO("T5-2 SherpaOfflineAdapter")
+        Runtime.SHERPA_OFFLINE -> SherpaOfflineAdapter(spec)
         Runtime.SHERPA_STREAMING -> TODO("T5-3 SherpaStreamingAdapter")
         Runtime.VOSK -> TODO("T5-4 VoskAdapter")
         Runtime.MLKIT -> TODO("T5-5 MlKitAdapter")
