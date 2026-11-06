@@ -59,6 +59,10 @@ sealed class AppError(
     class MlKitStuck(detail: String, cause: Throwable? = null) :
         AppError("E-EN-05", false, "ML Kit 엔진이 응답하지 않는다 — $detail", cause)
 
+    /** add-hyungchul-20261106-2159 : [T5-6] E-VAD-01 VAD 실행기를 만들 수 없다(모델 파일 없음·TEN 라이브러리 적재 실패) → 그 VAD 를 쓰는 조합의 시작을 막는다 */
+    class VadLoad(detail: String, cause: Throwable? = null) :
+        AppError("E-VAD-01", false, "VAD 적재 실패 — $detail", cause)
+
     /** add-hyungchul-20261106-1633 : [T3-1] E-OUT-01 출력 폴더에 쓸 수 없다(권한이 사라졌거나 폴더·파일을 만들 수 없음) → 실행을 멈추고 폴더를 다시 고르게 한다 */
     class OutputUnavailable(detail: String, cause: Throwable? = null) :
         AppError("E-OUT-01", false, "출력 폴더에 쓸 수 없다 — $detail", cause)
