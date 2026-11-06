@@ -153,6 +153,22 @@ class PipelineStepsTest {
     }
 
     /**
+     * 목적: [M4 문제 2] Vosk 가 오류 없이 끝났는데 글자가 입력 길이에 비해 너무 적으면 note 에 DECODE_COLLAPSE_SUSPECT 가 붙는다.
+     *       글자가 충분하거나 Vosk 가 아닌 엔진이면 붙지 않는다.
+     * 입력: 없음 / 출력: 없음 / 리턴: 없음
+     * add-hyungchul-20261107-0116
+     */
+    @Test
+    fun vosk_fewCharsForLongInput_markedAsCollapse() = runTest {
+        val few = SttOutcome("가".repeat(40), 1, SttStatus.OK, tailMs = 5, feedSec = 3.0, feedMeasured = true)        // 40초 입력에 40자 = 1자/초
+        val bad = PipelineSteps.runFile(ctx("vosk-small-ko", stt = { few }), source(), first = true).record
+        assertEquals(SttStatus.OK, bad.stt.status); assertEquals(PipelineSteps.NOTE_DECODE_COLLAPSE, bad.note)
+        val enough = SttOutcome("가".repeat(280), 1, SttStatus.OK, tailMs = 5, feedSec = 7.0, feedMeasured = true)    // 7자/초
+        assertEquals("", PipelineSteps.runFile(ctx("vosk-small-ko", stt = { enough }), source(), first = true).record.note)
+        assertEquals("", PipelineSteps.runFile(ctx("nemotron3.5-560ms", stt = { few }), source(), first = true).record.note)   // 다른 엔진은 판정하지 않는다
+    }
+
+    /**
      * 목적: [E-VAD-02] VAD 가 말을 찾지 못하면 엔진을 부르지 않는다 — NO_MATCH, note=VAD_NO_SPEECH, 전사 시간 없음.
      * 입력: 없음 / 출력: 없음 / 리턴: 없음
      */

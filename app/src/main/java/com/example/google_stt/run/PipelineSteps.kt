@@ -38,6 +38,8 @@ import com.example.google_stt.engine.stt.FEED_STALL_WARN_RATIO       // 공급 �
 import com.example.google_stt.engine.stt.LoadInfo                    // 모델 적재 결과
 import com.example.google_stt.engine.stt.MLKIT_SEGMENT_TRUNCATION_SEC    // 61초 결함 경계
 import com.example.google_stt.engine.stt.MLKIT_TRUNCATION_CHARS_PER_SEC  // 유실 의심 기준
+import com.example.google_stt.engine.stt.VOSK_COLLAPSE_CHARS_PER_SEC     // add-hyungchul-20261107-0116 : Vosk 무너짐 의심 기준(자/초)
+import com.example.google_stt.engine.stt.VOSK_COLLAPSE_MIN_SEC           // add-hyungchul-20261107-0116 : 판정할 최소 입력 길이
 import com.example.google_stt.engine.stt.SttEngineAdapter            // STT 엔진
 import com.example.google_stt.engine.stt.expectedFeedMs              // 이론 공급 시간
 import com.example.google_stt.engine.vad.VadDetector                 // VAD 실행기
@@ -105,6 +107,7 @@ object PipelineSteps {
 
     const val NOTE_VAD_NO_SPEECH = "VAD_NO_SPEECH"            // VAD 가 말을 찾지 못함(E-VAD-02)
     const val NOTE_TRUNCATED = "TRUNCATED_SUSPECT"            // ML Kit 앞부분 유실 의심(61초 결함)
+    const val NOTE_DECODE_COLLAPSE = "DECODE_COLLAPSE_SUSPECT" // add-hyungchul-20261107-0116 : Vosk 가 오류 없이 글자를 거의 내지 못함(dither 난수의 드문 경우) — 이 행의 WER/CER 을 쓰지 말 것
     const val NOTE_FEED_STALL = "FEED_STALL"                  // 공급이 이론값의 2배 넘게 걸림 — 시간 값을 믿지 말 것
     const val NOTE_NET_DELTA = "WARN_NET_DELTA"               // 처리 중 앱의 네트워크 송수신이 있었다(E-RUN-06)
 
@@ -256,6 +259,13 @@ object PipelineSteps {
         ) {
             out += NOTE_TRUNCATED
             ctx.log("[warn] 앞부분 유실 의심 — 입력 ${"%.1f".format(inSec)}s 인데 ${stt.text.length}자. 이 행의 WER/CER 은 그대로 쓰지 말 것")
+        }
+        // add-hyungchul-20261107-0116 : [M4 문제 2] Vosk: 오류 없이 끝났는데 입력 길이에 비해 글자가 너무 적으면 디코딩이 무너진 것으로 의심한다(약 30회에 1회 실측)
+        if (ctx.job.model.runtime == Runtime.VOSK && stt.status == SttStatus.OK && inSec >= VOSK_COLLAPSE_MIN_SEC &&
+            stt.text.length / inSec < VOSK_COLLAPSE_CHARS_PER_SEC
+        ) {
+            out += NOTE_DECODE_COLLAPSE
+            ctx.log("[warn] Vosk 디코딩 무너짐 의심 — 입력 ${"%.1f".format(inSec)}s 인데 ${stt.text.length}자. 이 행의 WER/CER 은 그대로 쓰지 말 것(다시 돌리면 달라진다)")
         }
         val delay = ctx.job.opt.feed.delayMs
         val feedSec = stt.feedSec

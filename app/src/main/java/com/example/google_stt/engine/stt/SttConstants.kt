@@ -58,6 +58,16 @@ const val MLKIT_SEGMENT_TRUNCATION_SEC = 61.0
  */
 const val MLKIT_TRUNCATION_CHARS_PER_SEC = 3.0
 
+// add-hyungchul-20261107-0116 : [M4 문제 2] Vosk 디코딩 무너짐 의심 기준
+/**
+ * Vosk 결과가 무너진 것으로 의심하는 글자 밀도 하한(자/초)과, 판정에 필요한 최소 입력 길이(초).
+ * 실측(S24 Ultra, vosk-small-ko, 84초 음원, 2026-11-07): 정상 612~650자(7.3~7.7자/초), 무너진 회차 43·109자(0.5~1.3자/초).
+ * 원인은 Kaldi 특징 추출의 난수 잡음(dither) — mfcc.conf 에 --dither=0 을 넣은 사본은 12회 모두 같은 결과였다.
+ * 짧은 음원은 글자 밀도가 흔들리므로 20초 미만은 판정하지 않는다.
+ */
+const val VOSK_COLLAPSE_CHARS_PER_SEC = 3.0
+const val VOSK_COLLAPSE_MIN_SEC = 20.0
+
 /** 사전 점검(warm-up) 에 쓸 무음 길이(초). */
 const val WARMUP_SECONDS = 1
 
