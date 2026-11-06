@@ -13,6 +13,7 @@ import androidx.documentfile.provider.DocumentFile                 // SAF 문서
 import androidx.test.ext.junit.runners.AndroidJUnit4               // 계측 시험 실행기
 import androidx.test.platform.app.InstrumentationRegistry          // 앱 Context 얻기
 import com.example.google_stt.domain.AppError                      // 오류 코드
+import com.example.google_stt.domain.catalog.AssetManifest         // 매니페스트 해시 합치기  // add-hyungchul-20261106-1726
 import com.example.google_stt.domain.catalog.Catalog               // 자산 정의
 import java.io.File                                                // 시험 폴더
 import kotlinx.coroutines.runBlocking                              // suspend 함수 부르기
@@ -21,6 +22,7 @@ import org.junit.Assert.assertEquals                               // 값 비교
 import org.junit.Assert.assertFalse                                // 거짓 확인
 import org.junit.Assert.assertTrue                                 // 조건 확인
 import org.junit.Assert.fail                                       // 예외가 안 났을 때 실패
+import org.junit.Assume.assumeTrue                                 // 조건이 안 되면 건너뛰기  // add-hyungchul-20261106-1726
 import org.junit.Before                                            // 시험 전 준비
 import org.junit.Test                                              // JUnit 4 시험 표시
 import org.junit.runner.RunWith                                    // 실행기 지정
@@ -97,5 +99,29 @@ class AssetImporterTest {
         }
         assertFalse(store.isReady(qwen)); assertFalse(store.dir(qwen.id).exists())
         assertTrue(importer.import(qwen.withHashes(null, all), dir).verified)          // 제대로 된 폴더는 다시 가져올 수 있다
+    }
+
+    /**
+     * add-hyungchul-20261106-1726 : [M2]
+     * 목적: PC 의 tools/fetch_assets.py 가 만든 폴더(stt_assets)를 실제 SAF 폴더에서 가져와 매니페스트 해시로 검증한다.
+     *       앱이 권한을 보존한 폴더 아래에 "stt_assets" 가 있을 때만 돈다(없으면 건너뜀):
+     *         adb push stt_models/stt_assets/<자산 ID> /sdcard/Documents/<권한을 준 폴더>/stt_assets/
+     * 입력: 없음 / 출력: 없음 / 리턴: 없음
+     */
+    @Test
+    fun realSafFolder_importsPcPreparedAssets() = runBlocking<Unit> {
+        val root = context.contentResolver.persistedUriPermissions
+            .mapNotNull { DocumentFile.fromTreeUri(context, it.uri)?.findFile("stt_assets") }.firstOrNull { it.isDirectory }
+        assumeTrue("권한을 보존한 폴더 아래에 stt_assets 가 없어 건너뜀", root != null)
+        val specs = AssetManifest.merge(Catalog.assets, context.assets.open("asset_manifest.json").use { it.readBytes().toString(Charsets.UTF_8) })
+        val importer = AssetImporter(context.contentResolver, store)
+        val found = importer.find(root!!, specs.values)
+        assertTrue("가져올 자산 폴더가 없다", found.isNotEmpty())
+        for ((id, dir) in found) {
+            val info = importer.import(specs.getValue(id), dir)                        // 복사 + SHA256 확인 + 준비 표시
+            assertTrue("$id 는 매니페스트 해시로 검증돼야 한다", info.verified)
+            assertEquals("import", info.source); assertTrue(store.isReady(specs.getValue(id)))
+        }
+        android.util.Log.i("GoogleStt", "M2 가져오기 시험: ${found.keys} 를 실제 SAF 폴더에서 가져와 검증했다")
     }
 }
