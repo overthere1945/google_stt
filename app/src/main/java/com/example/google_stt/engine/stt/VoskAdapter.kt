@@ -50,6 +50,7 @@ class VoskAdapter(override val spec: ModelSpec) : SttEngineAdapter {
      */
     override suspend fun load(modelDir: File?, lang: Language): LoadInfo = withContext(Dispatchers.Default) {
         val dir = requireModelDir(spec, modelDir)                                   // 빠진 필수 파일이 있으면 여기서 멈춘다
+        close()                                                                     // add-hyungchul-20261106-2215 : 다시 불러도 앞서 올린 것을 놓고 시작한다(네이티브 메모리 누수 방지 — 독립 검토)
         dbg("load start: model=${dir.absolutePath} lang=${lang.code}")
         val t0 = System.nanoTime()                                                  // 불러오기 시작
         model = try {

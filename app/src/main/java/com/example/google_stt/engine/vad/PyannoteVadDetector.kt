@@ -66,8 +66,8 @@ class PyannoteVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-
     override val modelSha256: String                                       // 모델 해시
 
     init {
-        val bytes = VadFiles.read(modelDir, MODEL_ASSET)
-        modelSha256 = VadFiles.sha256(bytes)
+        val bytes = VadFiles.read(modelDir, MODEL_ASSET)   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → VadFiles(자산 폴더에서 읽는다)
+        modelSha256 = VadFiles.sha256(bytes)   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → VadFiles(자산 폴더에서 읽는다)
         sessionOptions.setIntraOpNumThreads(1)
         sessionOptions.setInterOpNumThreads(1)
         session = env.createSession(bytes, sessionOptions)
@@ -87,7 +87,7 @@ class PyannoteVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-
      */
     @Synchronized
     override fun detect(pcm16Le: ByteArray, setting: VadSetting): FrameSegmenter.Result {
-        val audio = Pcm16.toFloat(pcm16Le)                              // [-1, 1) float (pyannote 입력 규격)
+        val audio = Pcm16.toFloat(pcm16Le)                              // [-1, 1) float (pyannote 입력 규격)   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → Pcm16(식은 같다)
         val total = audio.size
         if (total == 0) return FrameSegmenter.Result(emptyList(), emptyList())
         val cls = frameSpeechScores(audio)                                 // ①~③ 프레임별 말 점수(0~1)
@@ -228,7 +228,7 @@ class PyannoteVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-
 
     /** 배치 끝 정리 */
     override fun close() {
-        VadFiles.release("session") { session.close() }
-        VadFiles.release("sessionOptions") { sessionOptions.close() }
+        VadFiles.release("session") { session.close() }   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
+        VadFiles.release("sessionOptions") { sessionOptions.close() }   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
     }
 }

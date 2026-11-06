@@ -55,6 +55,13 @@ sealed class AppError(
     class ModelLoad(detail: String, cause: Throwable? = null) :
         AppError("E-EN-01", false, "모델 적재 실패 — $detail", cause)
 
+    /**
+     * add-hyungchul-20261106-2215 : [T5-5] E-EN-03 엔진이 시간 안에 대답하지 않았다 → 그 파일은 ERROR. 엔진 먹통 판정(isEngineDead)의 근거가 된다.
+     * 취소 예외(TimeoutCancellationException)를 그대로 올리면 파이프라인이 "취소됨" 으로 오인하므로 이 오류로 바꿔 던진다(독립 검토 지적 1)
+     */
+    class SttTimeout(detail: String) :
+        AppError("E-EN-03", true, "STT 시간 초과 — $detail")
+
     /** add-hyungchul-20261106-2144 : [T5-5] E-EN-05 ML Kit 인식 엔진이 응답하지 않는다(세션 한도·먹통) → 그 작업을 실패로 끝내고 남은 ML Kit 작업은 건너뛴다(D29) */
     class MlKitStuck(detail: String, cause: Throwable? = null) :
         AppError("E-EN-05", false, "ML Kit 엔진이 응답하지 않는다 — $detail", cause)

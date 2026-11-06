@@ -71,7 +71,9 @@ class TenVadDetector : VadDetector {
     override val label: String = "libten_vad.so"                           // CSV vad_model
     override val runtimeVersion: String = try {                           // change-hyungchul-20261106-2159 : [T5-6] runCatching → 판 함수가 없는 경우만 잡는다
         "ten-vad " + lib.ten_vad_get_version()                             // 라이브러리 판
-    } catch (e: LinkageError) {
+    } catch (e: Exception) {                                               // change-hyungchul-20261106-2216 : v3 와 같은 범위 — 어떤 실패든 이 문구로 남기고 VAD 는 쓴다
+        "ten-vad (판 확인 실패)"
+    } catch (e: LinkageError) {                                            // 판 함수가 없는 라이브러리
         "ten-vad (판 확인 실패)"
     }
     override val modelSha256: String = ""                                  // 모델은 라이브러리에 내장
@@ -86,7 +88,7 @@ class TenVadDetector : VadDetector {
     override fun detect(pcm16Le: ByteArray, setting: VadSetting): FrameSegmenter.Result {
         val config = VadConfig.fromSetting(setting)                        // 범위 검증
         val hop = setting[VadKeys.HOP].roundToInt()                        // 160 / 256
-        val samples = Pcm16.toShort(pcm16Le)                            // PCM16 → short
+        val samples = Pcm16.toShort(pcm16Le)                            // PCM16 → short   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → Pcm16(식은 같다)
         val frameCount = (samples.size + hop - 1) / hop                    // 마지막 짧은 프레임 포함
         val probs = FloatArray(frameCount)                                 // 프레임별 확률
 
@@ -110,7 +112,7 @@ class TenVadDetector : VadDetector {
                 probs[i] = outProb[0].coerceIn(0f, 1f)                     // 말 확률
             }
         } finally {
-            VadFiles.release("ten_vad_destroy") { lib.ten_vad_destroy(PointerByReference(handle)) }  // 핸들 정리
+            VadFiles.release("ten_vad_destroy") { lib.ten_vad_destroy(PointerByReference(handle)) }  // 핸들 정리   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
         }
 
         return FrameSegmenter.collect(                                     // Silero 방식 구간 규칙

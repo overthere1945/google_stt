@@ -63,14 +63,14 @@ class FireRedVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-2
     override val modelSha256: String                                       // 모델 해시
 
     init {
-        val modelBytes = VadFiles.read(modelDir, MODEL_ASSET)
-        modelSha256 = VadFiles.sha256(modelBytes)
+        val modelBytes = VadFiles.read(modelDir, MODEL_ASSET)   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → VadFiles(자산 폴더에서 읽는다)
+        modelSha256 = VadFiles.sha256(modelBytes)   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → VadFiles(자산 폴더에서 읽는다)
         sessionOptions.setIntraOpNumThreads(1)
         sessionOptions.setInterOpNumThreads(1)
         session = env.createSession(modelBytes, sessionOptions)
         inputName = session.inputNames.first()                             // 입력은 feat 하나
 
-        val stats = readKaldiDoubleMatrix(VadFiles.read(modelDir, CMVN_ASSET))
+        val stats = readKaldiDoubleMatrix(VadFiles.read(modelDir, CMVN_ASSET))   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → VadFiles(자산 폴더에서 읽는다)
         require(stats.size == 2) { "cmvn.ark 는 2행이어야 합니다: ${stats.size}" }
         val dim = stats[0].size - 1                                        // 마지막 열 = count
         require(dim == KaldiFbank.NUM_MEL) { "cmvn.ark 차원이 ${KaldiFbank.NUM_MEL} 이 아닙니다: $dim" }
@@ -113,7 +113,7 @@ class FireRedVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-2
     @Synchronized
     override fun detect(pcm16Le: ByteArray, setting: VadSetting): FrameSegmenter.Result {
         val total = pcm16Le.size / 2
-        val wav = Pcm16.toFloat(pcm16Le)
+        val wav = Pcm16.toFloat(pcm16Le)   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → Pcm16(식은 같다)
         for (i in wav.indices) wav[i] *= 32768f                            // int16 스케일(공식: sf.read dtype=int16)
         val feats = fbank.compute(wav)                                     // [T][80]
         if (feats.isEmpty()) return FrameSegmenter.Result(emptyList(), emptyList())
@@ -330,7 +330,7 @@ class FireRedVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-2
 
     /** 배치 끝 정리 */
     override fun close() {
-        VadFiles.release("session") { session.close() }
-        VadFiles.release("sessionOptions") { sessionOptions.close() }
+        VadFiles.release("session") { session.close() }   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
+        VadFiles.release("sessionOptions") { sessionOptions.close() }   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
     }
 }

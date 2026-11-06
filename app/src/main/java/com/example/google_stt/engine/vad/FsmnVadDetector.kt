@@ -73,8 +73,8 @@ class FsmnVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-2026
     override val modelSha256: String                                       // 모델 해시
 
     init {
-        val modelBytes = VadFiles.read(modelDir, MODEL_ASSET)          // 없으면 받는 방법을 알려 준다
-        modelSha256 = VadFiles.sha256(modelBytes)
+        val modelBytes = VadFiles.read(modelDir, MODEL_ASSET)          // 없으면 받는 방법을 알려 준다   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → VadFiles(자산 폴더에서 읽는다)
+        modelSha256 = VadFiles.sha256(modelBytes)   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → VadFiles(자산 폴더에서 읽는다)
         sessionOptions.setIntraOpNumThreads(1)                              // 계측 비교를 위해 단일 스레드
         sessionOptions.setInterOpNumThreads(1)
         session = env.createSession(modelBytes, sessionOptions)
@@ -87,7 +87,7 @@ class FsmnVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-2026
             .map { it.key }.sorted()
         require(cacheInputNames.size == 4) { "FSMN ONNX cache 입력이 4개가 아닙니다: ${infos.keys}" }
 
-        val mvn = String(VadFiles.read(modelDir, CMVN_ASSET), Charsets.UTF_8)
+        val mvn = String(VadFiles.read(modelDir, CMVN_ASSET), Charsets.UTF_8)   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → VadFiles(자산 폴더에서 읽는다)
         val parsed = parseCmvn(mvn)                                        // am.mvn 읽기
         shift = parsed.first
         scale = parsed.second
@@ -134,7 +134,7 @@ class FsmnVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-2026
     @Synchronized
     override fun detect(pcm16Le: ByteArray, setting: VadSetting): FrameSegmenter.Result {
         val total = pcm16Le.size / 2                                       // 원본 샘플 수
-        val wav = Pcm16.toFloat(pcm16Le)                                // [-1, 1)
+        val wav = Pcm16.toFloat(pcm16Le)                                // [-1, 1)   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → Pcm16(식은 같다)
         for (i in wav.indices) wav[i] *= 32768f                            // FunASR: wav × 32768(int16 스케일)
         val feats = fbank.compute(wav)                                     // [T][80]
         val t = feats.size
@@ -211,7 +211,7 @@ class FsmnVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-2026
                     }
                 }
             } finally {
-                inputs.values.forEach { VadFiles.release("입력 텐서") { it.close() } }       // 입력 텐서 정리
+                inputs.values.forEach { VadFiles.release("입력 텐서") { it.close() } }       // 입력 텐서 정리   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
             }
             start += n
         }
@@ -320,7 +320,7 @@ class FsmnVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-2026
 
     /** 배치 끝 정리(OrtEnvironment 는 프로세스 공용이라 닫지 않는다) */
     override fun close() {
-        VadFiles.release("session") { session.close() }
-        VadFiles.release("sessionOptions") { sessionOptions.close() }
+        VadFiles.release("session") { session.close() }   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
+        VadFiles.release("sessionOptions") { sessionOptions.close() }   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
     }
 }

@@ -9,7 +9,8 @@
  *   바로 포기, warm-up 30초)은 그대로이고 바뀐 점은:
  *     · 세션 1개를 돌리는 일은 함수로 받는다(MlKitAdapter 가 준다) — v3 의 ModelConfig·Locale·FeedConfig 에 기대지 않는다
  *     · 파일 전체 재시도와 조각 재시도를 조각 재시도 하나로 합쳤다(조각이 1개면 둘은 같은 동작이다)
- *     · 시간 초과를 잡은 뒤에는 바깥 작업이 취소됐는지 확인한다(취소를 삼키지 않게)
+ *     · 세션의 시간 초과는 AppError.SttTimeout(E-EN-03)으로 받는다. 취소 예외(TimeoutCancellationException)를 잡거나 올리지 않는다 —
+ *       그 예외는 CancellationException 의 하위형이라 파이프라인이 "취소됨" 으로 오인한다(독립 검토 지적 1)
  *
  * ★ 세션 수를 세는 이유(2026-09-15 원인 확정): AICore 에는 공개 문서에 없는 "앱당 추론 할당량" 이 있다.
  *   공급 속도·경과 시간과 무관하게 "35세션 성공 → 36번째부터 먹통" 으로 죽었다. 즉 한도는 세션 수다.
@@ -18,12 +19,10 @@
  */
 package com.example.google_stt.engine.stt
 
+import com.example.google_stt.domain.AppError              // 시간 초과(E-EN-03)
 import kotlinx.coroutines.CancellationException            // 취소
-import kotlinx.coroutines.TimeoutCancellationException     // 시간 초과(응답 없음)
-import kotlinx.coroutines.currentCoroutineContext          // 바깥 작업의 취소 확인
 import kotlinx.coroutines.delay                            // 할당량 회복 기다리기
-import kotlinx.coroutines.ensureActive                     // 취소 확인
-import kotlinx.coroutines.withTimeout                      // warm-up 시간 제한
+import kotlinx.coroutines.withTimeoutOrNull                // warm-up 시간 제한
 
 /**
  * 목적: 세션 1개(또는 합친 여러 세션)의 결과.
@@ -41,7 +40,7 @@ internal class SessionResult(
 
 /**
  * 목적: ML Kit 세션 관리자.
- * 입력(생성자): one - 세션 1개를 돌리는 함수 (PCM, 100 ms 조각 사이 간격 ms) → 결과. 응답이 없으면 TimeoutCancellationException,
+ * 입력(생성자): one - 세션 1개를 돌리는 함수 (PCM, 100 ms 조각 사이 간격 ms) → 결과. 응답이 없으면 AppError.SttTimeout,
  *               log - 경고 한 줄을 받는 함수
  */
 internal class GoogleSttSession(
@@ -113,7 +112,7 @@ internal class GoogleSttSession(
      * 입력: chunk - 조각, delayMs - 공급 간격, index / count - 조각 번호 / 전체 수(로그용)
      * 출력: 없음
      * 리턴: SessionResult
-     * 예외: 재시도까지 실패하거나 세션 한도를 이미 넘겼으면 TimeoutCancellationException 을 그대로 던진다
+     * 예외: 재시도까지 실패하거나 세션 한도를 이미 넘겼으면 AppError.SttTimeout 을 그대로 던진다
      *
      * 배경: AICore 할당량은 "굴러가는 창" 이라 시간이 지나면 다시 채워진다는 보고가 있다(googlesamples/mlkit issue #1070, 약 2.5분 뒤 회복).
      */
@@ -122,8 +121,7 @@ internal class GoogleSttSession(
         while (true) {
             try {
                 return transcribeOne(chunk, delayMs)
-            } catch (e: TimeoutCancellationException) {
-                currentCoroutineContext().ensureActive()         // 바깥 작업이 취소된 것이면 여기서 취소로 끝낸다
+            } catch (e: AppError.SttTimeout) {
                 attempt++
                 if (attempt > QUOTA_RETRY_MAX || pastBudget) throw e
                 log(
@@ -149,15 +147,14 @@ internal class GoogleSttSession(
     suspend fun warmUp(): Throwable? {
         val silence = ByteArray(BYTES_PER_SEC * WARMUP_SECONDS)      // 1초 무음(0x00)
         return try {
-            withTimeout(WARMUP_TIMEOUT_MS) { transcribeOne(silence, WARMUP_FEED_DELAY_MS) }   // 점검도 실시간 속도로 넣는다
+            // 이 제한에 걸리면 null 이 온다(바깥 작업의 취소는 null 이 아니라 취소 예외로 올라간다)
+            withTimeoutOrNull(WARMUP_TIMEOUT_MS) { transcribeOne(silence, WARMUP_FEED_DELAY_MS) }   // 점검도 실시간 속도로 넣는다
+                ?: return AppError.SttTimeout("1초 무음에 ${WARMUP_TIMEOUT_MS / 1000}초 안에 응답이 없다")
             null
-        } catch (e: TimeoutCancellationException) {
-            currentCoroutineContext().ensureActive()                 // 바깥 작업의 취소는 그대로 올린다
-            e                                                        // 아예 응답이 없다(isEngineDead = true)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            e                                                        // checkStatus 무응답이면 먹통, 그 밖은 "대답했지만 쓸 수 없음"
+            e                                                        // 시간 초과·checkStatus 무응답이면 먹통, 그 밖은 "대답했지만 쓸 수 없음"
         }
     }
 }

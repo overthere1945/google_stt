@@ -105,7 +105,7 @@ class SileroVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-20
     init {
         // ── 1) 자산 폴더에서 모델을 읽는다. 없으면 원인을 정확히 알려주고 즉시 실패한다. ──
         val modelBytes = VadFiles.read(modelDir, MODEL_ASSET)   // change-hyungchul-20261106-2159 : [T5-6] assets → 자산 폴더(없으면 E-VAD-01)
-        modelSha256 = VadFiles.sha256(modelBytes)               // change-hyungchul-20261009-1530 : 공통 해시 함수 사용
+        modelSha256 = VadFiles.sha256(modelBytes)               // change-hyungchul-20261009-1530 : 공통 해시 함수 사용   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → VadFiles(자산 폴더에서 읽는다)
 
         // ── 2) 공식 Python OnnxWrapper 와 같은 단일 thread 설정으로 세션을 만든다. ──
         sessionOptions.setInterOpNumThreads(1)
@@ -154,7 +154,7 @@ class SileroVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-20
     @Synchronized
     override fun detect(pcm16Le: ByteArray, setting: VadSetting): FrameSegmenter.Result {
         val config = VadConfig.fromSetting(setting)                      // 범위 검증 포함
-        val samples = Pcm16.toFloat(pcm16Le)                          // PCM16 → [-1, 1) float
+        val samples = Pcm16.toFloat(pcm16Le)                          // PCM16 → [-1, 1) float   // change-hyungchul-20261106-2216 : [T5-6] VadAudio → Pcm16(식은 같다)
         if (samples.isEmpty()) return FrameSegmenter.Result(emptyList(), emptyList())
         val probabilities = inferProbabilities(samples)                  // frame 별 speech 확률(기존 그대로)
         return FrameSegmenter.collect(                                   // 기존 collectSpeechSegments 와 같은 규칙
@@ -255,8 +255,8 @@ class SileroVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-20
      * 비고: OrtEnvironment 는 프로세스 공용 singleton 이므로 닫지 않는다.
      */
     override fun close() {
-        VadFiles.release("srTensor") { srTensor.close() }
-        VadFiles.release("session") { session.close() }
-        VadFiles.release("sessionOptions") { sessionOptions.close() }
+        VadFiles.release("srTensor") { srTensor.close() }   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
+        VadFiles.release("session") { session.close() }   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
+        VadFiles.release("sessionOptions") { sessionOptions.close() }   // change-hyungchul-20261106-2216 : [T5-6] runCatching → 실패를 로그에 남긴다
     }
 }

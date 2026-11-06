@@ -25,6 +25,7 @@ import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.common.audio.AudioSource
 import com.google.mlkit.genai.speechrecognition.SpeechRecognition
+import com.google.mlkit.genai.speechrecognition.SpeechRecognizer
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerOptions
 import com.google.mlkit.genai.speechrecognition.SpeechRecognizerResponse
 import com.google.mlkit.genai.speechrecognition.speechRecognizerOptions
@@ -40,7 +41,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -71,6 +71,17 @@ class MlKitAdapter(override val spec: ModelSpec, private val log: (String) -> Un
         locale = Locale.forLanguageTag(lang.reqLang)
         session.reset()
         val t0 = System.nanoTime()
+        // change-hyungchul-20261106-2215 : 언어 모델 확인·받기를 warm-up 앞에서 따로 한다 — warm-up 의 30초 제한이 모델 받기(최대 10분)까지
+        //   감싸면, 받는 중인 것을 "먹통"(E-EN-05)으로 잘못 알리고 받기도 끊는다(독립 검토 지적 2)
+        val client = SpeechRecognition.getClient(options())
+        try {
+            ensureAvailable(client)
+        } catch (e: IOException) {
+            if (isEngineDead(e)) throw AppError.MlKitStuck("${e.message}", e)      // checkStatus 조차 대답하지 않는다
+            throw AppError.ModelLoad("ML Kit($locale)을 쓸 수 없다 — ${e.message}", e)   // 모델 받기 실패·사용 불가
+        } finally {
+            closeRecognizerBounded(client)
+        }
         // 상태 확인은 "모델이 있는가" 만 본다. 엔진이 먹통이어도 AVAILABLE 로 나오므로 1초 무음을 실제로 넣어 본다.
         val failure = session.warmUp()
         if (failure != null) {
@@ -92,11 +103,13 @@ class MlKitAdapter(override val spec: ModelSpec, private val log: (String) -> Un
      * 입력: chunks - 조각들, feed - 쓰지 않는다(실시간 고정), lang - 평가 언어
      * 출력: 조각 수만큼 세션을 쓴다
      * 리턴: SttOutcome(전사문, 확정 문장 수, 첫 응답, 꼬리 지연, 공급 시간, 엔진 메모)
-     * 예외: IOException(엔진 오류·모델 사용 불가), TimeoutCancellationException(응답 없음 — isEngineDead 로 판정)
+     * 예외: IOException(엔진 오류·모델 사용 불가), AppError.SttTimeout(E-EN-03, 응답 없음 — isEngineDead 로 판정)
      */
     override suspend fun transcribe(chunks: List<AudioChunk>, feed: FeedChoice, lang: Language): SttOutcome {
         locale = Locale.forLanguageTag(lang.reqLang)
-        val r = session.transcribeChunks(chunks.map { it.pcm }, REALTIME_DELAY_MS)
+        val pcms = chunks.map { it.pcm }.filter { it.isNotEmpty() }                 // change-hyungchul-20261106-2215 : 빈 조각은 건너뛴다(세션을 쓰지 않는다 — 약속대로)
+        if (pcms.isEmpty()) return sttOutcome("", 0, -1, -1, 0)                     // 넣을 것이 없으면 세션 없이 빈 결과(NO_MATCH)
+        val r = session.transcribeChunks(pcms, REALTIME_DELAY_MS)
         return sttOutcome(r.text, r.finals, r.firstResultMs, r.tailMs, r.feedMs).copy(note = r.note)
     }
 
@@ -109,43 +122,14 @@ class MlKitAdapter(override val spec: ModelSpec, private val log: (String) -> Un
      * 입력: pcm - 16 kHz / mono / PCM16 LE, delayMs - 100 ms 조각 사이 간격
      * 출력: 없음
      * 리턴: SessionResult
-     * 예외: 모델이 AVAILABLE 이 아니거나 인식 오류면 IOException, 응답이 없으면 TimeoutCancellationException
+     * 예외: 모델이 AVAILABLE 이 아니거나 인식 오류면 IOException, 응답이 없으면 AppError.SttTimeout(E-EN-03)
      */
     private suspend fun recognize(pcm: ByteArray, delayMs: Long): SessionResult {
-        val options: SpeechRecognizerOptions = speechRecognizerOptions {
-            this.locale = this@MlKitAdapter.locale
-            preferredMode = SpeechRecognizerOptions.Mode.MODE_BASIC
-        }
         // ★ use{} 를 쓰지 않는다. use{} 는 블록을 벗어날 때 close() 를 부르는데, 엔진이 먹통이면 그 close() 가 블록된다.
         //   closeRecognizerBounded() 로 시간 제한을 두어 그런 경우에도 다음 파일로 넘어가게 한다.
-        val recognizer = SpeechRecognition.getClient(options)
+        val recognizer = SpeechRecognition.getClient(options())
         return try {
-            // 먹통일 때 여기서 무한 대기하지 않게 시간 제한을 둔다.
-            var status = withTimeoutOrNull(FEATURE_STATUS_TIMEOUT_MS) { recognizer.checkStatus() }
-                ?: throw IOException(
-                    "checkStatus() 가 ${FEATURE_STATUS_TIMEOUT_MS / 1000}초 안에 응답하지 않았다. " +
-                        "인식 엔진(com.google.android.tts 의 SODA)이 먹통인 상태다.",
-                )
-            Log.i(logTag, "checkStatus=${statusName(status)} (locale=$locale)")
-            if (status == FeatureStatus.DOWNLOADABLE || status == FeatureStatus.DOWNLOADING) {
-                // 다운로드도 무한정 기다리지 않는다.
-                withTimeoutOrNull(MODEL_DOWNLOAD_TIMEOUT_MS) {
-                    recognizer.download().collect { ds ->
-                        Log.i(logTag, "download status: $ds")
-                        if (ds is DownloadStatus.DownloadFailed) {
-                            throw IOException("모델 다운로드 실패: ${ds.e.message ?: ds.e}")
-                        }
-                    }
-                } ?: throw IOException(
-                    "모델 다운로드가 ${MODEL_DOWNLOAD_TIMEOUT_MS / 60_000}분 안에 끝나지 않았다.",
-                )
-                status = withTimeoutOrNull(FEATURE_STATUS_TIMEOUT_MS) { recognizer.checkStatus() }
-                    ?: throw IOException("다운로드 후 checkStatus() 가 응답하지 않았다.")
-                Log.i(logTag, "after download, checkStatus=${statusName(status)}")
-            }
-            if (status != FeatureStatus.AVAILABLE) {
-                throw IOException("모델 사용 불가: ${statusName(status)}. MODE_BASIC 은 API 31+ 대부분의 기기에서 제공된다.")
-            }
+            ensureAvailable(recognizer)                                            // 상태 확인(필요하면 모델 받기)
 
             val pipe = ParcelFileDescriptor.createPipe()
             val readSide = pipe[0]
@@ -164,7 +148,9 @@ class MlKitAdapter(override val spec: ModelSpec, private val log: (String) -> Un
                 val request = speechRecognizerRequest { audioSource = AudioSource.fromPfd(readSide) }
                 val timeout = sttTimeoutSec(pcm.size, delayMs).seconds             // 입력 길이·공급 속도를 반영한 시간 제한
                 sessionStartNs = System.nanoTime()
-                withTimeout(timeout) {
+                // change-hyungchul-20261106-2215 : withTimeout → withTimeoutOrNull. 이 제한에 걸리면 null 이 오고, 취소 예외가 아닌 SttTimeout 으로 알린다.
+                //   바깥 작업이 취소된 것이면 null 이 아니라 취소 예외가 그대로 올라간다(독립 검토 지적 1)
+                withTimeoutOrNull(timeout) {
                     coroutineScope {
                         val collectJob = launch {
                             recognizer.startRecognition(request).collect { resp ->
@@ -199,7 +185,7 @@ class MlKitAdapter(override val spec: ModelSpec, private val log: (String) -> Un
                         collectJob.join()
                         endNs = System.nanoTime()
                     }
-                }
+                } ?: throw AppError.SttTimeout("${timeout.inWholeSeconds}초 안에 응답이 없다(입력 ${pcm.size / BYTES_PER_SEC}초)")
             } finally {
                 feeder.abort()
                 // readSide 를 닫지 않으면 파일마다 FD 가 새어 작업 도중 EMFILE 로 실패한다.
@@ -237,6 +223,49 @@ class MlKitAdapter(override val spec: ModelSpec, private val log: (String) -> Un
             )
         } finally {
             closeRecognizerBounded(recognizer)
+        }
+    }
+
+    /** 목적: 지금 언어의 인식 옵션을 만든다. 입력: 없음 / 출력: 없음 / 리턴: SpeechRecognizerOptions(MODE_BASIC) */
+    private fun options(): SpeechRecognizerOptions = speechRecognizerOptions {
+        this.locale = this@MlKitAdapter.locale
+        preferredMode = SpeechRecognizerOptions.Mode.MODE_BASIC
+    }
+
+    /**
+     * add-hyungchul-20261106-2215 : recognize() 안에 있던 상태 확인·모델 받기를 함수로 뺐다(load 도 쓴다 — 본문은 v3 그대로)
+     * 목적: 언어 모델을 쓸 수 있는지 확인하고, 받아야 하면 받는다.
+     * 입력: recognizer - 인식기
+     * 출력: 시스템이 모델을 받을 수 있다(최대 10분)
+     * 리턴: 없음(AVAILABLE 이면 돌아온다)
+     * 예외: IOException - checkStatus 무응답("응답하지 않았다" → isEngineDead), 받기 실패, 사용 불가
+     */
+    private suspend fun ensureAvailable(recognizer: SpeechRecognizer) {
+        // 먹통일 때 여기서 무한 대기하지 않게 시간 제한을 둔다.
+        var status = withTimeoutOrNull(FEATURE_STATUS_TIMEOUT_MS) { recognizer.checkStatus() }
+            ?: throw IOException(
+                "checkStatus() 가 ${FEATURE_STATUS_TIMEOUT_MS / 1000}초 안에 응답하지 않았다. " +
+                    "인식 엔진(com.google.android.tts 의 SODA)이 먹통인 상태다.",
+            )
+        Log.i(logTag, "checkStatus=${statusName(status)} (locale=$locale)")
+        if (status == FeatureStatus.DOWNLOADABLE || status == FeatureStatus.DOWNLOADING) {
+            // 다운로드도 무한정 기다리지 않는다.
+            withTimeoutOrNull(MODEL_DOWNLOAD_TIMEOUT_MS) {
+                recognizer.download().collect { ds ->
+                    Log.i(logTag, "download status: $ds")
+                    if (ds is DownloadStatus.DownloadFailed) {
+                        throw IOException("모델 다운로드 실패: ${ds.e.message ?: ds.e}")
+                    }
+                }
+            } ?: throw IOException(
+                "모델 다운로드가 ${MODEL_DOWNLOAD_TIMEOUT_MS / 60_000}분 안에 끝나지 않았다.",
+            )
+            status = withTimeoutOrNull(FEATURE_STATUS_TIMEOUT_MS) { recognizer.checkStatus() }
+                ?: throw IOException("다운로드 후 checkStatus() 가 응답하지 않았다.")
+            Log.i(logTag, "after download, checkStatus=${statusName(status)}")
+        }
+        if (status != FeatureStatus.AVAILABLE) {
+            throw IOException("모델 사용 불가: ${statusName(status)}. MODE_BASIC 은 API 31+ 대부분의 기기에서 제공된다.")
         }
     }
 

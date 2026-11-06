@@ -15,6 +15,7 @@
 package com.example.google_stt.engine.stt   // change-hyungchul-20261105-1920 : [T1-4] 패키지 이동 (옛 위치 stt/SttUtil.kt)
 
 import kotlinx.coroutines.TimeoutCancellationException
+import com.example.google_stt.domain.AppError   // add-hyungchul-20261106-2215 : [T5-5] 시간 초과·먹통 오류
 import com.example.google_stt.stt.FeedConfig   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 
 /** 두 nanoTime 사이를 ms 로. 끝값이 0(미측정)이면 -1 을 돌려 CSV 에서 구분되게 한다. */
@@ -38,6 +39,7 @@ fun ms(fromNs: Long, toNs: Long): Long =
  */
 fun isEngineDead(e: Throwable): Boolean {
     if (e is TimeoutCancellationException) return true          // 1단계
+    if (e is AppError.SttTimeout || e is AppError.MlKitStuck) return true   // add-hyungchul-20261106-2215 : [T5-5] v4 어댑터는 시간 초과를 취소 예외가 아니라 이 오류로 던진다(독립 검토 지적 1·8)
     val m = e.message ?: return false
     return m.contains("응답하지 않았다") || m.contains("무응답")  // 2단계
 }
