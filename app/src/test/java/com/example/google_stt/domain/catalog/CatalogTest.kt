@@ -11,9 +11,6 @@
  */
 package com.example.google_stt.domain.catalog
 
-import com.example.google_stt.plan.PlanCheck        // v3 언어 전용 집합(대조용, T8-2 에서 삭제)
-import com.example.google_stt.stt.SherpaCatalog     // v3 모델 정의(대조용, T8-2 에서 삭제)
-import com.example.google_stt.stt.SherpaModelSpec   // v3 모델 자료형(대조용)
 import org.junit.Assert.assertEquals                // 값 비교
 import org.junit.Assert.assertNull                  // null 확인
 import org.junit.Assert.assertTrue                  // 조건 확인
@@ -48,8 +45,8 @@ class CatalogTest {
     fun languageOnlySets_matchV3() {
         val koOnly = Catalog.models.filter { it.langSupport == LangSupport.KO_ONLY }.map { it.engine }.toSet()
         val enOnly = Catalog.models.filter { it.langSupport == LangSupport.EN_ONLY }.map { it.engine }.toSet()
-        assertEquals(PlanCheck.KO_ONLY, koOnly)                                      // zipformer-ko, zipformer-ko-stream, vosk-small-ko
-        assertEquals(PlanCheck.EN_ONLY, enOnly)                                      // vosk-small-en, zipformer-en, parakeet, moonshine 2
+        assertEquals(setOf("zipformer-ko", "zipformer-ko-stream", "vosk-small-ko"), koOnly)   // change-hyungchul-20261107-0008 : [T8-2] v3 PlanCheck.KO_ONLY 의 값                                      // zipformer-ko, zipformer-ko-stream, vosk-small-ko
+        assertEquals(setOf("vosk-small-en", "zipformer-en", "parakeet-tdt-0.6b-v2", "moonshine-tiny-en", "moonshine-base-en"), enOnly)   // change-hyungchul-20261107-0008 : [T8-2] v3 PlanCheck.EN_ONLY 의 값                                      // vosk-small-en, zipformer-en, parakeet, moonshine 2
         assertEquals(13, Catalog.modelsFor(Language.KO).count { it.runtime != Runtime.MLKIT })   // v3 견본의 kr 13모델
         assertEquals(15, Catalog.modelsFor(Language.EN).count { it.runtime != Runtime.MLKIT })   // v3 견본의 en 15모델
         assertTrue(Catalog.modelsFor(Language.EN).none { it.engine == "zipformer-ko" })          // FR-02-03
@@ -84,33 +81,6 @@ class CatalogTest {
         assertTrue(cond.all { it.displayName.endsWith("[상업 조건부]") })              // 이름 끝 표시
     }
 
-    /**
-     * 목적: 옮긴 값이 v3 SherpaCatalog 와 같다(패키지 이름·파일·조각 상한·라이선스·상업 판정·화면 이름).
-     * 입력: 없음 / 출력: 없음 / 리턴: 없음
-     */
-    @Test
-    fun values_matchV3SherpaCatalog() {
-        val v3: Map<String, SherpaModelSpec> = mapOf(
-            "whisper-tiny" to SherpaCatalog.WHISPER_TINY, "whisper-base" to SherpaCatalog.WHISPER_BASE,
-            "whisper-small" to SherpaCatalog.WHISPER_SMALL, "whisper-medium" to SherpaCatalog.WHISPER_MEDIUM,
-            "whisper-turbo" to SherpaCatalog.WHISPER_TURBO, "qwen3asr-0.6b" to SherpaCatalog.QWEN3_ASR_06B,
-            "omnilingual-300m" to SherpaCatalog.OMNILINGUAL_300M, "nemotron3.5-320ms" to SherpaCatalog.NEMOTRON_320MS,
-            "nemotron3.5-560ms" to SherpaCatalog.NEMOTRON_560MS, "zipformer-ko" to SherpaCatalog.ZIPFORMER_KO,
-            "zipformer-ko-stream" to SherpaCatalog.ZIPFORMER_KO_STREAMING, "sensevoice-small" to SherpaCatalog.SENSE_VOICE_SMALL,
-            "zipformer-en" to SherpaCatalog.ZIPFORMER_EN, "parakeet-tdt-0.6b-v2" to SherpaCatalog.PARAKEET_TDT_06B_V2,
-            "moonshine-tiny-en" to SherpaCatalog.MOONSHINE_TINY_EN, "moonshine-base-en" to SherpaCatalog.MOONSHINE_BASE_EN,
-            "vosk-small-ko" to SherpaCatalog.VOSK_SMALL_KO, "vosk-small-en" to SherpaCatalog.VOSK_SMALL_EN,
-        )
-        assertEquals(v3.keys, Catalog.models.filter { it.runtime != Runtime.MLKIT }.map { it.engine }.toSet())   // 18개 모두 대응
-        for ((engine, old) in v3) {
-            val m = byEngine.getValue(engine)                                        // 새 정의
-            assertEquals(engine, old.dirName, m.assetId)                             // 패키지 이름 = 자산 ID
-            assertEquals(engine, old.files, m.files)                                 // 역할 → 파일
-            assertEquals(engine, old.maxChunkSec, m.maxChunkSec?.toDouble())         // 조각 상한
-            assertEquals(engine, old.license, m.license)                             // 라이선스
-            assertEquals(engine, old.commercial, m.commercial.value)                 // 상업 판정
-            assertEquals(engine, old.displayName, m.displayName)                     // 화면 이름
-            assertEquals(engine, old.family.streaming, !m.isOffline)                 // 스트리밍 여부(Vosk 포함)
-        }
-    }
+    // change-hyungchul-20261107-0008 : [T8-2] "옮긴 값이 v3 SherpaCatalog 와 같다" 시험(values_matchV3SherpaCatalog)은 v3 정의를 지우면서 뺐다.
+    //   그 시험은 WP2~WP7 동안 통과했고, 지금 값은 CatalogAssetsTest·CatalogExportTest(tools/asset_catalog.json 사본)가 지킨다.
 }

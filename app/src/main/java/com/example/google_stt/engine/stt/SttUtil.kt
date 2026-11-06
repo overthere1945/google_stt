@@ -16,7 +16,6 @@ package com.example.google_stt.engine.stt   // change-hyungchul-20261105-1920 : 
 
 import kotlinx.coroutines.TimeoutCancellationException
 import com.example.google_stt.domain.AppError   // add-hyungchul-20261106-2215 : [T5-5] 시간 초과·먹통 오류
-import com.example.google_stt.stt.FeedConfig   // add-hyungchul-20261105-1920 : [T1-4] 패키지 이동
 
 /** 두 nanoTime 사이를 ms 로. 끝값이 0(미측정)이면 -1 을 돌려 CSV 에서 구분되게 한다. */
 fun ms(fromNs: Long, toNs: Long): Long =
@@ -105,7 +104,7 @@ fun describe(e: Throwable): String {
  *
  * 주의: 공급 지연이 0(MAX 모드) 이면 이론 공급시간을 0 으로 보고 오디오 길이만 쓴다.
  */
-fun sttTimeoutSec(pcmBytes: Int, feed: FeedConfig): Long = sttTimeoutSec(pcmBytes, feed.delayMs)   // change-hyungchul-20261106-2144 : [T5-5] 본문을 아래 함수로 옮겼다(v3 호출부용 — T8-2 에서 삭제)
+// change-hyungchul-20261107-0008 : [T8-2] v3 서명 sttTimeoutSec(pcmBytes, feed: FeedConfig) 삭제 — 아래의 (pcmBytes, delayMs) 만 쓴다
 
 /**
  * add-hyungchul-20261106-2144 : [T5-5]

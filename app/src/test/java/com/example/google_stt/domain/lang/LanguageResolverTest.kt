@@ -10,7 +10,6 @@
 package com.example.google_stt.domain.lang
 
 import com.example.google_stt.domain.catalog.Language   // 평가 언어
-import com.example.google_stt.io.inputLanguageHint      // v3 판정 함수(대조용, T8-2 에서 삭제)
 import org.junit.Assert.assertEquals                    // 값 비교
 import org.junit.Assert.assertFalse                     // 거짓 확인
 import org.junit.Assert.assertNull                      // null 확인
@@ -54,16 +53,18 @@ class LanguageResolverTest {
     }
 
     /**
-     * 목적: 판정 결과가 v3 inputLanguageHint 와 같다("ko"/"en"/null).
+     * 목적: 판정 결과가 v3 inputLanguageHint 가 내던 값과 같다("ko"/"en"/null).
+     *       change-hyungchul-20261107-0008 : [T8-2] v3 함수를 지우면서, 지우기 직전에 그 함수로 뽑은 값을 기대값으로 고정했다.
      * 입력: 없음 / 출력: 없음 / 리턴: 없음
      */
     @Test
     fun resolve_matchesV3() {
-        val names = listOf("en", "kr", "ko", "KOR", "korea", "Korean", "한국어", "eng", "English", "영어", "a_kr", "b_EN",
-            "misc", "kren", "korea2", "kr_en", "en_kr", "primary:Documents/input_sound/scarlett", "primary:Documents/x/kr", "a/en/b")
-        for (n in names) {
-            assertEquals(n, inputLanguageHint(listOf(n)), LanguageResolver.resolvePath(n)?.code)   // 코드 글자로 비교
-        }
+        val v3 = mapOf(
+            "en" to "en", "kr" to "ko", "ko" to "ko", "KOR" to "ko", "korea" to "ko", "Korean" to "ko", "한국어" to "ko", "eng" to "en", "English" to "en",
+            "영어" to "en", "a_kr" to "ko", "b_EN" to "en", "misc" to null, "kren" to null, "korea2" to null, "kr_en" to "en", "en_kr" to "ko",
+            "primary:Documents/input_sound/scarlett" to null, "primary:Documents/x/kr" to "ko", "a/en/b" to "en",
+        )
+        for ((n, want) in v3) assertEquals(n, want, LanguageResolver.resolvePath(n)?.code)   // 코드 글자로 비교
     }
 
     /**

@@ -59,16 +59,8 @@ class PlanCsvTest {
         assertEquals(generated.jobs.map { it.key }.toSet(), loaded.jobs.map { it.key }.toSet())   // 같은 결과 폴더 집합
     }
 
-    /**
-     * 목적: 읽은 줄이 v3 PlanCsv.parse 와 같다(같은 순서, 같은 값).
-     * 입력: 없음 / 출력: 없음 / 리턴: 없음
-     */
-    @Test
-    fun parse_matchesV3() {
-        val old = com.example.google_stt.plan.PlanCsv.parse(sample)           // v3 읽기(대조용)
-        assertEquals(old.jobs.map { it.csvLine }, PlanCsv.parse(sample).rows.map { it.csvLine })
-        assertEquals(old.errors, PlanCsv.parse(sample).errors)
-    }
+    // change-hyungchul-20261107-0011 : [T8-2] "읽은 줄이 v3 PlanCsv.parse 와 같다" 시험(parse_matchesV3)은 v3 코드를 지우면서 뺐다(WP2~WP7 동안 통과).
+    //   견본 616줄이 같은 결과 폴더 집합으로 읽히는지는 바로 위 시험이 계속 지킨다.
 
     /**
      * 목적: [UT-PLAN-02] 작업 → CSV 글 → 작업으로 돌아와도 같다(고정 프리셋, 공급 속도·구간 처리 포함).
