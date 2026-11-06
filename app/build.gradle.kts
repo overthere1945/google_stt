@@ -49,7 +49,7 @@ android {
         // change-hyungchul-20261105-1625 : 3.0.0 → 4.0.0-dev (Major 재작성 진행 중, 브랜치 v4-rewrite) — [T0-2] versionCode 11 → 12(D24).
         //   완료 때(T8-3) versionName 을 4.0.0 으로 바꾼다. 설계: docs/AI_analyze/04_아키텍처_상세설계_20261105.md
         versionCode = 12
-        versionName = "4.0.0-dev"
+        versionName = "4.0.0"   // change-hyungchul-20261107-0026 : [T8-3] 4.0.0-dev → 4.0.0 (v3 코드 삭제·의존성 정리 완료)
 
         // add-hyungchul-20261105-1650 : [T0-4] 계측 시험(L2, app/src/androidTest) 실행기 — connectedDebugAndroidTest 가 이 실행기로 시험을 돌린다
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -104,9 +104,8 @@ kotlin {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.activity:activity-ktx:1.9.3")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    // change-hyungchul-20261107-0026 : [T8-3] v3 화면(View)용 의존성 삭제 — appcompat 1.7.0, activity-ktx 1.9.3, lifecycle-runtime-ktx 2.8.7.
+    //   Activity 는 activity-compose 1.13.0, repeatOnLifecycle 은 lifecycle-runtime-compose 2.11.0 이 끌어오는 lifecycle-runtime 이 제공한다.
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")   // change-hyungchul-20261105-1625 : [T0-2] 1.9.0 → 1.11.0(5단계 2장 판 고정)
 
@@ -121,13 +120,8 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.3.0")            // 설정·언어 기억·실측 RTF 저장(PlanState 대체)
     implementation("org.apache.commons:commons-compress:1.28.0")                // 모델 tar.bz2 해제(Apache-2.0)
 
-    // ★ 추가 1: themes.xml 의 Theme.Material3.DayNight.NoActionBar 를 제공한다.
-    //   1.12.0 은 compileSdk 34+ 에서 안전하게 동작하는 검증된 조합이다.
-    //   (compileSdk 를 36 으로 올릴 계획이면 1.13.0 / 1.14.0 도 사용 가능)
-    implementation("com.google.android.material:material:1.12.0")
-
-    // ★ 추가 2: activity_main.xml 의 androidx.constraintlayout.widget.ConstraintLayout
-    implementation("androidx.constraintlayout:constraintlayout:2.2.1")
+    // change-hyungchul-20261107-0026 : [T8-3] material 1.12.0, constraintlayout 2.2.1 삭제 — 테마는 플랫폼 테마(android:Theme.Material.*, T8-1),
+    //   화면은 Compose 라서 쓰는 곳이 없다.
 
     // ML Kit GenAI Speech Recognition — 2026-08 기준 유일한 공개 버전(알파)
     implementation("com.google.mlkit:genai-speech-recognition:1.0.0-alpha1")
