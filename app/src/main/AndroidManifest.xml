@@ -23,6 +23,17 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+      add-hyungchul-20261106-1722 : [T4-7] 포그라운드 서비스(받기 모드, 이후 실행 모드)에 필요한 권한(D21, 4단계 5-5).
+        · FOREGROUND_SERVICE + FOREGROUND_SERVICE_SPECIAL_USE : 종류 specialUse 의 포그라운드 서비스
+        · POST_NOTIFICATIONS : 진행 알림(Android 13+ 는 실행 중 허용을 받아야 알림이 보인다 — 허용 요청은 화면 작업 T7 에서)
+        · WAKE_LOCK : 화면이 꺼져도 받기·실행이 이어지게 하는 부분 wake lock
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
       add-hyungchul-20261010-2238 : sherpa-onnx STT 모델 읽기용 '모든 파일 접근'(사용자 결정 Q24)
         · 모델 위치: /sdcard/Documents/stt_models/<패키지>/ (PC 에서 adb push 또는 MTP 복사)
         · sherpa-onnx 는 파일 경로로만 모델을 읽는다. .onnx 는 미디어 파일이 아니라 Android 13+ 에서는 이 권한 없이는 공용 폴더의 파일을 경로로 읽을 수 없다.
@@ -44,7 +55,9 @@
         </intent>
     </queries>
 
+    <!-- change-hyungchul-20261106-1722 : [T4-7] android:name=".SttApp" 추가 — 객체 묶음(AppContainer)을 들고 있는 Application -->
     <application
+        android:name=".SttApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -61,6 +74,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          add-hyungchul-20261106-1722 : [T4-7] 포그라운드 서비스. 종류 specialUse — 긴 시간 도는 온디바이스 STT 평가(받기 포함)는
+          dataSync 의 시간 제한(Android 15: 24시간에 6시간)에 맞지 않아 specialUse 를 쓴다(D21). 밖에서 시작할 수 없다(exported=false).
+        -->
+        <service
+            android:name=".run.RunService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="On-device STT batch evaluation (long-running, user-started)" />
+        </service>
     </application>
 
 </manifest>
