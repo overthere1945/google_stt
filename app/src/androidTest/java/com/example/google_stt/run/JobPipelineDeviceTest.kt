@@ -122,4 +122,38 @@ class JobPipelineDeviceTest {
         }
         assertFalse("자산 해시가 미검증으로 적혔다", meta.contains("unverified"))
     }
+
+    /**
+     * 목적: [M4 문제 2] 한국어 Vosk × VAD 없음을 앱의 실행 경로(JobPipeline)로 여러 번 돌려 글자 수가 무너지는 빈도를 잰다.
+     *       M4 완주에서 33건 중 1건이 오류 없이 109자(평소 620~645자)로 끝났다. 어댑터만 부르는 시험 20회에서는 재현되지 않았다.
+     *       횟수를 주지 않으면 건너뛴다:  -e vosk_repeat 30
+     * 입력: 없음(시험 인자 vosk_repeat) / 출력: Logcat 에 회차별 글자 수·공급 시간 / 리턴: 없음(오류로 끝난 회차가 있으면 실패 — 글자 수는 판정하지 않는다)
+     * add-hyungchul-20261107-0100 — [WP8·M4 뒤 조사]
+     */
+    @Test
+    fun voskKo_novad_repeat() = runBlocking<Unit> {
+        val times = InstrumentationRegistry.getArguments().getString("vosk_repeat")?.toIntOrNull() ?: 0
+        assumeTrue("vosk_repeat 인자가 없어 건너뜀", times > 0)
+        val spec = Catalog.model("vosk-small-ko")!!
+        val job = Job(LangFolder("kr", "id", Language.KO, LangSource.AUTO_SUBFOLDER), spec, VadSetting(VadEngine.NONE, VadPresetCatalog.NONE_PRESET, emptyMap()),
+            RunOptions().effectiveFor(spec.runtime))
+        job.assetIds.forEach { EngineTestSupport.assetDir(it) }                        // 모델 준비
+        val wav = File(context.cacheDir, "pipe_it_01.wav").apply {
+            writeBytes(InstrumentationRegistry.getInstrumentation().context.assets.open("audio/kr/Customer_Service_KR/01.wav").use { it.readBytes() })
+        }
+        val item = AudioItem(Uri.fromFile(wav), listOf("Customer_Service_KR"), "01.wav", "01", ".wav", wav.length())
+        val chars = ArrayList<Int>()
+        repeat(times) { n ->
+            val out = File(context.cacheDir, "pipe_it_vosk").apply { deleteRecursively(); mkdirs() }   // 회차마다 새 폴더
+            val tree = SafTree(context.contentResolver, DocumentFile.fromFile(out))
+            val result = JobPipeline(container.pipelineDeps(tree)).execute(job, listOf(container.audioSource(item)),
+                RunParams("run_vosk_$n", container.isoNow(), 1, RunPurpose.TIMING))
+            assertEquals(PlanProgress.DONE, result.status); assertEquals(1, result.ok)
+            val lines = File(out, "kr/vosk-small-ko_NOVAD_result.csv").readBytes().let { String(it, 3, it.size - 3, Charsets.UTF_8) }.split("\r\n").filter { it.isNotEmpty() }
+            val v = cells(lines[0]).zip(cells(lines[1])).toMap()
+            chars += v.getValue("chars").toInt()
+            Log.i("GoogleStt", "VOSK-REPEAT ${n + 1}/$times: 글자 ${v["chars"]} feed=${v["feed_sec"]}s transcribe=${v["transcribe_sec"]}s note='${v["note"]}'")
+        }
+        Log.i("GoogleStt", "VOSK-REPEAT 요약: ${times}회, 최소 ${chars.min()} 최대 ${chars.max()}, 300자 미만 ${chars.count { it < 300 }}회")
+    }
 }
