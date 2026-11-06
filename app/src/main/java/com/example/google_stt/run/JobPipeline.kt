@@ -178,7 +178,7 @@ class JobPipeline(private val deps: PipelineDeps) {
                     return result(PlanProgress.FAILED, if (mlKit) "ERR_MLKIT_STUCK" else "ERR_ENGINE_DEAD", stuck = mlKit)
                 }
             }
-            val renamed = withContext(deps.io) { sink.finish() }                   // CSV 마지막 쓰기 + "_" 떼기
+            val renamed = withContext(NonCancellable + deps.io) { sink.finish() }  // CSV 마지막 쓰기 + "_" 떼기   // change-hyungchul-20261106-2304 : WP6 독립 검토 8 — 이름을 바꾼 직후 취소돼도 DONE 으로 끝나게
             if (!renamed) deps.log("[${job.label}] 결과 폴더 이름을 바꾸지 못했다(같은 이름이 이미 있다) — \"_\" 폴더로 남는다")
             return result(PlanProgress.DONE, if (renamed) "" else "WARN_RENAME")
         } catch (e: CancellationException) {

@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers                            // 기본 스�
 import kotlinx.coroutines.NonCancellable                         // 마무리 기록
 import kotlinx.coroutines.channels.Channel                       // 끝난 작업 알림
 import kotlinx.coroutines.coroutineScope                         // 자식 작업 범위
+import kotlinx.coroutines.ensureActive                           // 실행이 취소됐는지
 import kotlinx.coroutines.launch                                 // 작업 시작
 import kotlinx.coroutines.withContext                            // 마무리 기록
 
@@ -148,7 +149,17 @@ class JobScheduler(private val deps: SchedulerDeps) {
                 pending.removeAt(i)
                 val slot = freeSlots.removeFirst()
                 running[slot] = job
-                launch { done.send(runOne(plan, job, slot) { w -> waiting = w; publish() }) }
+                launch {   // change-hyungchul-20261106-2304 : WP6 독립 검토 2 — 작업 안에서 난 취소(실행 자체는 취소되지 않음)로 알림이 빠지면 루프가 영원히 기다린다
+                    val d = try {
+                        runOne(plan, job, slot) { w -> waiting = w; publish() }
+                    } catch (e: CancellationException) {
+                        ensureActive()                                         // 실행이 취소된 것이면 그대로 끝낸다
+                        deps.log("[${job.label}] 작업 안에서 취소가 났다(실행은 계속) — 이 작업만 실패로 둔다")
+                        markQuietly(job, PlanProgress.FAILED, slot, "", "ERR_INTERNAL_CANCEL")
+                        Done(job, slot, JobResult(job, PlanProgress.FAILED, 0, 0, 0, 0.0, 0.0, "ERR_INTERNAL_CANCEL"), null)
+                    }
+                    done.send(d)
+                }
             }
             publish()
             if (running.isEmpty()) break                                       // 돌고 있는 것이 없으면 끝(중지 요청으로 남은 작업이 있을 수 있다)
@@ -161,7 +172,17 @@ class JobScheduler(private val deps: SchedulerDeps) {
             results += r
             if (r.mlKitStuck) mlKitStuck = true
             progress = if (r.status == PlanProgress.DONE) progress.copy(done = progress.done + 1) else progress.copy(failed = progress.failed + 1)
-            deps.onResult(r)
+            try {   // change-hyungchul-20261106-2304 : WP6 독립 검토 1 — 결과 뒤처리(RTF 저장·요약 쓰기)의 실패가 실행을 죽이지 않게
+                deps.onResult(r)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: AppError.OutputUnavailable) {
+                throw e                                                        // 출력 폴더 오류는 실행 전체를 멈춘다
+            } catch (e: AppError.OutputNoSpace) {
+                throw e
+            } catch (e: Exception) {
+                deps.log("[${r.job.label}] 결과 뒤처리 실패(실행은 계속): ${e.javaClass.simpleName}: ${e.message}")
+            }
         }
         if (pending.isNotEmpty()) deps.log("멈춤: 시작하지 않은 작업 ${pending.size}개가 남았다")
         results
@@ -203,6 +224,11 @@ class JobScheduler(private val deps: SchedulerDeps) {
         } catch (e: AppError.OutputNoSpace) {
             markQuietly(job, PlanProgress.FAILED, slot, started, e.code)
             return Done(job, slot, null, e)
+        } catch (e: Exception) {   // change-hyungchul-20261106-2304 : WP6 독립 검토 1 — 그 밖의 예외는 이 작업만 실패시키고 다음 작업으로 간다
+            val note = "ERR_INTERNAL:${e.javaClass.simpleName}: ${e.message}"
+            deps.log("[${job.label}] 예상하지 못한 오류 — $note")
+            markQuietly(job, PlanProgress.FAILED, slot, started, note)
+            return Done(job, slot, JobResult(job, PlanProgress.FAILED, 0, 0, 0, 0.0, 0.0, note), null)
         }
     }
 

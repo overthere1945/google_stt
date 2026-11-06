@@ -18,6 +18,9 @@ package com.example.google_stt.run
 import com.example.google_stt.data.saf.OutputLayout              // 파일·폴더 이름 규칙
 import com.example.google_stt.data.saf.SafTree                   // 출력 폴더
 import com.example.google_stt.domain.csv.CsvFormat               // BOM·줄 끝·따옴표
+import com.example.google_stt.domain.csv.DeviceCsv               // CSV 이름 꼬리
+import com.example.google_stt.domain.csv.RunMeta                 // CSV 이름 꼬리
+import com.example.google_stt.domain.csv.UnifiedCsv              // CSV 이름 꼬리
 import com.example.google_stt.domain.plan.Job                    // 작업
 import com.example.google_stt.domain.plan.PlanProgress           // 진행 기록 형식
 import com.example.google_stt.domain.plan.PlanProgressRow        // 진행 기록 한 줄
@@ -93,9 +96,10 @@ class ResumeManager(
         val text = store.read(OutputLayout.PROGRESS_FILE) ?: return emptyList()   // 처음 실행
         val parsed = PlanProgress.parse(text)
         var changed = false
+        val alone = parsed.rows.values.count { it.note.startsWith(RUNNING) } == 1  //// change-hyungchul-20261106-2304 : WP6 독립 검토 6 — 여럿이 돌던 중이면 누가 죽였는지 알 수 없어 횟수를 올리지 않는다
         for ((key, row) in parsed.rows) {
             if (row.note.startsWith(RUNNING)) {                                    // 돌다가 앱이 죽었다
-                val n = crashes(row.note) + 1
+                val n = crashes(row.note) + if (alone) 1 else 0
                 rows[key] = row.copy(status = PlanProgress.INTERRUPTED, finished = now(), note = "$CRASH:$n")
                 log("[이어 하기] $key 는 지난 실행에서 비정상 종료했다(연속 ${n}회)")
                 changed = true
@@ -171,7 +175,12 @@ class ResumeManager(
         val lang = OutputLayout.langSegments(job)
         val working = OutputLayout.resultDirName(job, working = true)
         val final = OutputLayout.resultDirName(job, working = false)
-        if (store.exists(lang, working) && store.delete(lang, working)) log("[이어 하기] 중단된 작업 폴더를 지웠다: $working")   // D30
+        if (store.exists(lang, working) && store.delete(lang, working)) {          // D30
+            log("[이어 하기] 중단된 작업 폴더를 지웠다: $working")
+            for (suffix in listOf(UnifiedCsv.FILE_SUFFIX, DeviceCsv.FILE_SUFFIX, RunMeta.FILE_SUFFIX)) {   // change-hyungchul-20261106-2304 : WP6 독립 검토 9 — 그 시도의 CSV 도 지운다(지워진 TXT 를 가리키는 행이 남지 않게)
+                store.delete(lang, OutputLayout.csvName(job, suffix))
+            }
+        }
         if (store.exists(lang, final)) {
             val stale = OutputLayout.staleDirName(job, stamp())
             if (store.rename(lang, final, stale)) log("[이어 하기] 앞선 결과를 치웠다: $final → $stale")

@@ -168,11 +168,11 @@ class RunService : Service() {
      */
     private fun startRun() {
         active++
-        if (!wakeLock.isHeld) wakeLock.acquire(WAKE_LIMIT_RUN_MS)                       // 화면이 꺼져도 CPU 가 돌게(실행은 길다)
+        wakeLock.acquire(WAKE_LIMIT_RUN_MS)                                             // 화면이 꺼져도 CPU 가 돌게(실행은 길다)   // change-hyungchul-20261106-2304 : WP6 독립 검토 5 — 받기가 먼저 잡았어도 한도를 실행용으로 다시 건다
         if (ticker?.isActive != true) ticker = scope.launch { while (true) { show(); delay(TICK_MS) } }
         scope.launch {
             try {
-                container.controller.execute()
+                withContext(Dispatchers.Default) { container.controller.execute() }   // change-hyungchul-20261106-2304 : WP6 독립 검토 11 — 메인 스레드에서 돌리지 않는다
             } catch (e: CancellationException) {
                 throw e                                                                 // 지금 중지
             } catch (e: Exception) {

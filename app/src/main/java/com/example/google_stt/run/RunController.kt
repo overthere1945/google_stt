@@ -113,6 +113,11 @@ class RunController(private val context: Context, private val c: AppContainer) {
         val req = request ?: return                                             // 요청 없이 불렸다
         request = null
         runJob = currentCoroutineContext().job
+        if (_state.value.phase == RunPhase.STOPPING) {   // change-hyungchul-20261106-2304 : WP6 독립 검토 4 — 준비 중에 누른 "지금 중지" 를 놓치지 않는다
+            _state.update { it.copy(phase = RunPhase.STOPPED, message = "사용자 중지") }
+            runJob = null
+            return
+        }
         val clock = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())   // 실행 ID
         val tree = SafTree(context.contentResolver, req.output) { c.log.w(it) }
@@ -121,6 +126,7 @@ class RunController(private val context: Context, private val c: AppContainer) {
             c.log.i("실행 준비: 작업 ${req.jobs.size}개, 동시 ${req.workers}, 목적 ${req.purpose}, 실행 ID $stamp")
             val resume = ResumeManager(SafResumeStore(tree), { synchronized(clock) { clock.format(Date()) } }, { SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) }) { c.log.i(it) }
             val exits = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                tree.recoverTmp(tree.root)   // change-hyungchul-20261106-2304 : WP6 독립 검토 3 — 진행 기록을 쓰다 죽었으면 남은 임시 파일을 살린다(안 그러면 기록이 통째로 사라진다)
                 tree.writeAtomic(tree.root, OutputLayout.PLAN_FILE, PlanCsv.format(PlanCsv.fromJobs(req.jobs), "run=$stamp").toByteArray(Charsets.UTF_8))   // 조합 목록
                 resume.recordExits(exitRecords(clock))                          // 지난번에 앱이 꺼진 이유
             }
@@ -138,10 +144,11 @@ class RunController(private val context: Context, private val c: AppContainer) {
                 onResult = { r -> onResult(r, req, summary, writer) },
                 log = { c.log.i(it) },
             )).also { scheduler = it }
+            if (_state.value.stopAfterCurrent) sched.stopAfterCurrent()   // change-hyungchul-20261106-2304 : WP6 독립 검토 4 — 준비 중에 누른 "이 작업 끝나고" 를 전한다
             val plan = RunPlan(req.jobs, { job -> sources[job.lang.name].orEmpty() }, RunParams(stamp, c.isoNow(), req.workers, req.purpose,
                 downloadOverlap = { c.assets.states.values.any { it.value is com.example.google_stt.data.assets.AssetState.Downloading } }), req.planName, req.restart)
             coroutineScope {
-                val mem = launch { memLogger(tree, clock).run() }               // 30초마다 메모리 기록
+                val mem = launch(kotlinx.coroutines.Dispatchers.IO) { memLogger(tree, clock).run() }   // 30초마다 메모리 기록   // change-hyungchul-20261106-2304 : WP6 독립 검토 11 — 파일 쓰기를 입출력 스레드에서
                 try { sched.run(plan) } finally { mem.cancel() }
             }
             val p = _state.value.progress
@@ -155,6 +162,9 @@ class RunController(private val context: Context, private val c: AppContainer) {
         } catch (e: AppError) {                                                 // 출력 폴더를 쓸 수 없다 등 — 실행 전체를 멈춘다
             _state.update { it.copy(phase = RunPhase.ERROR, message = e.message ?: e.code) }
             c.log.e("실행 중단: ${e.message}", e)
+        } catch (e: Exception) {   // change-hyungchul-20261106-2304 : WP6 독립 검토 1 — 예상하지 못한 예외에도 상태를 끝 단계로 둔다(안 그러면 "실행 중" 에 고착된다)
+            _state.update { it.copy(phase = RunPhase.ERROR, message = "예상하지 못한 오류 — ${e.javaClass.simpleName}: ${e.message}") }
+            c.log.e("실행 중단(예상하지 못한 오류)", e)
         } finally {
             scheduler = null; runJob = null
             withContext(NonCancellable) { c.log.flush(); c.log.attach(null) }
