@@ -183,4 +183,26 @@ class JobSchedulerTest {
         catch (e: AppError.OutputUnavailable) { assertEquals("E-OUT-01", e.code) }
         assertEquals(4, started.size)                                                  // 첫 작업에서 멈췄다
     }
+
+    /**
+     * 목적: [WP6 독립 검토 1·2] 작업 하나에서 예상하지 못한 예외나 (실행은 취소되지 않았는데) 취소가 나도 그 작업만 실패하고 실행은 계속된다.
+     * 입력: 없음 / 출력: 없음 / 리턴: 없음
+     */
+    @Test
+    fun unexpectedFailureOrStrayCancel_failsOnlyThatJob() = runTest {
+        val jobs = listOf(job("whisper-base"), job("zipformer-ko"), job("vosk-small-ko"))
+        outcome = { j ->
+            delay(1_000)
+            when (j.model.engine) {
+                "whisper-base" -> throw IllegalStateException("뜻밖의 오류")
+                "zipformer-ko" -> throw kotlinx.coroutines.CancellationException("안에서 난 취소")
+                else -> JobResult(j, PlanProgress.DONE, 1, 1, 0, 1.0, 5.0)
+            }
+        }
+        val results = scheduler().run(plan(jobs, 1))                                   // 멈추지 않고 끝나야 한다
+        assertEquals(listOf(PlanProgress.FAILED, PlanProgress.FAILED, PlanProgress.DONE), results.map { it.status })
+        assertTrue(results[0].note.startsWith("ERR_INTERNAL:IllegalStateException")); assertEquals("ERR_INTERNAL_CANCEL", results[1].note)
+        assertEquals(listOf(PlanProgress.FAILED, PlanProgress.FAILED, PlanProgress.DONE), jobs.map { status(it) })
+        assertEquals(RunProgress(total = 3, done = 1, failed = 2), progress.last())
+    }
 }

@@ -141,4 +141,22 @@ class ResumeManagerTest {
         assertTrue(lines[2].contains("\"low, memory\""))                               // 쉼표가 든 설명은 따옴표로 감싼다
         assertTrue(lmk.lowMemory); assertFalse(user.lowMemory)
     }
+
+    /**
+     * 목적: [WP6 독립 검토 6·9] 여럿이 돌던 중에 죽으면 누구 탓인지 몰라 횟수를 올리지 않는다. 중단된 시도의 CSV 는 폴더와 함께 지운다.
+     * 입력: 없음 / 출력: 없음 / 리턴: 없음
+     */
+    @Test
+    fun concurrentCrash_notCounted_andStaleCsvRemoved() {
+        var m = manager(); m.load()
+        m.begin(a, 1); m.begin(b, 2)                                                   // 둘이 같이 돌다가 앱이 죽는다
+        m = manager(); m.load()
+        assertEquals("CRASH:0", m.snapshot.getValue(a.key).note); assertEquals("CRASH:0", m.snapshot.getValue(b.key).note)
+        m.begin(a, 1); m.begin(b, 2); m = manager(); m.load()                          // 또 같이 죽어도
+        assertEquals(listOf(a, b), m.plan(listOf(a, b)).todo)                          // 둘 다 다시 돌린다(연속 충돌로 세지 않는다)
+        store.dirs += listOf("kr/_whisper-base_sherpa-int8_NOVAD", "kr/whisper-base_NOVAD_result.csv", "kr/whisper-base_NOVAD_device.csv",
+            "kr/whisper-base_NOVAD_run_meta.csv", "kr/zipformer-ko_NOVAD_result.csv")
+        m.prepareDir(a)
+        assertEquals(setOf("kr/zipformer-ko_NOVAD_result.csv"), store.dirs)            // 그 작업의 폴더와 CSV 3종만 지워진다
+    }
 }
