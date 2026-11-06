@@ -93,3 +93,13 @@ data class RunOptions(
         epd = if (runtime == Runtime.MLKIT && seg == SegMode.ENGINE_MAX) epd else EpdChoice.OFF,   // EPD 는 ML Kit·엔진별 최대 길이에서만
     )
 }
+
+/**
+ * add-hyungchul-20261106-1645 : [T3-4]
+ * 목적: 실행 목적(D17). 시간을 재는 실행은 작업끼리 서로의 속도·발열을 흐리지 않게 한 번에 하나만 돌린다.
+ * 필드: maxWorkers - 고를 수 있는 동시 작업 수의 상한
+ */
+enum class RunPurpose(val maxWorkers: Int) {
+    TIMING(1),      // 시간 측정(기본): 동시 1, 다운로드·해제는 작업 사이에만
+    ACCURACY(3),    // 정확도만: 동시 1~3, 다운로드 병행(오프라인 엔진은 그래도 동시 1)
+}
