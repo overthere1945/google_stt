@@ -35,6 +35,7 @@ data class SttOutcome(
     val feedSec: Double? = null,         // 공급 시간
     val feedMeasured: Boolean = false,   // 공급 구간 측정 여부
     val detectedLang: String? = null,    // 감지 언어
+    val note: String = "",               // add-hyungchul-20261106-2144 : [T5-5] 엔진이 남긴 말(ML Kit 의 NO_SPEECH_DETECTED 등 — 실패가 아닐 때만). CSV note 에 합친다
 )
 
 /**

@@ -103,9 +103,18 @@ fun describe(e: Throwable): String {
  *
  * 주의: 공급 지연이 0(MAX 모드) 이면 이론 공급시간을 0 으로 보고 오디오 길이만 쓴다.
  */
-fun sttTimeoutSec(pcmBytes: Int, feed: FeedConfig): Long {
+fun sttTimeoutSec(pcmBytes: Int, feed: FeedConfig): Long = sttTimeoutSec(pcmBytes, feed.delayMs)   // change-hyungchul-20261106-2144 : [T5-5] 본문을 아래 함수로 옮겼다(v3 호출부용 — T8-2 에서 삭제)
+
+/**
+ * add-hyungchul-20261106-2144 : [T5-5]
+ * 목적: 위와 같다. 공급 간격을 ms 로 직접 받는다(새 어댑터용 — v3 의 FeedConfig 에 기대지 않는다).
+ * 입력: pcmBytes - STT 에 들어가는 PCM 바이트 수, delayMs - 100 ms 조각 사이 간격(ms)
+ * 출력: 없음
+ * 리턴: 시간 제한(초)
+ */
+fun sttTimeoutSec(pcmBytes: Int, delayMs: Long): Long {
     val audioSec = pcmBytes.toDouble() / BYTES_PER_SEC           // 실제 STT 입력 길이(초)
-    val expectedMs = expectedFeedMs(pcmBytes, feed.delayMs)      // 이론 공급시간(ms), 잴 수 없으면 -1
+    val expectedMs = expectedFeedMs(pcmBytes, delayMs)           // 이론 공급시간(ms), 잴 수 없으면 -1
     val feedSec = if (expectedMs > 0) expectedMs / 1000.0 else 0.0
     val base = maxOf(audioSec, feedSec)                          // 둘 중 큰 쪽을 기준으로 삼는다
     val sec = STT_TIMEOUT_FIXED_SEC + base * STT_TIMEOUT_FACTOR  // 고정 여유 + 기준 × 배율

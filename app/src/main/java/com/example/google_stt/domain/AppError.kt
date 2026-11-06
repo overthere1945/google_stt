@@ -55,6 +55,10 @@ sealed class AppError(
     class ModelLoad(detail: String, cause: Throwable? = null) :
         AppError("E-EN-01", false, "모델 적재 실패 — $detail", cause)
 
+    /** add-hyungchul-20261106-2144 : [T5-5] E-EN-05 ML Kit 인식 엔진이 응답하지 않는다(세션 한도·먹통) → 그 작업을 실패로 끝내고 남은 ML Kit 작업은 건너뛴다(D29) */
+    class MlKitStuck(detail: String, cause: Throwable? = null) :
+        AppError("E-EN-05", false, "ML Kit 엔진이 응답하지 않는다 — $detail", cause)
+
     /** add-hyungchul-20261106-1633 : [T3-1] E-OUT-01 출력 폴더에 쓸 수 없다(권한이 사라졌거나 폴더·파일을 만들 수 없음) → 실행을 멈추고 폴더를 다시 고르게 한다 */
     class OutputUnavailable(detail: String, cause: Throwable? = null) :
         AppError("E-OUT-01", false, "출력 폴더에 쓸 수 없다 — $detail", cause)
