@@ -140,6 +140,32 @@ class SafTree(
     }
 
     /**
+     * add-hyungchul-20261106-1650 : [T3-5a]
+     * 목적: 파일 끝에 내용을 덧붙인다(없으면 만든다). 로그처럼 계속 길어지는 파일용이며 원자적 쓰기가 아니다.
+     * 입력: dir - 폴더, name - 파일 이름, bytes - 덧붙일 내용
+     * 출력: 파일이 길어진다
+     * 리턴: 없음
+     * 예외: AppError.OutputUnavailable(E-OUT-01), AppError.OutputNoSpace(E-OUT-02)
+     */
+    @Synchronized
+    fun append(dir: DocumentFile, name: String, bytes: ByteArray) {
+        val map = kids(dir)
+        val doc = map[name] ?: create(dir, name).also { map[name] = it }     // 없으면 새로 만든다
+        guarded("'$name' 덧붙이기") {
+            resolver.openOutputStream(doc.uri, "wa")?.use { it.write(bytes) }   // "wa" = 쓰기 + 끝에 덧붙이기
+                ?: throw AppError.OutputUnavailable("'$name' 을 열 수 없다")
+        }
+    }
+
+    /**
+     * add-hyungchul-20261106-1650 : [T3-5a]
+     * 목적: 파일 크기를 읽는다.
+     * 입력: dir - 폴더, name - 파일 이름 / 출력: 없음 / 리턴: Long - 바이트 수(없으면 0)
+     */
+    @Synchronized
+    fun size(dir: DocumentFile, name: String): Long = kids(dir)[name]?.length() ?: 0L
+
+    /**
      * 목적: 문서를 지운다(폴더면 안의 것까지).
      * 입력: dir - 폴더, name - 이름 / 출력: 문서가 지워진다 / 리턴: Boolean - 지웠으면 true(없었으면 false)
      */

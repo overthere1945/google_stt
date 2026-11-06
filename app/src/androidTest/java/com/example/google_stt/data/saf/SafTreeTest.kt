@@ -98,6 +98,14 @@ class SafTreeTest {
             assertArrayEquals("old".toByteArray(), tree.readBytes(csvDir, "b_result.csv"))   // 옛 파일이 그대로
             assertTrue(tree.children(csvDir).keys.none { it.endsWith(".tmp") })
 
+            // add-hyungchul-20261106-1650 : [T3-5a] 덧붙이기(로그 파일용) — 없으면 만들고, 있으면 끝에 잇는다
+            tree.append(csvDir, "_log.txt", "첫 줄\n".toByteArray(Charsets.UTF_8))
+            tree.append(csvDir, "_log.txt", "둘째 줄\n".toByteArray(Charsets.UTF_8))
+            assertEquals("첫 줄\n둘째 줄\n", String(tree.readBytes(csvDir, "_log.txt")!!, Charsets.UTF_8))
+            assertEquals("첫 줄\n둘째 줄\n".toByteArray(Charsets.UTF_8).size.toLong(), tree.size(csvDir, "_log.txt"))
+            assertEquals(0L, tree.size(csvDir, "없는파일"))
+            assertTrue(tree.delete(csvDir, "_log.txt"))
+
             // 이름 바꾸기: 작업 중 폴더 "_<이름>" → "<이름>", 그리고 같은 이름이 있으면 실패
             assertTrue(tree.rename(csvDir, "_whisper-base_sherpa-int8_SILERO", "whisper-base_sherpa-int8_SILERO"))
             assertFalse(tree.children(csvDir).containsKey("_whisper-base_sherpa-int8_SILERO"))
