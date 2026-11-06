@@ -44,6 +44,13 @@ interface SttEngineAdapter : AutoCloseable {
     val spec: ModelSpec
 
     /**
+     * add-hyungchul-20261106-2229 : [T6-2]
+     * 엔진이 쓸 수 있는 양을 다 썼는지(ML Kit 의 세션 한도). true 인 채 먹통이 나면 연속 실패를 더 기다리지 않고 작업을 끝낸다.
+     * 한도가 없는 엔진은 항상 false
+     */
+    val pastBudget: Boolean get() = false
+
+    /**
      * 목적: 모델을 적재한다(작업 시작 때 1회).
      * 입력: modelDir - 자산 폴더(ML Kit 은 시스템이 모델을 관리하므로 null), lang - 평가 언어
      * 출력: 엔진이 메모리에 올라간다

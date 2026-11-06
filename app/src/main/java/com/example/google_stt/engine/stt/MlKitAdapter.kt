@@ -57,7 +57,7 @@ class MlKitAdapter(override val spec: ModelSpec, private val log: (String) -> Un
     val sessionCount: Int get() = session.sessionCount
 
     /** 세션 한도(약 35)를 넘겼는지 — 넘긴 뒤 엔진이 죽으면 남은 ML Kit 작업을 건너뛴다(D29) */
-    val pastBudget: Boolean get() = session.pastBudget
+    override val pastBudget: Boolean get() = session.pastBudget   // change-hyungchul-20261106-2229 : [T6-2] 약속의 값을 채운다
 
     /**
      * 목적: 엔진이 대답하는지 확인한다(모델은 시스템이 관리해 따로 불러올 것이 없다).

@@ -78,10 +78,34 @@ class ResultWriter(private val tree: SafTree) {
 }
 
 /**
+ * add-hyungchul-20261106-2229 : [T6-2]
+ * 목적: 작업 1개의 결과를 받는 곳(JobWriter 가 구현한다). 실행 파이프라인은 이 약속만 안다 → PC(JVM)에서 가짜로 시험한다.
+ */
+interface JobSink {
+    /** 전사문 저장(성공·무음). 입력: relDir - 상대 폴더 조각, baseName - 음원 이름, text - 전사문 / 리턴: 없음 */
+    fun saveText(relDir: List<String>, baseName: String, text: String)
+
+    /** 실패 기록 저장. 입력: relDir, baseName, cause - 실패 원인, partial - 부분 결과 / 리턴: 없음 */
+    fun saveError(relDir: List<String>, baseName: String, cause: String, partial: String = "")
+
+    /** 파일 기록 더하기. 입력: record - 파일 처리 결과 / 리턴: 없음 */
+    fun add(record: FileRecord)
+
+    /** 지금까지의 기록으로 CSV 다시 쓰기. 입력: 없음 / 리턴: 없음 */
+    fun flush()
+
+    /** run_meta 쓰기. 입력: input - 실행 조건 / 리턴: 없음 */
+    fun writeRunMeta(input: RunMetaInput)
+
+    /** 마무리(CSV 쓰기 + 결과 폴더 이름에서 "_" 떼기). 입력: 없음 / 리턴: Boolean - 이름을 바꿨으면 true */
+    fun finish(): Boolean
+}
+
+/**
  * 목적: 작업 1개 동안 결과를 쓰는 도구(작업 하나가 한 스레드·코루틴에서 차례로 부른다).
  * 입력(생성자): tree - 출력 폴더 트리, job - 작업
  */
-class JobWriter internal constructor(private val tree: SafTree, private val job: Job) {
+class JobWriter internal constructor(private val tree: SafTree, private val job: Job) : JobSink {   // change-hyungchul-20261106-2229 : [T6-2] JobSink 구현
 
     /** 언어 폴더(CSV 3종을 여기에 둔다). 입력 폴더 자체가 한 언어면 출력 폴더 그 자체 */
     private val langDir: DocumentFile = tree.ensureDirs(OutputLayout.langSegments(job))
@@ -103,7 +127,7 @@ class JobWriter internal constructor(private val tree: SafTree, private val job:
      * 출력: <이름>.txt 가 쓰이고 <이름>.ERROR.txt 가 지워진다
      * 리턴: 없음
      */
-    fun saveText(relDir: List<String>, baseName: String, text: String) {
+    override fun saveText(relDir: List<String>, baseName: String, text: String) {
         val dir = tree.ensureDirs(OutputLayout.textDirSegments(job, relDir, working = true))
         tree.writeAtomic(dir, OutputLayout.textName(baseName), text.toByteArray(Charsets.UTF_8))   // 전사문만 그대로
         tree.delete(dir, OutputLayout.errorName(baseName))                 // 성공했는데 실패로 세는 것을 막는다
@@ -115,7 +139,7 @@ class JobWriter internal constructor(private val tree: SafTree, private val job:
      * 출력: <이름>.ERROR.txt 가 쓰이고 <이름>.txt 가 지워진다
      * 리턴: 없음
      */
-    fun saveError(relDir: List<String>, baseName: String, cause: String, partial: String = "") {
+    override fun saveError(relDir: List<String>, baseName: String, cause: String, partial: String) {
         val dir = tree.ensureDirs(OutputLayout.textDirSegments(job, relDir, working = true))
         tree.delete(dir, OutputLayout.textName(baseName))                  // 옛 전사문 지우기
         tree.writeAtomic(dir, OutputLayout.errorName(baseName), OutputLayout.errorText(cause, partial).toByteArray(Charsets.UTF_8))
@@ -125,7 +149,7 @@ class JobWriter internal constructor(private val tree: SafTree, private val job:
      * 목적: 파일 기록 하나를 더한다. 10개째마다 result.csv·device.csv 를 다시 쓴다.
      * 입력: record - 파일 처리 결과 / 출력: CSV 가 다시 쓰일 수 있다 / 리턴: 없음
      */
-    fun add(record: FileRecord) {
+    override fun add(record: FileRecord) {
         rows += record
         if (rows.size % ResultWriter.FLUSH_EVERY == 0) flush()             // 10파일마다
     }
@@ -134,7 +158,7 @@ class JobWriter internal constructor(private val tree: SafTree, private val job:
      * 목적: 지금까지의 행으로 result.csv·device.csv 를 다시 쓴다(중단될 때 마지막 저장에도 쓴다).
      * 입력: 없음 / 출력: 두 CSV 가 쓰인다 / 리턴: 없음
      */
-    fun flush() {
+    override fun flush() {
         tree.writeAtomic(langDir, OutputLayout.csvName(job, UnifiedCsv.FILE_SUFFIX), UnifiedCsv.format(rows).toByteArray(Charsets.UTF_8))
         tree.writeAtomic(langDir, OutputLayout.csvName(job, DeviceCsv.FILE_SUFFIX), DeviceCsv.format(rows).toByteArray(Charsets.UTF_8))
     }
@@ -143,7 +167,7 @@ class JobWriter internal constructor(private val tree: SafTree, private val job:
      * 목적: run_meta.csv 를 쓴다.
      * 입력: input - 실행 조건(이 작업의 것) / 출력: 파일이 쓰인다 / 리턴: 없음
      */
-    fun writeRunMeta(input: RunMetaInput) {
+    override fun writeRunMeta(input: RunMetaInput) {
         tree.writeAtomic(langDir, OutputLayout.csvName(job, RunMeta.FILE_SUFFIX), RunMeta.format(input).toByteArray(Charsets.UTF_8))
     }
 
@@ -153,7 +177,7 @@ class JobWriter internal constructor(private val tree: SafTree, private val job:
      * 출력: CSV 가 쓰이고 결과 폴더 이름이 바뀐다
      * 리턴: Boolean - 이름을 바꿨으면 true. 같은 이름의 폴더가 이미 있는 등으로 못 바꿨으면 false("_" 폴더로 남는다)
      */
-    fun finish(): Boolean {
+    override fun finish(): Boolean {
         flush()
         return tree.rename(langDir, OutputLayout.resultDirName(job, working = true), OutputLayout.resultDirName(job, working = false))
     }
