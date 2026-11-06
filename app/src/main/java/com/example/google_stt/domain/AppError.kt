@@ -51,6 +51,10 @@ sealed class AppError(
     class AssetNoSpace(val requiredBytes: Long, val freeBytes: Long) :
         AppError("E-AS-08", false, "저장공간 부족 — 필요 $requiredBytes B, 여유 $freeBytes B")
 
+    /** add-hyungchul-20261106-2132 : [T5-1] E-EN-01 STT 모델을 적재할 수 없다(파일 없음·엔진 생성 실패) → 그 작업을 실패로 끝내고 다음 작업으로 간다 */
+    class ModelLoad(detail: String, cause: Throwable? = null) :
+        AppError("E-EN-01", false, "모델 적재 실패 — $detail", cause)
+
     /** add-hyungchul-20261106-1633 : [T3-1] E-OUT-01 출력 폴더에 쓸 수 없다(권한이 사라졌거나 폴더·파일을 만들 수 없음) → 실행을 멈추고 폴더를 다시 고르게 한다 */
     class OutputUnavailable(detail: String, cause: Throwable? = null) :
         AppError("E-OUT-01", false, "출력 폴더에 쓸 수 없다 — $detail", cause)
