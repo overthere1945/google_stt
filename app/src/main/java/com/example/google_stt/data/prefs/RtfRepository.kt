@@ -45,7 +45,7 @@ class RtfRepository(private val store: DataStore<Preferences>) {
                 val workers = parts[3].toIntOrNull() ?: continue
                 measured[RtfKey(parts[0], parts[1], parts[2], workers)] = decode(text)
             } else if (key.name.startsWith(CALIB) && parts.size == 2) {           // 기기|엔진
-                text.toDoubleOrNull()?.let { calibration[parts[0] to parts[1]] = it }
+                text.toDoubleOrNull()?.takeIf { usable(it) }?.let { calibration[parts[0] to parts[1]] = it }   // change-hyungchul-20261106-1710 : 쓸 수 없는 값은 읽지 않는다(지적 7)
             }
         }
         RtfTable(measured, calibration)
@@ -67,8 +67,16 @@ class RtfRepository(private val store: DataStore<Preferences>) {
      * 입력: deviceKey - 기기 식별, engine - 결과 엔진 이름, rtf - 잰 값 / 출력: 저장소 파일이 바뀐다 / 리턴: 없음
      */
     suspend fun setCalibration(deviceKey: String, engine: String, rtf: Double) {
+        if (!usable(rtf)) return                                                  // change-hyungchul-20261106-1710 : 0 이하·NaN·무한대는 저장하지 않는다(지적 7 — 합계가 NaN 이 된다)
         store.edit { it[stringPreferencesKey(CALIB + deviceKey + SEP + engine)] = rtf.toString() }
     }
+
+    /**
+     * add-hyungchul-20261106-1710
+     * 목적: RTF 로 쓸 수 있는 값인지 본다(실측값의 RtfSamples.add 와 같은 기준).
+     * 입력: v - 값 / 출력: 없음 / 리턴: Boolean - 0 보다 크고 유한하면 true
+     */
+    private fun usable(v: Double): Boolean = v > 0.0 && !v.isNaN() && !v.isInfinite()
 
     /**
      * 목적: 숫자 목록을 JSON 배열 글자로 만든다.

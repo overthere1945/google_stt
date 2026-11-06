@@ -104,7 +104,12 @@ class AppLog(private val maxBytes: Long = 20L * 1024 * 1024) {
         try {
             if (fileBytes > 0 && fileBytes + bytes.size > maxBytes) {          // 한도를 넘기 전에 돌린다
                 t.delete(t.root, OutputLayout.APP_LOG_OLD_FILE)                // 앞의 앞 로그는 버린다(1개만 보관)
-                t.rename(t.root, OutputLayout.APP_LOG_FILE, OutputLayout.APP_LOG_OLD_FILE)
+                // change-hyungchul-20261106-1710 : 이름 바꾸기가 안 되면 지금 로그를 지우고 새로 시작한다 — 결과를 보지 않으면 크기 계수만 0 이 되어
+                //   같은 파일이 한도 없이 커진다(독립 검토 지적 5)
+                if (!t.rename(t.root, OutputLayout.APP_LOG_FILE, OutputLayout.APP_LOG_OLD_FILE)) {
+                    t.delete(t.root, OutputLayout.APP_LOG_FILE)
+                    Log.w(TAG, "로그 파일을 돌리지 못해(이름 바꾸기 실패) 지우고 새로 시작한다")
+                }
                 fileBytes = 0L
             }
             t.append(t.root, OutputLayout.APP_LOG_FILE, bytes)

@@ -137,6 +137,8 @@ class PrefsRepositoriesTest {
         for (i in 1..21) repo.addMeasured(key, i / 100.0)                              // 0.01 … 0.21
         repo.addMeasured(RtfKey("SM-S938N/SM8750", "qwen3asr-0.6b", "NOVAD", 2), 0.2)  // 다른 기기 값
         repo.setCalibration(s24, "sensevoice-small", 0.5); repo.setCalibration(s24, "sensevoice-small", 0.04)   // 뒤 값이 남는다
+        repo.setCalibration(s24, "sensevoice-small", 0.0); repo.setCalibration(s24, "sensevoice-small", Double.NaN)   // add-hyungchul-20261106-1712 : 쓸 수 없는 값은 앞 값을 덮지 않는다
+        repo.setCalibration(s24, "zipformer-ko", Double.POSITIVE_INFINITY)             // add-hyungchul-20261106-1712 : 저장되지 않는다(아래 assertNull)
         closeAll()
         repo = RtfRepository(open(PrefsStores.RTF))
         val t = repo.table.first()

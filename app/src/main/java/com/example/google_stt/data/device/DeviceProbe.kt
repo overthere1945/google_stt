@@ -65,12 +65,14 @@ class DeviceProbe(private val context: Context, private val warn: (String) -> Un
      * 목적: 파일 처리를 시작할 때 지금 값을 기억한다.
      * 입력: 없음 / 출력: 없음 / 리턴: Snapshot
      */
-    fun begin(): Snapshot = Snapshot(
-        wallMs = SystemClock.elapsedRealtime(), cpuMs = Process.getElapsedCpuTime(),
-        rx = uidBytes(received = true), tx = uidBytes(received = false),
-        battPct = batteryPercent(), battUah = batteryChargeUah(), battTempC = batteryTempC(),
-        thermal = thermalStatus(), pssMb = pssMb(),
-    )
+    fun begin(): Snapshot {
+        // change-hyungchul-20261106-1710 : 기준 시각·CPU 시간은 맨 마지막에 읽는다 — 먼저 읽으면 배터리 조회·PSS 계산에 든 CPU 시간이
+        //   파일의 cpu_time_sec 에 섞인다(독립 검토 지적 6. end() 는 반대로 맨 먼저 읽는다)
+        val rx = uidBytes(received = true); val tx = uidBytes(received = false)
+        val battPct = batteryPercent(); val battUah = batteryChargeUah(); val battTempC = batteryTempC()
+        val thermal = thermalStatus(); val pss = pssMb()
+        return Snapshot(SystemClock.elapsedRealtime(), Process.getElapsedCpuTime(), rx, tx, battPct, battUah, battTempC, thermal, pss)
+    }
 
     /**
      * 목적: 파일 처리가 끝났을 때 시작 값과의 차이로 계측 결과를 만든다.
@@ -195,10 +197,10 @@ class DeviceProbe(private val context: Context, private val warn: (String) -> Un
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val cap = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) } ?: return "NONE"
         return when {
+            cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"       // change-hyungchul-20261106-1710 : VPN 을 먼저 본다 — VPN 은 밑단(WIFI 등)도 함께 가지고 있다(지적 10)
             cap.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"
             cap.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "CELLULAR"
             cap.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ETHERNET"
-            cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
             else -> "OTHER"
         }
     }

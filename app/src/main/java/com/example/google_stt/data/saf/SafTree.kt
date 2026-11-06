@@ -84,8 +84,10 @@ class SafTree(
     fun ensureDir(parent: DocumentFile, name: String): DocumentFile {
         val map = kids(parent)
         map[name]?.takeIf { it.isDirectory }?.let { return it }             // 이미 있다
-        val made = guarded("폴더 '$name' 만들기") { parent.createDirectory(name) }
-            ?: throw AppError.OutputUnavailable("폴더 '$name' 을 만들 수 없다")
+        val made = named(                                                   // change-hyungchul-20261106-1710 : 만든 이름 확인(지적 3)
+            guarded("폴더 '$name' 만들기") { parent.createDirectory(name) } ?: throw AppError.OutputUnavailable("폴더 '$name' 을 만들 수 없다"),
+            name,
+        )
         map[name] = made                                                    // 캐시에 더한다
         return made
     }
@@ -107,24 +109,41 @@ class SafTree(
      * 리턴: 없음
      * 예외: AppError.OutputUnavailable(E-OUT-01), AppError.OutputNoSpace(E-OUT-02)
      */
-    @Synchronized
     fun writeAtomic(dir: DocumentFile, name: String, bytes: ByteArray) {
+        // change-hyungchul-20261106-1710 : 경고는 잠금을 놓은 뒤에 알린다 — warn 이 AppLog 로 이어지면 AppLog 도 자기 잠금을 쥔 채
+        //   이 트리에 쓰므로, 잠금을 쥔 채 부르면 두 잠금의 순서가 뒤집혀 서로 기다릴 수 있다(독립 검토 지적 2)
+        writeAtomicLocked(dir, name, bytes)?.let(warn)
+    }
+
+    /**
+     * add-hyungchul-20261106-1710
+     * 목적: writeAtomic 의 본체(잠금 안에서 돈다).
+     * 입력: dir - 폴더, name - 파일 이름, bytes - 내용 / 출력: 파일이 쓰인다 / 리턴: String? - 알릴 경고 문장(없으면 null)
+     */
+    @Synchronized
+    private fun writeAtomicLocked(dir: DocumentFile, name: String, bytes: ByteArray): String? {
         val map = kids(dir)
         val tmpName = name + TMP_SUFFIX
         map.remove(tmpName)?.delete()                                       // 예전 실행이 남긴 tmp 는 지운다
         val tmp = create(dir, tmpName)                                      // ① 임시 파일
-        write(tmp, bytes, tmpName)
+        try {
+            write(tmp, bytes, tmpName)
+        } catch (e: AppError) {
+            tmp.delete()                                                    // change-hyungchul-20261106-1710 : 덜 쓰인 tmp 를 남기지 않는다(남으면 다음 복구가 그것을 정식 파일로 올린다 — 지적 3)
+            throw e
+        }
         map.remove(name)?.delete()                                          // ② 옛 파일 지우기
         val renamed = guarded("'$tmpName' 이름 바꾸기") { tmp.renameTo(name) } == true && tmp.name == name   // ③ 이름 바꾸기
         if (renamed) {
             map[name] = tmp                                                 // tmp 문서가 이제 최종 파일이다
-            return
+            return null
         }
-        warn("E-OUT-03: '$tmpName' → '$name' 이름 바꾸기 실패 — 지우고 새로 쓴다")   // 제공자가 이름 바꾸기를 지원하지 않음
-        if (tmp.exists()) tmp.delete()                                      // 남은 tmp 정리
-        val direct = create(dir, name)                                      // 대신: 바로 쓴다(이 구간에서 죽으면 파일이 덜 쓰일 수 있다)
+        // change-hyungchul-20261106-1710 : 대체 경로 — 새 파일을 다 쓴 뒤에 tmp 를 지운다. 먼저 지우면 옛 파일·tmp·새 파일이 모두 없는 구간이 생긴다(지적 1)
+        val direct = create(dir, name)
         write(direct, bytes, name)
         map[name] = direct
+        if (tmp.exists()) tmp.delete()                                      // 온전한 새 파일이 생긴 뒤 tmp 정리
+        return "E-OUT-03: '$tmpName' → '$name' 이름 바꾸기 실패 — 지우고 새로 썼다"   // 제공자가 이름 바꾸기를 지원하지 않음
     }
 
     /**
@@ -172,7 +191,7 @@ class SafTree(
     @Synchronized
     fun delete(dir: DocumentFile, name: String): Boolean {
         val doc = kids(dir).remove(name) ?: return false                    // 없으면 할 일이 없다
-        cache.remove(doc.uri)                                               // 폴더였다면 그 캐시도 버린다
+        drop(doc.uri)                                                       // change-hyungchul-20261106-1710 : 폴더였다면 그 아래 캐시까지 버린다(지적 4)
         return guarded("'$name' 지우기") { doc.delete() } == true
     }
 
@@ -190,7 +209,7 @@ class SafTree(
         val oldUri = doc.uri                                                // 이름을 바꾸면 URI 가 달라질 수 있다
         val ok = guarded("'$from' → '$to' 이름 바꾸기") { doc.renameTo(to) } == true
         map.remove(from)
-        cache.remove(oldUri)                                                // 옛 URI 로 기억한 자식 목록은 버린다
+        drop(oldUri)                                                        // change-hyungchul-20261106-1710 : 옛 URI 아래로 기억한 목록을 모두 버린다(지적 4)
         val actual = doc.name ?: return false                               // 바뀐 뒤 실제 이름
         map[actual] = doc
         return ok && actual == to                                           // "(1)" 같은 다른 이름이 붙었으면 실패로 본다
@@ -222,12 +241,39 @@ class SafTree(
     }
 
     /**
+     * add-hyungchul-20261106-1710
+     * 목적: 폴더와 그 아래 폴더들의 캐시를 모두 버린다(지적 4).
+     *       문서 ID 가 경로로 만들어지는 제공자에서는 폴더를 지우고 같은 이름으로 다시 만들면 URI 가 같아, 옛 목록이 남아 있으면
+     *       아직 없는 파일을 있다고 답하게 된다. 끝난 작업의 목록이 쌓여 메모리가 계속 느는 것도 막는다.
+     * 입력: uri - 폴더 URI / 출력: 캐시에서 빠진다 / 리턴: 없음
+     */
+    private fun drop(uri: Uri) {
+        cache.remove(uri)?.values?.forEach { drop(it.uri) }                 // 기억해 둔 자식마다 내려간다
+    }
+
+    /**
      * 목적: 새 파일 문서를 만든다.
      * 입력: dir - 폴더, name - 파일 이름 / 출력: 빈 파일이 생긴다 / 리턴: DocumentFile
      * 예외: AppError.OutputUnavailable - 만들 수 없을 때
      */
-    private fun create(dir: DocumentFile, name: String): DocumentFile =
-        guarded("'$name' 만들기") { dir.createFile(MIME, name) } ?: throw AppError.OutputUnavailable("'$name' 을 만들 수 없다")
+    private fun create(dir: DocumentFile, name: String): DocumentFile {
+        val made = guarded("'$name' 만들기") { dir.createFile(MIME, name) } ?: throw AppError.OutputUnavailable("'$name' 을 만들 수 없다")
+        return named(made, name)
+    }
+
+    /**
+     * add-hyungchul-20261106-1710
+     * 목적: 방금 만든 문서의 이름이 요청한 이름과 같은지 확인한다(지적 3).
+     *       같은 이름이 이미 있으면 제공자가 "이름 (1)" 로 만든다 — 캐시가 실제 폴더와 어긋났다는 뜻이므로 조용히 다른 곳에 쓰지 않고 멈춘다.
+     * 입력: made - 만든 문서, name - 요청한 이름 / 출력: 이름이 다르면 만든 문서를 지운다 / 리턴: DocumentFile - made
+     * 예외: AppError.OutputUnavailable - 이름이 다를 때
+     */
+    private fun named(made: DocumentFile, name: String): DocumentFile {
+        val actual = made.name
+        if (actual == name) return made
+        made.delete()                                                       // 잘못 만들어진 문서 정리
+        throw AppError.OutputUnavailable("'$name' 을 만들었는데 이름이 '$actual' 이다(같은 이름이 이미 있다)")
+    }
 
     /**
      * 목적: 문서에 내용을 쓴다(있던 내용은 버린다).

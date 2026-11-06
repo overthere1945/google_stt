@@ -16,6 +16,7 @@ package com.example.google_stt.data.saf
 import androidx.documentfile.provider.DocumentFile                 // SAF 문서
 import androidx.test.ext.junit.runners.AndroidJUnit4               // 계측 시험 실행기
 import androidx.test.platform.app.InstrumentationRegistry          // 앱 Context 얻기
+import com.example.google_stt.domain.AppError                      // 오류 코드  // add-hyungchul-20261106-1712
 import java.io.File                                                // 앱 전용 폴더
 import org.junit.Assert.assertArrayEquals                          // 바이트 비교
 import org.junit.Assert.assertEquals                               // 값 비교
@@ -119,6 +120,22 @@ class SafTreeTest {
             assertTrue(tree.delete(csvDir, "whisper-base_sherpa-int8_SILERO"))
             assertFalse(tree.delete(csvDir, "whisper-base_sherpa-int8_SILERO"))   // 이미 없다
             assertEquals(setOf("a_result.csv", "b_result.csv"), tree.children(csvDir).keys)
+
+            // add-hyungchul-20261106-1712 : 지운 폴더를 같은 이름으로 다시 만들면 비어 있어야 한다(옛 하위 목록이 캐시에 남으면 안 된다 — 독립 검토 지적 4)
+            val reborn = tree.ensureDir(csvDir, "whisper-base_sherpa-int8_SILERO")
+            assertTrue("다시 만든 폴더에 옛 목록이 보인다: ${tree.children(reborn).keys}", tree.children(reborn).isEmpty())
+            assertNull(tree.readBytes(tree.ensureDir(reborn, "Customer_Service_KR"), "01.txt"))   // 한 단계 더 아래도 비어 있다
+            assertTrue(tree.delete(csvDir, "whisper-base_sherpa-int8_SILERO"))
+
+            // add-hyungchul-20261106-1712 : 캐시가 모르는 사이 같은 이름의 폴더가 생겼을 때 — "이름 (1)" 같은 다른 폴더를 조용히 만들어 두지 않는다(지적 3)
+            csvDir.createDirectory("dup")!!                                 // SafTree 를 거치지 않고 만든다
+            try {
+                assertEquals("dup", tree.ensureDir(csvDir, "dup").name)     // 제공자가 있던 폴더를 돌려주면 그대로 쓴다(파일 기반)
+            } catch (e: AppError.OutputUnavailable) {
+                assertEquals("E-OUT-01", e.code)                            // 다른 이름으로 만들어졌으면 지우고 멈춘다(실제 SAF)
+            }
+            assertEquals(listOf("dup"), csvDir.listFiles().mapNotNull { it.name }.filter { it.startsWith("dup") })   // 실제 폴더에 "dup" 하나뿐
+            csvDir.findFile("dup")!!.delete()
             assertEquals("이름 바꾸기 대체 경로를 탔다(E-OUT-03): $warnings", 0, warnings.size)   // 이 제공자는 이름 바꾸기를 지원해야 한다
         } finally {
             SafTree(context.contentResolver, root).delete(root, base)       // 시험 폴더 정리
@@ -133,6 +150,33 @@ class SafTreeTest {
         val doc = dir.createFile(SafTree.MIME, name)!!                     // SafTree 와 같은 MIME
         assertEquals(name, doc.name)                                       // 제공자가 이름을 바꾸지 않는다
         context.contentResolver.openOutputStream(doc.uri, "wt")!!.use { it.write(bytes) }
+    }
+
+    /**
+     * add-hyungchul-20261106-1712
+     * 목적: 이름 바꾸기도, 대체 쓰기도 실패했을 때 다 쓰인 임시 파일이 남는지 확인한다(독립 검토 지적 1 —
+     *       대체 경로가 tmp 를 먼저 지우면 옛 파일·tmp·새 파일이 모두 없는 상태로 끝난다).
+     *       같은 이름의 "비어 있지 않은 폴더" 가 있으면 파일 기반 폴더에서는 이름 바꾸기와 쓰기가 모두 실패한다.
+     * 입력: 없음 / 출력: 없음 / 리턴: 없음
+     */
+    @Test
+    fun appPrivateFolder_failedFallbackKeepsTmp() {
+        val root = fileRoot("saftree_fallback")
+        val warnings = ArrayList<String>()
+        val tree = SafTree(context.contentResolver, root) { warnings += it }
+        tree.children(root)                                                // 빈 폴더 상태를 캐시에 올린다
+        root.createDirectory("01.txt")!!.createFile(SafTree.MIME, "x")!!   // 캐시가 모르는, 같은 이름의 비어 있지 않은 폴더
+        val bytes = "다 쓰인 내용".toByteArray(Charsets.UTF_8)
+        try {
+            tree.writeAtomic(root, "01.txt", bytes)
+            org.junit.Assert.fail("E-OUT-01 이 나야 한다")
+        } catch (e: AppError.OutputUnavailable) {
+            assertEquals("E-OUT-01", e.code)
+        }
+        val left = root.findFile("01.txt.tmp")                             // 실제 폴더에서 다시 찾는다
+        assertTrue("다 쓰인 tmp 가 남아야 다음 실행이 살릴 수 있다", left != null && left.isFile)
+        assertArrayEquals(bytes, context.contentResolver.openInputStream(left!!.uri)!!.use { it.readBytes() })
+        assertEquals(0, warnings.size)                                     // 성공하지 못했으므로 "새로 썼다" 경고는 없다
     }
 
     /**
