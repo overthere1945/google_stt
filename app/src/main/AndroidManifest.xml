@@ -15,6 +15,12 @@
 
     <!-- change(add)-hyungchul-20260820 : 계측용 네트워크 상태 조회 -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+      add-hyungchul-20261106-1708 : [T4-2] 모델·VAD 자산을 앱이 직접 내려받는다(D1, FR-05-01).
+        · INTERNET 은 내려받기에만 쓴다. 전사(추론) 구간에서 앱의 네트워크 송수신이 0 임은 device.csv 의
+          net_rx_delta / net_tx_delta 로 증명한다(FR-10-02). 위 20260820 주석의 "INTERNET 을 넣지 않는다" 는 v3 까지의 방침이다.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
       add-hyungchul-20261010-2238 : sherpa-onnx STT 모델 읽기용 '모든 파일 접근'(사용자 결정 Q24)
