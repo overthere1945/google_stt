@@ -37,6 +37,8 @@ import com.example.google_stt.data.assets.AssetRepository          // 자산 상
 import com.example.google_stt.data.assets.AssetStore               // 자산 저장 위치
 import com.example.google_stt.data.device.AppLog                   // 앱 로그
 import com.example.google_stt.data.prefs.PrefsStores               // 설정 파일 열기
+import com.example.google_stt.data.prefs.RtfRepository             // 실측 RTF  // add-hyungchul-20261106-2243 : [T6-7]
+import com.example.google_stt.run.RunController                    // 실행 컨트롤러  // add-hyungchul-20261106-2243 : [T6-7]
 import com.example.google_stt.data.prefs.SettingsRepository        // 화면 설정
 import com.example.google_stt.domain.AppError                      // 매니페스트 오류
 import com.example.google_stt.domain.catalog.AssetManifest         // 해시 합치기
@@ -82,6 +84,12 @@ class AppContainer(private val context: Context) {
 
     /** 자산 상태 저장소(받기는 AssetDownloader 로) */
     val assets: AssetRepository by lazy { AssetRepository(assetStore, assetSpecs, AssetDownloader()::download, log = log::i) }
+
+    /** add-hyungchul-20261106-2243 : [T6-7] 실측 RTF 저장소(예상 소요 시간 계산에 쓴다) */
+    val rtf: RtfRepository by lazy { RtfRepository(PrefsStores.open(PrefsStores.file(context, PrefsStores.RTF), onCorrupt = { log.w("E-PREF-01: RTF 기록이 깨져 비웠다 — ${it.message}") })) }
+
+    /** add-hyungchul-20261106-2243 : [T6-7] 실행 컨트롤러(앱 전역 1개 — 화면과 서비스가 같은 것을 쓴다) */
+    val controller: RunController by lazy { RunController(context, this) }
 
     /** add-hyungchul-20261106-2233 : [T6-2] 기기 계측(배터리·발열·메모리·네트워크) */
     val probe: DeviceProbe by lazy { DeviceProbe(context) { log.w(it) } }

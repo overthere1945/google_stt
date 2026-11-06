@@ -32,6 +32,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- add-hyungchul-20261106-2243 : [T6-6] 긴 실행이 절전으로 끊기지 않게 "배터리 최적화 예외" 를 사용자에게 요청할 수 있게 한다(D21 — 요청 화면은 T7-5 의 시작 전 점검) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!--
       add-hyungchul-20261010-2238 : sherpa-onnx STT 모델 읽기용 '모든 파일 접근'(사용자 결정 Q24)
