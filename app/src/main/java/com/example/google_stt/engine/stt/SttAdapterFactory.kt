@@ -24,6 +24,6 @@ object SttAdapterFactory {
         Runtime.SHERPA_OFFLINE -> SherpaOfflineAdapter(spec)
         Runtime.SHERPA_STREAMING -> SherpaStreamingAdapter(spec)
         Runtime.VOSK -> VoskAdapter(spec)
-        Runtime.MLKIT -> TODO("T5-5 MlKitAdapter")
+        Runtime.MLKIT -> MlKitAdapter(spec, log)
     }
 }
