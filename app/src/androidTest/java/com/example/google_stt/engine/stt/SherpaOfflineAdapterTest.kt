@@ -98,7 +98,7 @@ class SherpaOfflineAdapterTest {
             try { job.await(); fail("취소돼야 한다") } catch (e: CancellationException) { /* 기대한 결과 */ }
             val sec = (System.nanoTime() - t0) / 1e9
             Log.i("GoogleStt", "오프라인 취소: ${sec}초 뒤 멈춤(조각 ${many.size}개 중)")
-            assertTrue("취소 뒤 ${sec}초 걸렸다(조각 하나의 디코딩 시간 안에 멈춰야 한다)", sec < 10.0)
+            assertTrue("취소 뒤 ${sec}초 걸렸다(조각 하나의 디코딩 시간 안에 멈춰야 한다 — whisper-base 는 조각당 2초쯤)", sec < 5.0)   // change-hyungchul-20261106-2216 : 10초 → 5초(중지 목표)
         }
     }
 }

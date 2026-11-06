@@ -62,7 +62,7 @@ class StreamingAdaptersTest {
             val real = adapter.transcribe(chunks, FeedChoice.REALTIME, Language.KO)     // [IT-ENG-02] 음원 길이만큼 걸린다
             Log.i("GoogleStt", "IT-ENG-02 nemotron REALTIME: feed=${real.feedSec}s tail=${real.tailMs}ms first=${real.firstResultMs}ms")
             assertArrayEquals("REALTIME 전사문이 v3 기준과 다르다:\n${real.text}", want, real.text.toByteArray(Charsets.UTF_8))
-            assertEquals(audioSec, real.feedSec!!, audioSec * 0.05)                    // 실시간 공급이면 공급 시간 ≈ 음원 길이
+            assertEquals(audioSec, real.feedSec!!, 1.0)                                // 실시간 공급이면 공급 시간 ≈ 음원 길이  // change-hyungchul-20261106-2216 : 허용 오차 5% → 1초(독립 검토)
             val job = async(Dispatchers.Default) { adapter.transcribe(chunks, FeedChoice.REALTIME, Language.KO) }
             delay(1_000)
             val c0 = System.nanoTime()
@@ -89,7 +89,7 @@ class StreamingAdaptersTest {
             assertEquals(VoskAdapter.RUNTIME, info.engineVersion)
             assertEquals(SttStatus.OK, out.status); assertTrue(out.text.isNotEmpty()); assertEquals(1, out.utterances)
             assertTrue(out.feedMeasured); assertTrue(out.feedSec!! > 0); assertTrue(out.firstResultMs!! > 0)
-            feed.delayMs?.let { assertEquals(audioSec * it / 100.0, out.feedSec!!, audioSec * 0.05) }   // 공급 간격을 지켰는지
+            feed.delayMs?.let { assertEquals(audioSec * it / 100.0, out.feedSec!!, 0.3) }   // 공급 간격을 지켰는지  // change-hyungchul-20261106-2216 : 허용 오차를 0.3초로(예전 값은 기대값의 ±50% 라 간격을 무시해도 통과했다 — 독립 검토)
         }
     }
 
