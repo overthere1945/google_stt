@@ -14,6 +14,7 @@
  */
 package com.example.google_stt.data.assets
 
+import com.example.google_stt.domain.AppError              // E-AS-06 / E-AS-07
 import com.example.google_stt.domain.catalog.ArchiveType   // 압축 형식(필요 용량 계산)
 import com.example.google_stt.domain.catalog.AssetSpec     // 자산 정의
 import java.io.File                                        // 파일
@@ -123,6 +124,30 @@ class AssetStore(val root: File) {
         val ready = File(dir(spec.id), READY_FILE)
         if (ready.exists()) ready.delete()                                     // 옛 표시 지우기
         check(tmp.renameTo(ready)) { "준비 표시를 쓰지 못했다: ${ready.path}" }   // 같은 폴더 안 이름 바꾸기
+    }
+
+    /**
+     * add-hyungchul-20261106-1705 : [T4-4]
+     * 목적: 자산 폴더에 놓인 파일을 검증하고 준비 표시를 쓴다(내려받기와 가져오기가 마지막에 같이 쓰는 단계).
+     * 입력: spec - 자산 정의(매니페스트 해시가 합쳐진 것), source - 자산을 구한 방법(download / import)
+     * 출력: 맞으면 .ready 가 쓰인다
+     * 리턴: ReadyInfo - 실제로 계산한 파일별 해시와 검증 여부(해시가 없는 파일이 하나라도 있으면 verified = false, "미검증")
+     * 예외: AppError.AssetExtract(E-AS-07) - 정의된 파일이 없을 때, AppError.AssetHashMismatch(E-AS-06) - 해시가 매니페스트와 다를 때
+     */
+    fun verify(spec: AssetSpec, source: String): ReadyInfo {
+        val hashes = LinkedHashMap<String, String>()                           // 저장 경로 → 실제 해시
+        for (f in spec.files) {
+            val file = file(spec.id, f.target)
+            if (!file.isFile) throw AppError.AssetExtract("${spec.id}: 파일이 없다 — ${f.target}")
+            val actual = Sha256.of(file)
+            if (f.sha256 != null && f.sha256 != actual) {
+                throw AppError.AssetHashMismatch("${spec.id}/${f.target}: 기대 ${f.sha256}, 실제 $actual")   // 기대·실제를 함께 남긴다
+            }
+            hashes[f.target] = actual
+        }
+        val info = ReadyInfo(source, verified = spec.verified, fileHashes = hashes)   // 모든 파일에 기대 해시가 있었을 때만 검증됨
+        markReady(spec, info)
+        return info
     }
 
     /**

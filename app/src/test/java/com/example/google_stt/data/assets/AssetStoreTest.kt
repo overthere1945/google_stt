@@ -10,6 +10,7 @@
  */
 package com.example.google_stt.data.assets
 
+import com.example.google_stt.domain.AppError            // 오류 코드
 import com.example.google_stt.domain.catalog.Catalog     // 자산 정의
 import java.io.File                                      // 임시 폴더
 import org.junit.Assert.assertEquals                     // 값 비교
@@ -112,5 +113,34 @@ class AssetStoreTest {
         assertFalse(store.partFile(silero.id).exists()); assertFalse(store.partFile("${silero.id}~0").exists())
         assertTrue(store.partFile(fsmn.id).exists())                                 // 다른 자산은 건드리지 않는다
         assertFalse(store.delete(silero.id))                                         // 지울 것이 없다
+    }
+
+    /**
+     * add-hyungchul-20261106-1705 : [T4-4]
+     * 목적: verify — 해시가 맞으면 준비 표시를 쓰고(검증됨), 기대 해시가 없으면 "미검증" 으로 준비, 다르면 E-AS-06, 파일이 없으면 E-AS-07.
+     * 입력: 없음 / 출력: 없음 / 리턴: 없음
+     */
+    @Test
+    fun verify_checksHashesAndMarksReady() {
+        val store = AssetStore(File(tmp.root, "models"))
+        store.dir(fsmn.id).mkdirs()
+        store.file(fsmn.id, "fsmn_vad_quant.onnx").writeBytes("모델".toByteArray())
+        try { store.verify(fsmn, "download"); org.junit.Assert.fail("E-AS-07 이 나야 한다") } catch (e: AppError.AssetExtract) { assertEquals("E-AS-07", e.code) }
+        store.file(fsmn.id, "fsmn_vad_am.mvn").writeBytes("mvn".toByteArray())
+        val unverified = store.verify(fsmn, "import")                                // 기대 해시가 없는 정의
+        assertFalse(unverified.verified); assertEquals("import", unverified.source)
+        assertTrue(store.isReady(fsmn))                                              // 미검증이어도 쓸 수는 있다(run_meta 에 기록)
+        val good = mapOf("fsmn_vad_quant.onnx" to Sha256.of("모델".toByteArray()), "fsmn_vad_am.mvn" to Sha256.of("mvn".toByteArray()))
+        val ok = store.verify(fsmn.withHashes(null, good), "download")
+        assertTrue(ok.verified); assertEquals(good, ok.fileHashes)
+        store.file(fsmn.id, ".ready").delete()
+        try {
+            store.verify(fsmn.withHashes(null, good + ("fsmn_vad_am.mvn" to "0".repeat(64))), "download")
+            org.junit.Assert.fail("E-AS-06 이 나야 한다")
+        } catch (e: AppError.AssetHashMismatch) {
+            assertEquals("E-AS-06", e.code)
+            assertTrue(e.message!!.contains("fsmn_vad_am.mvn"))                      // 어느 파일인지, 기대·실제 해시를 알려 준다
+        }
+        assertFalse("해시가 다르면 준비 표시를 쓰지 않는다", store.isReady(fsmn))
     }
 }
