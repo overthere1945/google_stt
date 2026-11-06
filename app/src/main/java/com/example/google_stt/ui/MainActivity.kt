@@ -18,6 +18,10 @@ import androidx.compose.runtime.getValue                          // 상태 읽�
 import androidx.compose.runtime.mutableStateOf                    // 상태
 import androidx.compose.runtime.saveable.rememberSaveable         // 화면 회전에도 남는 상태
 import androidx.compose.runtime.setValue                          // 상태 쓰기
+import androidx.lifecycle.viewmodel.compose.viewModel             // ViewModel 얻기
+import com.example.google_stt.SttApp                              // 객체 묶음
+import com.example.google_stt.ui.setup.SetupScreen                // 설정 탭
+import com.example.google_stt.ui.setup.SetupViewModel             // 설정 탭 상태
 import com.example.google_stt.ui.theme.SttTheme                   // 테마
 
 /** 목적: v4 화면 Activity. */
@@ -30,9 +34,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             SttTheme {
                 var tab by rememberSaveable { mutableStateOf(AppTab.SETUP) }       // 고른 탭(회전·재생성에도 유지 — FR-09-05)
+                val c = (application as SttApp).container
+                val setupVm: SetupViewModel = viewModel { SetupViewModel(c, applicationContext) }   // add-hyungchul-20261106-2326 : [T7-2]
                 AppRoot(
                     tab = tab, onTab = { tab = it },
-                    setup = { Text("설정 탭(T7-2)") }, run = { Text("실행 탭(T7-3)") }, models = { Text("모델 탭(T7-4)") },
+                    setup = { SetupScreen(setupVm, onStart = {}) }, run = { Text("실행 탭(T7-3)") }, models = { Text("모델 탭(T7-4)") },
                 )
             }
         }
