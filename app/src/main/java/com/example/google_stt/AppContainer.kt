@@ -36,6 +36,7 @@ import com.example.google_stt.data.assets.AssetDownloader          // 내려받�
 import com.example.google_stt.data.assets.AssetRepository          // 자산 상태 저장소
 import com.example.google_stt.data.assets.AssetStore               // 자산 저장 위치
 import com.example.google_stt.data.device.AppLog                   // 앱 로그
+import com.example.google_stt.data.prefs.LangMemoryRepository      // 폴더 언어 기억  // add-hyungchul-20261106-2326 : [T7-2]
 import com.example.google_stt.data.prefs.PrefsStores               // 설정 파일 열기
 import com.example.google_stt.data.prefs.RtfRepository             // 실측 RTF  // add-hyungchul-20261106-2243 : [T6-7]
 import com.example.google_stt.run.RunController                    // 실행 컨트롤러  // add-hyungchul-20261106-2243 : [T6-7]
@@ -84,6 +85,9 @@ class AppContainer(private val context: Context) {
 
     /** 자산 상태 저장소(받기는 AssetDownloader 로) */
     val assets: AssetRepository by lazy { AssetRepository(assetStore, assetSpecs, AssetDownloader()::download, log = log::i) }
+
+    /** add-hyungchul-20261106-2326 : [T7-2] 폴더 언어 기억(물어서 정한 언어·건너뛰기) */
+    val langMemory: LangMemoryRepository by lazy { LangMemoryRepository(PrefsStores.open(PrefsStores.file(context, PrefsStores.LANG_MEMORY))) }
 
     /** add-hyungchul-20261106-2243 : [T6-7] 실측 RTF 저장소(예상 소요 시간 계산에 쓴다) */
     val rtf: RtfRepository by lazy { RtfRepository(PrefsStores.open(PrefsStores.file(context, PrefsStores.RTF), onCorrupt = { log.w("E-PREF-01: RTF 기록이 깨져 비웠다 — ${it.message}") })) }
