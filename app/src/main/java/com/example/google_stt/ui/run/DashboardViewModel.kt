@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.SharingStarted                        // 화면�
 import kotlinx.coroutines.flow.StateFlow                             // 상태 읽기
 import kotlinx.coroutines.flow.combine                               // 여러 흐름 합치기
 import kotlinx.coroutines.flow.stateIn                               // 상태 흐름으로
-import kotlinx.coroutines.launch                                     // 코루틴 시작
 import kotlinx.coroutines.withContext                                // 스레드 바꾸기
 
 /**
@@ -59,32 +58,30 @@ class DashboardViewModel(private val c: AppContainer) : ViewModel() {
     private val device = MutableStateFlow(DeviceUi())
     private val showDebug = MutableStateFlow(false)
     private val clock = MutableStateFlow(0L)                                        // 2초마다 바뀌는 값(경과 시간을 다시 그리게)
-    private var startedAt = 0L                                                      // 이번 실행을 처음 본 시각(elapsedRealtime)
-    private var finishedAtStart = 0                                                 // 그때 이미 끝나 있던 작업 수(이어 하기)
 
     /** 화면 상태 */
-    val state: StateFlow<DashboardUiState> = combine(c.controller.state, c.log.recent, device, showDebug, clock) { run, logs, dev, debug, now ->
-        if (run.phase.active && startedAt == 0L) { startedAt = SystemClock.elapsedRealtime(); finishedAtStart = run.progress.finished }   // 실행이 시작됐다
-        if (!run.phase.active && now == 0L) startedAt = 0L
-        val elapsed = if (startedAt == 0L) 0L else (SystemClock.elapsedRealtime() - startedAt) / 1000
-        val doneNow = run.progress.finished - finishedAtStart                       // 이번 실행에서 끝난 작업 수
+    val state: StateFlow<DashboardUiState> = combine(c.controller.state, c.log.recent, device, showDebug, clock) { run, logs, dev, debug, now ->   // change-hyungchul-20261107-0000 : WP7 독립 검토 4·5 — 기준 시각은 실행 상태에서 읽는다(부수 효과 없음)
+        val end = if (run.phase.active || run.endedAtMs == 0L) maxOf(now, run.startedAtMs) else run.endedAtMs
+        val elapsed = if (run.startedAtMs == 0L) 0L else (end - run.startedAtMs) / 1000
+        val doneNow = run.progress.finished - run.finishedAtStart.coerceAtLeast(0)   // 이번 실행에서 끝난 작업 수
         val left = run.progress.total - run.progress.finished
-        val remaining = if (run.phase.active && doneNow > 0 && left > 0) elapsed.toDouble() / doneNow * left else null
+        val remaining = if (run.phase.active && run.finishedAtStart >= 0 && doneNow > 0 && left > 0) elapsed.toDouble() / doneNow * left else null
         val lines = (if (debug) logs else logs.filter { !it.contains("[D]") }).takeLast(LOG_LINES)
-        if (!run.phase.active) startedAt = 0L                                       // 끝났으면 다음 실행을 위해 비운다
         DashboardUiState(run, lines, dev, elapsed, remaining, debug)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
-    init {
-        viewModelScope.launch {
-            while (true) {
-                device.value = withContext(Dispatchers.IO) {
-                    val m = c.probe.memory()
-                    DeviceUi(m.availMb / 1024.0, (c.probe.pssMb() ?: 0.0) / 1024.0, c.probe.thermalStatus(), c.probe.batteryPercent(), c.probe.charging())
-                }
-                clock.value = SystemClock.elapsedRealtime()
-                delay(TICK_MS)
+    /**
+     * 목적: 기기 값을 2초마다 읽는다. 화면이 보이는 동안만 부른다 — 취소될 때까지 돈다.
+     * 입력: 없음 / 출력: 상태 / 리턴: 없음
+     */
+    suspend fun poll() {   // change-hyungchul-20261107-0000 : WP7 독립 검토 7
+        while (true) {
+            device.value = withContext(Dispatchers.IO) {
+                val m = c.probe.memory()
+                DeviceUi(m.availMb / 1024.0, (c.probe.pssMb() ?: 0.0) / 1024.0, c.probe.thermalStatus(), c.probe.batteryPercent(), c.probe.charging())
             }
+            clock.value = SystemClock.elapsedRealtime()
+            delay(TICK_MS)
         }
     }
 

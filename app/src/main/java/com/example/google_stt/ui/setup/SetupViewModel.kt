@@ -59,6 +59,7 @@ import kotlinx.coroutines.flow.StateFlow                             // 상태 �
 import kotlinx.coroutines.flow.first                                 // 저장된 값 한 번 읽기
 import kotlinx.coroutines.flow.update                                // 상태 고치기
 import kotlinx.coroutines.launch                                     // 코루틴 시작
+import kotlinx.coroutines.sync.withLock                              // 훑기 직렬화
 import kotlinx.coroutines.withContext                                // 스레드 바꾸기
 
 /**
@@ -138,6 +139,7 @@ class SetupViewModel(private val c: AppContainer, private val context: Context) 
     private var audio: Map<String, List<AudioItem>> = emptyMap()                    // 언어 폴더 이름 → 음원들
     private var audioSec: Map<String, Double> = emptyMap()                          // 언어 폴더 이름 → 길이 합(초)
     private var unknown: List<LangFolder> = emptyList()                             // 언어를 물어야 하는 폴더
+    private val scanLock = kotlinx.coroutines.sync.Mutex()                          // 폴더 훑기는 한 번에 하나
 
     /** 지금 조합의 작업들(실행 요청·조합 CSV 에 쓴다) */
     var jobs: List<Job> = emptyList()
@@ -173,8 +175,8 @@ class SetupViewModel(private val c: AppContainer, private val context: Context) 
             takePermission(uri, write = false)
             c.settings.update { it.copy(inputTreeUri = uri.toString()) }
         }
-        inputRoot = DocumentFile.fromTreeUri(context, uri)?.takeIf { it.canRead() }
-        _state.update { it.copy(inputPath = if (inputRoot == null) null else pathText(uri), message = if (inputRoot == null) "입력 폴더를 읽을 수 없다 — 다시 고른다" else "") }
+        inputRoot = withContext(Dispatchers.IO) { DocumentFile.fromTreeUri(context, uri)?.takeIf { it.canRead() } }   // change-hyungchul-20261107-0000 : WP7 독립 검토 9·12
+        _state.update { it.copy(inputPath = if (inputRoot == null) null else pathText(uri), message = if (inputRoot == null) "입력 폴더를 읽을 수 없다 — 다시 고른다" else it.message) }
         scan()
     }
 
@@ -184,8 +186,8 @@ class SetupViewModel(private val c: AppContainer, private val context: Context) 
             takePermission(uri, write = true)
             c.settings.update { it.copy(outputTreeUri = uri.toString()) }
         }
-        outputRoot = DocumentFile.fromTreeUri(context, uri)?.takeIf { it.canWrite() }
-        _state.update { it.copy(outputPath = if (outputRoot == null) null else pathText(uri), message = if (outputRoot == null) "출력 폴더에 쓸 수 없다 — 다시 고른다" else "") }
+        outputRoot = withContext(Dispatchers.IO) { DocumentFile.fromTreeUri(context, uri)?.takeIf { it.canWrite() } }   // change-hyungchul-20261107-0000 : WP7 독립 검토 9·12
+        _state.update { it.copy(outputPath = if (outputRoot == null) null else pathText(uri), message = if (outputRoot == null) "출력 폴더에 쓸 수 없다 — 다시 고른다" else it.message) }
     }
 
     /** 목적: 폴더 권한을 앱을 다시 켜도 남게 한다. 입력: uri, write - 쓰기 권한도 / 출력: 권한 보존 / 리턴: 없음 */
@@ -205,9 +207,9 @@ class SetupViewModel(private val c: AppContainer, private val context: Context) 
      * 목적: 입력 폴더를 훑어 언어 폴더를 판정하고 음원 수·길이를 센다.
      * 입력: 없음 / 출력: 상태(언어 판정·음원 수), 조합 요약 / 리턴: 없음
      */
-    private suspend fun scan() {
+    private suspend fun scan() = scanLock.withLock {   // change-hyungchul-20261107-0000 : WP7 독립 검토 3 — 훑기를 하나씩만 돌린다(겹치면 늦게 끝난 옛 결과가 새 폴더를 덮었다)
         val root = inputRoot
-        if (root == null) { audio = emptyMap(); audioSec = emptyMap(); unknown = emptyList(); _state.update { it.copy(langPlan = null, counts = emptyMap()) }; recompute(); return }
+        if (root == null) { audio = emptyMap(); audioSec = emptyMap(); unknown = emptyList(); _state.update { it.copy(langPlan = null, counts = emptyMap()) }; recompute(); return@withLock }
         _state.update { it.copy(busy = true) }
         val memory = c.langMemory.memory.first()
         val plan = withContext(Dispatchers.IO) {
@@ -321,7 +323,9 @@ class SetupViewModel(private val c: AppContainer, private val context: Context) 
     }
 
     /** 받아야 하는(아직 준비되지 않은) 자산 ID 들 — 다운로드 확인 대화창이 쓴다 */
-    fun missingAssetIds(): List<String> = c.assets.missing(jobs.flatMap { it.assetIds }.distinct().filter { it in c.assetSpecs }).map { it.id }
+    suspend fun missingAssetIds(): List<String> = withContext(Dispatchers.IO) {   // change-hyungchul-20261107-0000 : WP7 독립 검토 9 — 파일 확인을 입출력 스레드에서
+        c.assets.missing(jobs.flatMap { it.assetIds }.distinct().filter { it in c.assetSpecs }).map { it.id }
+    }
 
     // ───────────── 실행 준비 ─────────────
 
@@ -340,7 +344,13 @@ class SetupViewModel(private val c: AppContainer, private val context: Context) 
      */
     suspend fun resumeInfo(): ResumeInfo? = withContext(Dispatchers.IO) {
         val file = outputRoot?.findFile(OutputLayout.PROGRESS_FILE) ?: return@withContext null
-        val text = context.contentResolver.openInputStream(file.uri)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: return@withContext null
+        val text = try {   // change-hyungchul-20261107-0000 : WP7 독립 검토 10 — 열 수 없으면 기록이 없는 것으로 본다(앱이 죽지 않게)
+            context.contentResolver.openInputStream(file.uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+        } catch (e: java.io.IOException) {
+            c.log.w("진행 기록을 읽을 수 없다: ${e.message}"); null
+        } catch (e: SecurityException) {
+            c.log.w("진행 기록을 읽을 권한이 없다: ${e.message}"); null
+        } ?: return@withContext null
         val rows = PlanProgress.parse(text).rows.filterKeys { key -> jobs.any { it.key == key } }   // 이번 조합에 든 작업만
         if (rows.isEmpty()) return@withContext null
         val done = rows.values.count { it.status == PlanProgress.DONE }

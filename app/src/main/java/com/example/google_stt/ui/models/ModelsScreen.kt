@@ -32,22 +32,24 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle         // 상태 
 import com.example.google_stt.data.assets.AssetState                  // 자산 상태
 import com.example.google_stt.data.assets.FailReason                  // 실패 이유
 import com.example.google_stt.domain.catalog.AssetKind                // 자산 종류
+import com.example.google_stt.ui.common.WhileVisible                  // 보이는 동안만 돌리기
 import java.util.Locale                                               // 숫자 표기 고정
 
 /**
  * 목적: 모델 탭을 그린다.
- * 입력: vm - 모델 탭 ViewModel, neededIds - 지금 조합에 필요한데 아직 없는 자산 ID 들을 주는 함수(설정 탭의 값)
+ * 입력: vm - 모델 탭 ViewModel, onDownloadNeeded - [필요한 것 모두 받기] 를 눌렀을 때(지금 조합에 필요한 것을 받는다)
  * 출력: 화면 / 리턴: 없음
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ModelsScreen(vm: ModelsViewModel, neededIds: () -> List<String>) {
+fun ModelsScreen(vm: ModelsViewModel, onDownloadNeeded: () -> Unit) {
     val s by vm.state.collectAsStateWithLifecycle()
+    WhileVisible { vm.poll() }                                                        // 화면이 보이는 동안만 상태를 다시 읽는다
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if (uri != null) vm.importFrom(uri) }
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("모델·VAD 자산 ${s.assets.size}개 · 준비됨 ${s.assets.count { it.state is AssetState.Ready }} · 여유 ${size(s.freeBytes)}", style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { vm.download(neededIds()) }) { Text("필요한 것 모두 받기") }
+            OutlinedButton(onClick = onDownloadNeeded) { Text("필요한 것 모두 받기") }
             OutlinedButton(onClick = { pickFolder.launch(null) }, enabled = !s.busy) { Text("PC 에서 가져오기") }
             OutlinedButton(onClick = { vm.stopDownload() }) { Text("받기 중지") }
         }

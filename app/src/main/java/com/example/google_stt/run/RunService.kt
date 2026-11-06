@@ -46,6 +46,7 @@ class RunService : Service() {
     companion object {
         const val ACTION_DOWNLOAD = "com.example.google_stt.action.DOWNLOAD"   // 자산 받기 시작
         const val ACTION_STOP = "com.example.google_stt.action.STOP"           // 지금 중지
+        const val ACTION_STOP_DOWNLOAD = "com.example.google_stt.action.STOP_DOWNLOAD"   // add-hyungchul-20261107-0000 : WP7 독립 검토 1 — 받기만 멈춘다(실행은 그대로)
         const val ACTION_RUN = "com.example.google_stt.action.RUN"             // add-hyungchul-20261106-2243 : [T6-6] 실행 시작(요청은 RunController 가 들고 있다)
         const val ACTION_STOP_AFTER = "com.example.google_stt.action.STOP_AFTER"   // add-hyungchul-20261106-2243 : [T6-6] 이 작업 끝나고 중지
         const val EXTRA_ASSET_IDS = "asset_ids"                                // 받을 자산 ID 들(ArrayList<String>)
@@ -76,7 +77,16 @@ class RunService : Service() {
             context.startForegroundService(Intent(context, RunService::class.java).setAction(ACTION_RUN))
         }
 
-        /** 목적: 받기를 지금 멈춘다. 입력: context - Context / 출력: 진행 중인 받기가 취소된다(받던 파일은 남는다) / 리턴: 없음 */
+        /**
+         * add-hyungchul-20261107-0000 : WP7 독립 검토 1
+         * 목적: 모델 탭에서 시작한 받기만 멈춘다(돌고 있는 실행은 건드리지 않는다).
+         * 입력: context - Context / 출력: 받기 코루틴 취소(받던 파일은 남는다) / 리턴: 없음
+         */
+        fun stopDownloads(context: Context) {
+            context.startService(Intent(context, RunService::class.java).setAction(ACTION_STOP_DOWNLOAD))
+        }
+
+        /** 목적: 받기와 실행을 모두 지금 멈춘다. 입력: context - Context / 출력: 진행 중인 받기가 취소된다(받던 파일은 남는다) / 리턴: 없음 */
         fun stop(context: Context) {
             context.startService(Intent(context, RunService::class.java).setAction(ACTION_STOP))
         }
@@ -85,6 +95,7 @@ class RunService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)   // 서비스가 사라지면 함께 끝난다
     private var active = 0                                                              // 진행 중인 받기 요청 수(메인 스레드에서만 바꾼다)
     private var ticker: Job? = null                                                     // 알림 갱신 작업
+    private val downloads = ArrayList<Job>()                                            // add-hyungchul-20261107-0000 : 돌고 있는 받기 코루틴들(받기만 멈출 때 쓴다)
     private var waitingWifi = false                                                     // Wi-Fi 를 기다리는 중인지
     private val container: AppContainer get() = (application as SttApp).container       // 객체 묶음
     private val notifications by lazy { getSystemService(NotificationManager::class.java) }
@@ -114,6 +125,10 @@ class RunService : Service() {
         } else if (intent?.action == ACTION_RUN) {                                      // add-hyungchul-20261106-2243 : [T6-6] 실행 모드
             startForeground(NOTIFICATION_ID, notification("실행 준비 중", null), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             startRun()
+        } else if (intent?.action == ACTION_STOP_DOWNLOAD) {   // change-hyungchul-20261107-0000 : WP7 독립 검토 1
+            container.log.i("받기 중지 요청")
+            downloads.toList().forEach { it.cancel() }                                  // 받기 코루틴만 취소한다
+            if (active == 0) stopSelf()
         } else if (intent?.action == ACTION_STOP_AFTER) {                               // add-hyungchul-20261106-2243 : [T6-6]
             container.controller.stop(StopMode.AFTER_CURRENT)
         } else if (active == 0) {
@@ -140,7 +155,7 @@ class RunService : Service() {
         active++
         if (!wakeLock.isHeld) wakeLock.acquire(WAKE_LIMIT_MS)                           // 화면이 꺼져도 CPU 가 돌게
         if (ticker?.isActive != true) ticker = scope.launch { while (true) { show(); delay(TICK_MS) } }
-        scope.launch {
+        val job = scope.launch {
             try {
                 val c = container
                 val known = ids.filter { it in c.assets.states }                        // 모르는 ID 는 뺀다
@@ -159,6 +174,8 @@ class RunService : Service() {
                 if (--active == 0) finish()
             }
         }
+        downloads += job                                                                // 받기만 멈출 수 있게 기억한다
+        job.invokeOnCompletion { downloads -= job }
     }
 
     /**

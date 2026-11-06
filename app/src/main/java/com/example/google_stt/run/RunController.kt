@@ -37,6 +37,7 @@ import kotlinx.coroutines.coroutineScope                             // 메모�
 import kotlinx.coroutines.currentCoroutineContext                    // 실행 코루틴 얻기
 import kotlinx.coroutines.flow.MutableStateFlow                      // 상태 보관
 import kotlinx.coroutines.flow.StateFlow                             // 상태 읽기
+import kotlinx.coroutines.flow.first                                 // 설정 한 번 읽기
 import kotlinx.coroutines.flow.update                                // 상태 고치기
 import kotlinx.coroutines.job                                        // 실행 코루틴의 Job
 import kotlinx.coroutines.launch                                     // 메모리 기록 시작
@@ -82,7 +83,7 @@ class RunController(private val context: Context, private val c: AppContainer) {
     fun start(req: RunRequest): Boolean {
         if (_state.value.phase.active) return false
         request = req
-        _state.value = RunState(RunPhase.PREPARING, RunProgress(total = req.jobs.size))
+        _state.value = RunState(RunPhase.PREPARING, RunProgress(total = req.jobs.size), startedAtMs = android.os.SystemClock.elapsedRealtime(), finishedAtStart = -1)   // -1 = 아직 모름(첫 진행 보고에서 정한다)
         try {
             RunService.run(context)
         } catch (e: IllegalStateException) {                                    // E-RUN-01: 앱이 뒤에 있어 서비스를 시작할 수 없다
@@ -137,10 +138,16 @@ class RunController(private val context: Context, private val c: AppContainer) {
             val writer = ResultWriter(tree)
             val sched = JobScheduler(SchedulerDeps(
                 execute = pipeline::execute,
-                ensureAssets = { ids -> c.assets.ensureReady(ids).mapValues { it.value.error.message ?: it.value.reason.name } },
+                ensureAssets = { ids ->   // change-hyungchul-20261107-0000 : WP7 독립 검토 2 — 실행 중 받기도 "Wi-Fi 에서만" 설정을 지킨다
+                    if (c.assets.missing(ids.filter { it in c.assetSpecs }).isNotEmpty()) awaitUnmetered()
+                    c.assets.ensureReady(ids).mapValues { it.value.error.message ?: it.value.reason.name }
+                },
                 resume = resume,
                 thermal = ThermalGate(c.probe::thermalLevel, { c.log.i(it) }),
-                onProgress = { p -> _state.update { s -> if (s.phase == RunPhase.STOPPING) s.copy(progress = p) else s.copy(phase = if (p.waiting != null) RunPhase.WAITING else RunPhase.RUNNING, progress = p) } },
+                onProgress = { p -> _state.update { s0 ->
+                    val s = if (s0.finishedAtStart < 0) s0.copy(finishedAtStart = p.finished) else s0   // 첫 보고의 "이미 끝난 수" 가 이어 하기의 기준
+                    if (s.phase == RunPhase.STOPPING) s.copy(progress = p) else s.copy(phase = if (p.waiting != null) RunPhase.WAITING else RunPhase.RUNNING, progress = p)
+                } },
                 onResult = { r -> onResult(r, req, summary, writer) },
                 log = { c.log.i(it) },
             )).also { scheduler = it }
@@ -167,7 +174,23 @@ class RunController(private val context: Context, private val c: AppContainer) {
             c.log.e("실행 중단(예상하지 못한 오류)", e)
         } finally {
             scheduler = null; runJob = null
+            _state.update { it.copy(endedAtMs = android.os.SystemClock.elapsedRealtime()) }   // 끝난 뒤에도 경과 시간이 남게
             withContext(NonCancellable) { c.log.flush(); c.log.attach(null) }
+        }
+    }
+
+    /**
+     * add-hyungchul-20261107-0000 : WP7 독립 검토 2
+     * 목적: "Wi-Fi 전용" 이 켜져 있고 지금 연결이 데이터 요금이 드는 망이면 기다린다(E-AS-10 — RunService 받기 모드와 같은 규칙).
+     * 입력: 없음 / 출력: 기다리는 동안 로그 한 줄 / 리턴: 없음(취소되면 CancellationException)
+     */
+    private suspend fun awaitUnmetered() {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        var said = false
+        while (c.settings.settings.first().wifiOnly && cm.activeNetwork != null && cm.isActiveNetworkMetered) {
+            if (!said) c.log.w("E-AS-10: Wi-Fi 전용인데 지금 연결은 데이터 요금이 드는 망이다 — Wi-Fi 연결 대기")
+            said = true
+            kotlinx.coroutines.delay(5_000L)
         }
     }
 

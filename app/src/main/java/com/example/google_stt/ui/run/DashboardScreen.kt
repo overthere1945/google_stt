@@ -28,6 +28,7 @@ import com.example.google_stt.run.RunPhase                            // 실행 
 import com.example.google_stt.run.RunState                            // 실행 상태
 import com.example.google_stt.ui.common.LogList                       // 로그 목록
 import com.example.google_stt.ui.common.SectionCard                   // 제목 있는 카드
+import com.example.google_stt.ui.common.WhileVisible                  // 보이는 동안만 돌리기
 import com.example.google_stt.ui.setup.durationText                   // 시간 표기
 import java.util.Locale                                               // 숫자 표기 고정
 
@@ -40,6 +41,7 @@ import java.util.Locale                                               // 숫자 
 fun DashboardScreen(vm: DashboardViewModel, onStop: () -> Unit) {
     val s by vm.state.collectAsStateWithLifecycle()
     val p = s.run.progress
+    WhileVisible { vm.poll() }                                                        // 화면이 보이는 동안만 기기 값을 읽는다
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionCard("전체 ${p.finished} / ${p.total}" + if (p.total > 0) String.format(Locale.US, "  %.1f%%", p.finished * 100.0 / p.total) else "") {
             LinearProgressIndicator(progress = { if (p.total > 0) p.finished.toFloat() / p.total else 0f }, modifier = Modifier.fillMaxWidth())

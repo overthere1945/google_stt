@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier                               // 꾸밈
 import androidx.compose.ui.text.font.FontFamily                   // 고정폭 글꼴
 import androidx.compose.ui.text.style.TextOverflow                // 넘치는 글자 처리
 import androidx.compose.ui.unit.dp                                // 길이 단위
+import androidx.lifecycle.repeatOnLifecycle                       // 보이는 동안만 돌리기
 
 /**
  * 목적: 제목이 있는 카드.
@@ -90,4 +91,16 @@ fun LogList(lines: List<String>, modifier: Modifier = Modifier) {
     LazyColumn(modifier = modifier, state = state) {
         items(lines) { line -> Text(line, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) }
     }
+}
+
+/**
+ * add-hyungchul-20261107-0000 : WP7 독립 검토 7
+ * 목적: 화면이 보이는 동안(STARTED 이상)만 일을 돌린다. 화면이 꺼지거나 앱이 뒤로 가면 멈추고, 돌아오면 다시 시작한다
+ *       (시간 측정 실행 중에 화면 갱신용 조회가 CPU 를 쓰지 않게).
+ * 입력: block - 취소될 때까지 도는 일 / 출력: 없음 / 리턴: 없음
+ */
+@Composable
+fun WhileVisible(block: suspend () -> Unit) {
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(owner) { owner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) { block() } }
 }

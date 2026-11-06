@@ -56,14 +56,17 @@ class ModelsViewModel(private val c: AppContainer, private val context: Context)
     /** 상업 조건부 모델이 쓰는 자산 ID 들 */
     private val conditional = Catalog.models.filter { it.commercial == Commercial.CONDITIONAL }.mapNotNull { it.assetId }.toSet()
 
-    init {
-        viewModelScope.launch {
-            while (true) {                                                          // 받는 중의 진행률이 바뀌므로 0.5초마다 다시 읽는다
-                val free = withContext(Dispatchers.IO) { c.assetStore.freeBytes() }
-                val rows = c.assetSpecs.values.map { s -> AssetUi(s.id, s.kind, c.assets.state(s.id).value, s.archiveBytes, s.license, s.id in conditional) }
-                _state.update { it.copy(assets = rows, freeBytes = free) }
-                delay(500)
+    /**
+     * 목적: 자산 상태를 0.5초마다 다시 읽는다(받는 중의 진행률이 바뀐다). 화면이 보이는 동안만 부른다 — 취소될 때까지 돈다.
+     * 입력: 없음 / 출력: 상태 / 리턴: 없음
+     */
+    suspend fun poll() {   // change-hyungchul-20261107-0000 : WP7 독립 검토 7·9 — ViewModel 수명 내내 돌지 않고, 파일 확인은 입출력 스레드에서
+        while (true) {
+            val (rows, free) = withContext(Dispatchers.IO) {
+                c.assetSpecs.values.map { s -> AssetUi(s.id, s.kind, c.assets.state(s.id).value, s.archiveBytes, s.license, s.id in conditional) } to c.assetStore.freeBytes()
             }
+            _state.update { it.copy(assets = rows, freeBytes = free) }
+            delay(500)
         }
     }
 
@@ -79,10 +82,16 @@ class ModelsViewModel(private val c: AppContainer, private val context: Context)
     }
 
     /** 목적: 받기를 멈춘다(받던 파일은 남아 다음에 이어받는다). 입력: 없음 / 출력: 서비스에 요청 / 리턴: 없음 */
-    fun stopDownload() = RunService.stop(context)
+    fun stopDownload() = RunService.stopDownloads(context)   // change-hyungchul-20261107-0000 : WP7 독립 검토 1 — 실행은 멈추지 않는다
 
     /** 목적: 자산을 지운다. 입력: id - 자산 ID / 출력: 파일 삭제 / 리턴: 없음 */
-    fun delete(id: String) = viewModelScope.launch { c.assets.delete(id) }
+    fun delete(id: String) {
+        if (c.controller.state.value.phase.active) {   // change-hyungchul-20261107-0000 : WP7 독립 검토 11 — 실행이 쓰고 있을 수 있다
+            _state.update { it.copy(message = "실행 중에는 모델을 지울 수 없다") }
+            return
+        }
+        viewModelScope.launch { c.assets.delete(id) }
+    }
 
     /**
      * 목적: 폴더에서 자산을 가져온다(PC 에서 받아 옮겨 둔 것).

@@ -23,6 +23,7 @@ import androidx.activity.compose.setContent                       // Compose 화
 import androidx.activity.enableEdgeToEdge                         // 화면 끝까지 그리기 + 표시줄 색
 import androidx.activity.result.contract.ActivityResultContracts  // 권한 요청 약속
 import androidx.compose.runtime.Composable                        // 컴포저블 표시
+import androidx.compose.runtime.LaunchedEffect                    // 탭이 바뀔 때 다시 계산
 import androidx.compose.runtime.getValue                          // 상태 읽기
 import androidx.compose.runtime.mutableStateOf                    // 상태
 import androidx.compose.runtime.remember                          // 화면이 떠 있는 동안의 상태
@@ -83,6 +84,8 @@ class MainActivity : ComponentActivity() {
         var askLang by remember { mutableStateOf<LangFolder?>(null) }              // 언어를 묻고 있는 폴더
         var resume by remember { mutableStateOf<ResumeInfo?>(null) }               // 지난 실행 요약
         var checks by remember { mutableStateOf<List<PreflightCheck>?>(null) }     // 점검 결과(null = 확인 중)
+        var working by remember { mutableStateOf(false) }                          //// change-hyungchul-20261107-0000 : WP7 독립 검토 8 — 대화창의 누름을 처리하는 중(연달아 눌러도 한 번만)
+        LaunchedEffect(tab) { if (tab == AppTab.SETUP) setupVm.recompute() }       //// change-hyungchul-20261107-0000 : WP7 독립 검토 6 — 설정 탭으로 돌아오면 요약을 다시 계산한다(모델을 받거나 지웠을 수 있다)
 
         // 목적: 점검을 (다시) 돌린다. 입력: 없음 / 리턴: 없음
         fun runChecks() { checks = null; scope.launch { checks = setupVm.preflight() } }
@@ -115,16 +118,23 @@ class MainActivity : ComponentActivity() {
             tab = tab, onTab = { tab = it },
             setup = { SetupScreen(setupVm, onStart = ::onStart) },
             run = { DashboardScreen(dashVm, onStop = { step = Step.STOP }) },
-            models = { ModelsScreen(modelsVm, neededIds = setupVm::missingAssetIds) },
+            models = { ModelsScreen(modelsVm, onDownloadNeeded = { scope.launch { modelsVm.download(setupVm.missingAssetIds()) } }) },
         )
 
         when (step) {
             Step.LANG -> askLang?.let { folder ->
                 LangDialog(folder, left = setupVm.unknownFolders.size - 1, onCancel = { step = Step.NONE }, onChoose = { lang ->
-                    scope.launch {
-                        setupVm.chooseLang(folder, lang).join()                    // 기억하고 다시 훑는다
-                        askLang = setupVm.unknownFolders.firstOrNull()
-                        if (askLang == null) afterLang()                           // 다 물었으면 다음 순서로
+                    if (!working) {
+                        working = true
+                        scope.launch {
+                            try {
+                                setupVm.chooseLang(folder, lang).join()            // 기억하고 다시 훑는다
+                                askLang = setupVm.unknownFolders.firstOrNull()
+                                if (askLang == null) afterLang()                   // 다 물었으면 다음 순서로
+                            } finally {
+                                working = false
+                            }
+                        }
                     }
                 })
             }
@@ -135,7 +145,7 @@ class MainActivity : ComponentActivity() {
                 checks,
                 onRequestPermissions = { askPermissions.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.RECORD_AUDIO)) },
                 onBattery = { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))) },
-                onProceed = { if (setupVm.missingAssetIds().isNotEmpty()) step = Step.DOWNLOAD else launchRun() },
+                onProceed = { scope.launch { setupVm.recompute(); if (setupVm.missingAssetIds().isNotEmpty()) step = Step.DOWNLOAD else launchRun() } },
                 onCancel = { step = Step.NONE },
             )
             Step.DOWNLOAD -> DownloadConfirmDialog(

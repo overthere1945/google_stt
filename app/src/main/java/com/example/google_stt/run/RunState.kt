@@ -32,11 +32,15 @@ enum class StopMode {
 /**
  * 목적: 실행 상태.
  * 필드: phase - 단계, progress - 작업 진행(전체·끝난 수·돌고 있는 작업·기다리는 이유), message - 사유(오류·중지 안내, 없으면 빈 글),
- *       stopAfterCurrent - "이 작업 끝나고 중지" 가 걸려 있는지
+ *       stopAfterCurrent - "이 작업 끝나고 중지" 가 걸려 있는지,
+ *       startedAtMs / endedAtMs - 이번 실행의 시작·끝 시각(SystemClock.elapsedRealtime, 0 = 없음), finishedAtStart - 시작할 때 이미 끝나 있던 작업 수(이어 하기)
  */
 data class RunState(
     val phase: RunPhase = RunPhase.IDLE,
     val progress: RunProgress = RunProgress(),
     val message: String = "",
     val stopAfterCurrent: Boolean = false,
+    val startedAtMs: Long = 0L,   // change-hyungchul-20261107-0000 : WP7 독립 검토 4·5 — 경과·남은 시간의 기준을 화면이 아니라 실행 상태가 가진다
+    val endedAtMs: Long = 0L,
+    val finishedAtStart: Int = 0,
 )
