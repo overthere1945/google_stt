@@ -78,6 +78,14 @@
         </activity>
 
         <!--
+          add-hyungchul-20261106-2322 : [T7-1] v4 화면(Compose). 런처는 아직 위의 v3 화면이다 — T8-1 에서 이쪽으로 바꾼다.
+          그 전에 열어 보려고 exported 로 둔다:  adb shell am start -n com.example.google_stt/.ui.MainActivity
+        -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true" />
+
+        <!--
           add-hyungchul-20261106-1722 : [T4-7] 포그라운드 서비스. 종류 specialUse — 긴 시간 도는 온디바이스 STT 평가(받기 포함)는
           dataSync 의 시간 제한(Android 15: 24시간에 6시간)에 맞지 않아 specialUse 를 쓴다(D21). 밖에서 시작할 수 없다(exported=false).
         -->
