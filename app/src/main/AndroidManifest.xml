@@ -36,14 +36,9 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!--
-      add-hyungchul-20261010-2238 : sherpa-onnx STT 모델 읽기용 '모든 파일 접근'(사용자 결정 Q24)
-        · 모델 위치: /sdcard/Documents/stt_models/<패키지>/ (PC 에서 adb push 또는 MTP 복사)
-        · sherpa-onnx 는 파일 경로로만 모델을 읽는다. .onnx 는 미디어 파일이 아니라 Android 13+ 에서는 이 권한 없이는 공용 폴더의 파일을 경로로 읽을 수 없다.
-        · 이전 방식(앱 전용 폴더 Android/data 에 adb 로 넣기)은 adb 가 만든 폴더를 앱이 읽지 못해(canRead=false) 바꿨다.
-        · 런타임 대화상자가 없는 특수 권한이다 → 앱이 설정 화면(ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)을 열어 사용자가 켠다.
-        · Google Play 배포 시 정책 심사 대상(내부 평가용 앱이라 해당 없음).
+      change-hyungchul-20261107-0007 : [T8-1] MANAGE_EXTERNAL_STORAGE('모든 파일 접근') 삭제 — v4 는 모델을 앱 전용 저장소에 두고
+        입력·출력은 사용자가 고른 폴더(SAF)만 쓴다(D: MANAGE_EXTERNAL_STORAGE 쓰지 않음).
     -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <!--
       ★ 필수: Android 11(API 30)+ 의 패키지 가시성 제한 때문에
@@ -68,22 +63,17 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Google_stt">
 
+        <!--
+          change-hyungchul-20261107-0007 : [T8-1] 런처를 v4 화면(Compose, ui.MainActivity)으로 바꿨다. v3 화면(루트 패키지 MainActivity)의 등록은 지웠다.
+        -->
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!--
-          add-hyungchul-20261106-2322 : [T7-1] v4 화면(Compose). 런처는 아직 위의 v3 화면이다 — T8-1 에서 이쪽으로 바꾼다.
-          그 전에 열어 보려고 exported 로 둔다:  adb shell am start -n com.example.google_stt/.ui.MainActivity
-        -->
-        <activity
-            android:name=".ui.MainActivity"
-            android:exported="true" />
 
         <!--
           add-hyungchul-20261106-1722 : [T4-7] 포그라운드 서비스. 종류 specialUse — 긴 시간 도는 온디바이스 STT 평가(받기 포함)는
