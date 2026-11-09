@@ -209,6 +209,8 @@ class MlKitAdapter(override val spec: ModelSpec, private val log: (String) -> Un
             var engineNote = ""
             if (result.isEmpty() && err != null) {
                 if (isNoSpeechError(err)) engineNote = err else throw IOException(err)
+            } else if (err != null) {                                               // change-hyungchul-20261109-1019 : 9단계 통합 검토 B1 — 글이 일부 나온 뒤 엔진 오류가 왔다: 버리지 않고 note 로 남긴다(뒤쪽이 빠졌을 수 있다)
+                engineNote = "ERR_PARTIAL:$err"
             }
             if (endNs == 0L) endNs = System.nanoTime()
             val eofNs = feeder.finishedAtNs.takeIf { it != 0L } ?: endNs

@@ -99,6 +99,10 @@ class ModelsViewModel(private val c: AppContainer, private val context: Context)
      * 출력: 앱 전용 저장소에 자산, 상태의 안내 문구 / 리턴: 없음
      */
     fun importFrom(uri: Uri) = viewModelScope.launch {
+        if (c.controller.state.value.phase.active) {                           // change-hyungchul-20261109-1019 : 9단계 통합 검토 B4 — 실행이 쓰는 모델을 바꾸지 않는다(삭제와 같은 규칙)
+            _state.update { it.copy(message = "실행 중에는 모델을 가져올 수 없다") }
+            return@launch
+        }
         _state.update { it.copy(busy = true, message = "가져오는 중…") }
         val message = withContext(Dispatchers.IO) {
             val picked = DocumentFile.fromTreeUri(context, uri) ?: return@withContext "폴더를 열 수 없다"
@@ -106,15 +110,16 @@ class ModelsViewModel(private val c: AppContainer, private val context: Context)
             val importer = AssetImporter(context.contentResolver, c.assetStore)
             val found = importer.find(root, c.assetSpecs.values)
             if (found.isEmpty()) return@withContext "가져올 자산 폴더가 없다(폴더 이름이 자산 ID 와 같아야 한다)"
-            var ok = 0; val failed = ArrayList<String>()
+            var ok = 0; val failed = ArrayList<String>(); var kept = 0
             for ((id, dir) in found) {
+                if (c.assets.state(id).value is AssetState.Ready) { kept++; continue }   // change-hyungchul-20261109-1019 : 9단계 통합 검토 B4 — 이미 준비된 자산은 건드리지 않는다(가져오기가 실패하면 멀쩡한 모델이 지워진다)
                 try {
                     importer.import(c.assetSpecs.getValue(id), dir); ok++
                 } catch (e: AppError) {
                     failed += "$id(${e.code})"; c.log.w("가져오기 실패 $id: ${e.message}")
                 }
             }
-            "가져오기: 성공 ${ok}개" + if (failed.isEmpty()) "" else ", 실패 ${failed.joinToString()}"
+            "가져오기: 성공 ${ok}개" + (if (kept > 0) ", 이미 준비됨 ${kept}개(건너뜀)" else "") + if (failed.isEmpty()) "" else ", 실패 ${failed.joinToString()}"
         }
         c.assets.refresh()
         _state.update { it.copy(busy = false, message = message) }

@@ -145,7 +145,9 @@ class MainActivity : ComponentActivity() {
                 checks,
                 onRequestPermissions = { askPermissions.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.RECORD_AUDIO)) },
                 onBattery = { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))) },
-                onProceed = { scope.launch { setupVm.recompute(); if (setupVm.missingAssetIds().isNotEmpty()) step = Step.DOWNLOAD else launchRun() } },
+                onProceed = { if (!working) { working = true; scope.launch {       // change-hyungchul-20261109-1019 : 9단계 통합 검토 B10 — 연달아 눌러도 한 번만
+                    try { setupVm.recompute(); if (setupVm.missingAssetIds().isNotEmpty()) step = Step.DOWNLOAD else launchRun() } finally { working = false }
+                } } },
                 onCancel = { step = Step.NONE },
             )
             Step.DOWNLOAD -> DownloadConfirmDialog(

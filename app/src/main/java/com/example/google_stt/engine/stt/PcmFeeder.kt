@@ -64,8 +64,9 @@ internal class PcmFeeder(
         aborted = true
         if (started) {
             thread.interrupt()
+            try { writeSide.close() } catch (e: IOException) { android.util.Log.w("GoogleStt", "공급 파이프 닫기 실패: ${e.message}") }   // change-hyungchul-20261109-1019 : 9단계 통합 검토 B6 — 막힌 write() 는 인터럽트로 풀리지 않는다. 닫아서 푼다
         } else {
-            runCatching { writeSide.close() }
+            try { writeSide.close() } catch (e: IOException) { android.util.Log.w("GoogleStt", "공급 파이프 닫기 실패: ${e.message}") }   // change-hyungchul-20261109-1019 : 9단계 통합 검토 B9 — runCatching → 실패를 로그에 남긴다
             finished.complete(Unit)
         }
     }

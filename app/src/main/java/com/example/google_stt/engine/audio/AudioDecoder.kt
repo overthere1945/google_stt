@@ -69,11 +69,11 @@ object AudioDecoder {
     fun decodeDetailed(context: Context, uri: Uri): DecodeResult {
         val t0 = System.nanoTime()
         val extractor = MediaExtractor()
+        try {                                                                // change-hyungchul-20261109-1019 : 9단계 통합 검토 B7 — setDataSource 가 실패해도(깨진 파일) extractor 를 놓도록 try 안으로 옮겼다
         context.contentResolver.openFileDescriptor(uri, "r").use { pfd ->
             requireNotNull(pfd) { "파일을 열 수 없습니다: $uri" }
             extractor.setDataSource(pfd.fileDescriptor)
         }
-        try {
             val trackIndex = selectAudioTrack(extractor)
             require(trackIndex >= 0) { "오디오 트랙을 찾을 수 없습니다." }
             extractor.selectTrack(trackIndex)
@@ -149,8 +149,13 @@ object AudioDecoder {
         mime: String,
     ): Pcm {
         val codec = MediaCodec.createDecoderByType(mime)
-        codec.configure(format, null, null, 0)
-        codec.start()
+        try {                                                                // change-hyungchul-20261109-1019 : 9단계 통합 검토 B7 — configure·start 가 실패하면 코덱을 놓는다(깨진 파일이 많으면 코덱이 쌓인다)
+            codec.configure(format, null, null, 0)
+            codec.start()
+        } catch (e: Exception) {
+            codec.release()
+            throw e
+        }
 
         val out = ByteArrayOutputStream()
         val info = MediaCodec.BufferInfo()

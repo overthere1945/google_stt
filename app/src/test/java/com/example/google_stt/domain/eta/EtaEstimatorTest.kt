@@ -87,6 +87,23 @@ class EtaEstimatorTest {
     }
 
     /**
+     * 목적: [9단계 통합 검토 B3] 오프라인 엔진은 동시에 1개만 돌므로 동시 작업 수를 늘려도 예상 시간이 줄지 않는다.
+     *       스트리밍·Vosk 가 섞이면 "전체 합 / 동시 수" 와 "오프라인 합" 중 큰 값이다.
+     * 입력: 없음 / 출력: 없음 / 리턴: 없음
+     * add-hyungchul-20261109-1019
+     */
+    @Test
+    fun offlineJobs_notDividedByWorkers() {
+        val table = RtfTable(measured = mapOf(
+            RtfKey(s24, "whisper-base", "NOVAD", 3) to listOf(0.1), RtfKey(s24, "qwen3asr-0.6b", "NOVAD", 3) to listOf(0.3),
+            RtfKey(s24, "vosk-small-ko", "NOVAD", 3) to listOf(0.2),
+        ))
+        val offline = listOf(job("whisper-base"), job("qwen3asr-0.6b"))
+        assertEquals(400.0, EtaEstimator(table, s24, 3).estimate(offline, audio).totalSec!!, 1e-9)                      // 100 + 300, 나누지 않는다
+        assertEquals(400.0, EtaEstimator(table, s24, 3).estimate(offline + job("vosk-small-ko"), audio).totalSec!!, 1e-9)   // max(600/3, 400)
+    }
+
+    /**
      * 목적: [UT-ETA-03] 값이 없는 작업은 미측정으로 세고, 합계는 측정된 작업만 더한다. 아무 값도 없으면 합계는 null.
      * 입력: 없음 / 출력: 없음 / 리턴: 없음
      */

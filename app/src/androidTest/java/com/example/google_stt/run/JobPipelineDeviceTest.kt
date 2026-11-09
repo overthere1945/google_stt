@@ -113,7 +113,8 @@ class JobPipelineDeviceTest {
         assertEquals(CsvFormat.oneLine(text), v["text"])                               // CSV 의 text 열은 공백을 한 칸으로 정리한 한 줄(TXT 는 원문 그대로)
         assertEquals(CsvFormat.textStats(text).first.toString(), v["chars"])
         assertTrue(v.getValue("transcribe_sec").toDouble() > 0); assertTrue(v.getValue("model_load_sec").toDouble() > 0)
-        assertEquals("0", v["feed_measured"]); assertEquals("", v["note"])
+        assertEquals("0", v["feed_measured"])
+        assertTrue("note=${v["note"]}", v["note"] in setOf("", PipelineSteps.NOTE_NET_DELTA))   // change-hyungchul-20261109-1024 : 설치 직후 첫 실행에는 앱 UID 의 송수신이 잡혀 WARN_NET_DELTA 가 붙는다(환경 표시) — 그 표시만 허용한다
 
         assertTrue(File(lang, "whisper-base_SILERO_device.csv").length() > 0)
         val meta = File(lang, "whisper-base_SILERO_run_meta.csv").readText(Charsets.UTF_8)

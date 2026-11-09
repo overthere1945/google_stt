@@ -73,7 +73,9 @@ class PyannoteVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-
         session = env.createSession(bytes, sessionOptions)
         inputName = session.inputNames.first()
         // sherpa export-onnx.py 가 넣은 메타데이터를 읽는다(없으면 segmentation-3.0 고정값)
-        val meta = runCatching { session.metadata.customMetadata }.getOrDefault(emptyMap())
+        val meta = try { session.metadata.customMetadata } catch (e: Exception) {   // change-hyungchul-20261109-1019 : 9단계 통합 검토 B9 — runCatching → 못 읽으면 로그를 남기고 고정값으로 간다
+            android.util.Log.w("GoogleStt", "pyannote 메타데이터를 읽지 못해 고정값을 쓴다: ${e.message}"); emptyMap()
+        }
         windowSize = meta["window_size"]?.toIntOrNull() ?: 160_000
         windowShift = (0.1 * windowSize).toInt()                           // vad-onnx.py: int(0.1 * window_size)
         rfSize = meta["receptive_field_size"]?.toIntOrNull() ?: 991

@@ -14,6 +14,7 @@
  */
 package com.example.google_stt.domain.eta
 
+import com.example.google_stt.domain.catalog.Runtime          // add-hyungchul-20261109-1019 : 런타임 종류
 import com.example.google_stt.domain.plan.Job   // 작업
 
 /**
@@ -82,6 +83,7 @@ class EtaEstimator(
         val sources = LinkedHashMap<String, RtfSource>()                      // 출처
         var usableSum = 0.0; var usableCount = 0                              // 합계에 넣는 것
         var otherSum = 0.0; var otherCount = 0                                // 다른 기기 참고
+        val serial = HashMap<Runtime, Double>(); val otherSerial = HashMap<Runtime, Double>()   // change-hyungchul-20261109-1019 : 9단계 통합 검토 B3 — 런타임별 합(동시에 1개만 도는 종류를 따로 본다)
         for (job in jobs) {
             val audioSec = audioSecByLang[job.lang.name] ?: 0.0               // 그 언어 폴더의 음원 길이
             val value = rtfFor(job, t)
@@ -90,19 +92,32 @@ class EtaEstimator(
             if (value != null && source.usable) {
                 val sec = audioSec * value.rtf
                 perJob += job to sec; usableSum += sec; usableCount++
+                serial[job.model.runtime] = (serial[job.model.runtime] ?: 0.0) + sec
             } else {
                 perJob += job to null                                         // 합계에 넣지 않는다
-                if (value != null) { otherSum += audioSec * value.rtf; otherCount++ }   // 다른 기기 값은 참고 합으로
+                if (value != null) {                                          // 다른 기기 값은 참고 합으로
+                    otherSum += audioSec * value.rtf; otherCount++
+                    otherSerial[job.model.runtime] = (otherSerial[job.model.runtime] ?: 0.0) + audioSec * value.rtf
+                }
             }
         }
         val div = workers.coerceAtLeast(1)                                    // 동시 작업 수로 나눈다(최소 1)
         return Estimate(
-            totalSec = if (usableCount > 0) usableSum / div else null,
+            totalSec = if (usableCount > 0) wall(usableSum, serial, div) else null,
             perJob = perJob, sources = sources,
             unknownJobs = jobs.size - usableCount,
-            otherDeviceSec = if (otherCount > 0) otherSum / div else null,
+            otherDeviceSec = if (otherCount > 0) wall(otherSum, otherSerial, div) else null,
         )
     }
+
+    /**
+     * add-hyungchul-20261109-1019 : 9단계 통합 검토 B3
+     * 목적: 작업 시간 합을 실제로 걸릴 시간으로 바꾼다. 스케줄러는 오프라인 sherpa 와 ML Kit 을 각각 동시에 1개만 돌리므로,
+     *       그 종류의 합은 동시 작업 수로 나눌 수 없다 → "전체 합 / 동시 수" 와 "한 줄로 도는 종류의 합" 중 큰 값.
+     * 입력: sum - 전체 합(초), byRuntime - 런타임별 합, div - 동시 작업 수 / 출력: 없음 / 리턴: Double - 예상 시간(초)
+     */
+    private fun wall(sum: Double, byRuntime: Map<Runtime, Double>, div: Int): Double =
+        maxOf(sum / div, byRuntime[Runtime.SHERPA_OFFLINE] ?: 0.0, byRuntime[Runtime.MLKIT] ?: 0.0)
 
     /**
      * 목적: 작업의 RTF 를 정한다.

@@ -84,7 +84,7 @@ private class ReusableTensor(env: OrtEnvironment, val shape: LongArray) : AutoCl
     }
 
     override fun close() {
-        runCatching { tensor.close() }
+        try { tensor.close() } catch (e: Exception) { android.util.Log.w("GoogleStt", "NS 텐서 정리 실패: ${e.message}") }   // change-hyungchul-20261109-1019 : 9단계 통합 검토 B9 — runCatching → 실패를 로그에 남긴다
     }
 }
 
@@ -127,9 +127,11 @@ abstract class OnnxNoiseReducerBase(
         sessionOptions.setInterOpNumThreads(config.numThreads)
         sessionOptions.setIntraOpNumThreads(config.numThreads)
         session = env.createSession(bytes, sessionOptions)
-        metadata = runCatching {
+        metadata = try {                                                     // change-hyungchul-20261109-1019 : 9단계 통합 검토 B9 — runCatching → 못 읽으면 로그를 남기고 빈 값으로 간다
             session.metadata.customMetadata.toMap()
-        }.getOrDefault(emptyMap())
+        } catch (e: Exception) {
+            android.util.Log.w("GoogleStt", "NS 모델 메타데이터를 읽지 못했다($assetName): ${e.message}"); emptyMap()
+        }
     }
 
     override val label: String get() = assetName
@@ -137,15 +139,18 @@ abstract class OnnxNoiseReducerBase(
     /** 모델 메타데이터에 콤마로 들어 있는 float 배열을 읽는다(없으면 null). */
     protected fun metaFloats(key: String): FloatArray? {
         val raw = metadata[key] ?: return null
-        return runCatching {
+        return try {                                                         // change-hyungchul-20261109-1019 : 9단계 통합 검토 B9 — runCatching → 숫자가 아니면 로그를 남기고 null
             raw.split(',').filter { it.isNotBlank() }.map { it.trim().toFloat() }.toFloatArray()
-        }.getOrNull()
+        } catch (e: NumberFormatException) {
+            android.util.Log.w("GoogleStt", "NS 모델 메타데이터 $key 가 숫자 배열이 아니다: ${e.message}"); null
+        }
     }
 
     override fun close() {
-        runCatching { onClose() }
-        runCatching { session.close() }
-        runCatching { sessionOptions.close() }
+        // change-hyungchul-20261109-1019 : 9단계 통합 검토 B9 — runCatching → 실패를 로그에 남긴다(하나가 실패해도 나머지는 닫는다)
+        try { onClose() } catch (e: Exception) { android.util.Log.w("GoogleStt", "NS 정리 실패(onClose): ${e.message}") }
+        try { session.close() } catch (e: Exception) { android.util.Log.w("GoogleStt", "NS 정리 실패(session): ${e.message}") }
+        try { sessionOptions.close() } catch (e: Exception) { android.util.Log.w("GoogleStt", "NS 정리 실패(sessionOptions): ${e.message}") }
         // OrtEnvironment 는 프로세스 공용 singleton 이므로 닫지 않는다.
     }
 

@@ -132,9 +132,10 @@ class SileroVadDetector(modelDir: File) : VadDetector {   // change-hyungchul-20
      * 비고: ORT Java 는 boxed primitive 를 넘기면 rank-0 scalar 로 만든다.
      *       버전에 따라 이 경로가 막히는 경우를 대비해 shape [1] fallback 을 둔다.
      */
-    private fun createSrTensor(): OnnxTensor = runCatching {
+    private fun createSrTensor(): OnnxTensor = try {                        // change-hyungchul-20261109-1019 : 9단계 통합 검토 B9 — runCatching → 스칼라 경로가 막히면 로그를 남기고 shape [1] 로 만든다
         OnnxTensor.createTensor(env, SAMPLE_RATE.toLong())
-    }.getOrElse {
+    } catch (e: Exception) {
+        android.util.Log.w("GoogleStt", "Silero sr 스칼라 텐서 실패 → shape [1] 사용: ${e.message}")
         OnnxTensor.createTensor(
             env,
             LongBuffer.wrap(longArrayOf(SAMPLE_RATE.toLong())),
