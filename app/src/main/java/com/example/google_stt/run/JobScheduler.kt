@@ -86,7 +86,7 @@ class SchedulerDeps(
 class JobScheduler(private val deps: SchedulerDeps) {
 
     /** 끝난 작업 알림 — 결과 또는 실행을 멈춰야 하는 오류 */
-    private class Done(val job: Job, val slot: Int, val result: JobResult?, val fatal: AppError?)
+    private class Done(val job: Job, val slot: Int, val result: JobResult?, val fatal: AppError?, val notStarted: Boolean = false)   // change-hyungchul-20261109-1016 : 9단계 통합 검토 7 — notStarted: 시작 전에 "이 작업 끝나고 중지" 가 걸려 돌리지 않았다
 
     @Volatile
     private var stopAfter = false                                 // "이 작업 끝나고 중지" 요청
@@ -167,6 +167,7 @@ class JobScheduler(private val deps: SchedulerDeps) {
             // ── 하나가 끝나기를 기다린다 ──
             val d = done.receive()
             running.remove(d.slot); freeSlots.addFirst(d.slot)
+            if (d.notStarted) { pending.add(0, d.job); continue }               // change-hyungchul-20261109-1016 : 9단계 통합 검토 7 — 시작하지 않은 작업은 대기열 맨 앞으로 되돌린다
             d.fatal?.let { throw it }                                          // 출력 폴더 오류 → 실행 전체를 멈춘다(다른 작업은 취소된다)
             val r = d.result!!
             results += r
@@ -209,6 +210,7 @@ class JobScheduler(private val deps: SchedulerDeps) {
                 }
             }
             deps.thermal.awaitCool { hot -> onWaiting(if (hot) "THERMAL" else null) }
+            if (stopAfter) return Done(job, slot, null, null, notStarted = true)   // change-hyungchul-20261109-1016 : 9단계 통합 검토 7 — 자산·발열을 기다리는 사이 "이 작업 끝나고 중지" 가 걸렸으면 시작하지 않는다
             deps.resume.prepareDir(job)                                        // 중단된 "_" 폴더 삭제, 앞선 결과는 "_stale_" 로
             started = deps.resume.begin(job, slot)
             val r = deps.execute(job, plan.sources(job), plan.params)

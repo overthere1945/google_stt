@@ -75,6 +75,23 @@ class ResultWriter(private val tree: SafTree) {
     fun writeSummary(rows: List<SummaryRow>) {
         tree.writeAtomic(tree.root, OutputLayout.SUMMARY_FILE, CsvFormat.table(SUMMARY_COLUMNS, rows).toByteArray(Charsets.UTF_8))
     }
+
+    /**
+     * add-hyungchul-20261109-1016 : 9단계 통합 검토 2
+     * 목적: 앞선 실행이 쓴 _summary.csv 를 읽는다(이어 하기 때 앞선 줄을 잃지 않으려고).
+     * 입력: 없음 / 출력: 없음
+     * 리턴: List<SummaryRow> - 읽은 줄(파일이 없거나 칸이 모자란 줄은 뺀다. 작업 식별에 쉼표가 든 줄은 읽지 못해 빠진다)
+     */
+    fun readSummary(): List<SummaryRow> {
+        val text = tree.readBytes(tree.root, OutputLayout.SUMMARY_FILE)?.toString(Charsets.UTF_8)?.removePrefix(CsvFormat.BOM) ?: return emptyList()
+        return text.split(CsvFormat.EOL).drop(1).mapNotNull { line ->                // 첫 줄은 머리줄
+            val c = line.split(',')
+            if (c.size != SUMMARY_COLUMNS.size || '"' in line) return@mapNotNull null
+            val files = c[2].toIntOrNull(); val ok = c[3].toIntOrNull(); val fail = c[4].toIntOrNull()
+            if (files == null || ok == null || fail == null) null
+            else SummaryRow(c[0], c[1], files, ok, fail, c[5].toDoubleOrNull() ?: 0.0, c[6].toDoubleOrNull() ?: 0.0)
+        }
+    }
 }
 
 /**

@@ -109,6 +109,25 @@ class ResumeManagerTest {
     }
 
     /**
+     * 목적: [9단계 통합 검토 4] 가장 최근 종료가 사용자 강제 종료였으면 "돌고 있음" 표시가 남아도 충돌 횟수를 올리지 않는다
+     *       (같은 작업 도중 두 번 꺼도 ERR_CRASH_LOOP 로 굳지 않는다).
+     * 입력: 없음 / 출력: 없음 / 리턴: 없음
+     * add-hyungchul-20261109-1017
+     */
+    @Test
+    fun userKill_notCountedAsCrash() {
+        var m = manager(); m.load()
+        repeat(3) {
+            m.begin(a, 1)                                                              // 돌다가 사용자가 강제 종료
+            m = manager(); m.lastExitByUser = true; m.load()
+            assertEquals("CRASH:0", m.snapshot.getValue(a.key).note)
+            assertEquals(listOf(a), m.plan(listOf(a)).todo)                            // 매번 다시 돌린다
+        }
+        m.begin(a, 1); m = manager(); m.load()                                         // 이번에는 진짜 충돌
+        assertEquals("CRASH:1", m.snapshot.getValue(a.key).note)
+    }
+
+    /**
      * 목적: 시작 전 폴더 정리 — 중단된 "_" 폴더는 지우고 끝난 결과는 "_stale_" 로 치운다.
      * 입력: 없음 / 출력: 없음 / 리턴: 없음
      */

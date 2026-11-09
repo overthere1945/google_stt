@@ -261,7 +261,7 @@ object PipelineSteps {
             ctx.log("[warn] 앞부분 유실 의심 — 입력 ${"%.1f".format(inSec)}s 인데 ${stt.text.length}자. 이 행의 WER/CER 은 그대로 쓰지 말 것")
         }
         // add-hyungchul-20261107-0116 : [M4 문제 2] Vosk: 오류 없이 끝났는데 입력 길이에 비해 글자가 너무 적으면 디코딩이 무너진 것으로 의심한다(약 30회에 1회 실측)
-        if (ctx.job.model.runtime == Runtime.VOSK && stt.status == SttStatus.OK && inSec >= VOSK_COLLAPSE_MIN_SEC &&
+        if (ctx.job.model.runtime == Runtime.VOSK && (stt.status == SttStatus.OK || stt.status == SttStatus.NO_MATCH) && inSec >= VOSK_COLLAPSE_MIN_SEC &&   // change-hyungchul-20261109-1016 : 9단계 통합 검토 5 — 글자가 하나도 없는 경우(NO_MATCH)도 본다. VAD 없음이면 말이 드문 음원에도 붙을 수 있다(의심 표시)
             stt.text.length / inSec < VOSK_COLLAPSE_CHARS_PER_SEC
         ) {
             out += NOTE_DECODE_COLLAPSE

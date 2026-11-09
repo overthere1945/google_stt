@@ -147,6 +147,12 @@ class JobPipeline(private val deps: PipelineDeps) {
                 val code = if (e is AppError.MlKitStuck) "ERR_MLKIT_STUCK" else "ERR_${what}_LOAD"   // ERR_MODEL_LOAD / ERR_VAD_LOAD / ERR_NS_LOAD
                 deps.log("[${job.label}] 적재 실패: ${describe(e)}")
                 return result(PlanProgress.FAILED, "$code:${e.message}", stuck = e is AppError.MlKitStuck)
+            } catch (e: OutOfMemoryError) {  // change-hyungchul-20261109-1016 : 9단계 통합 검토 9 — 적재 중 메모리 부족·네이티브 라이브러리 오류는 이 작업만 실패시킨다(앱이 죽지 않게)
+                deps.log("[${job.label}] 적재 실패(메모리 부족): ${e.message}")
+                return result(PlanProgress.FAILED, "ERR_${what}_LOAD:OutOfMemoryError")
+            } catch (e: LinkageError) {
+                deps.log("[${job.label}] 적재 실패(라이브러리): ${e.javaClass.simpleName}: ${e.message}")
+                return result(PlanProgress.FAILED, "ERR_${what}_LOAD:${e.javaClass.simpleName}")
             }
             val ctx = JobContext(
                 job = job, runId = run.runId, adapter = adapter, load = load, vad = vad, denoise = denoiser?.run, meter = deps.meter,

@@ -113,7 +113,8 @@ class RunController(private val context: Context, private val c: AppContainer) {
     suspend fun execute() {
         val req = request ?: return                                             // 요청 없이 불렸다
         request = null
-        runJob = currentCoroutineContext().job
+        val mine = currentCoroutineContext().job                                // change-hyungchul-20261109-1016 : 9단계 통합 검토 8 — 마무리에서 내 것일 때만 지운다
+        runJob = mine
         if (_state.value.phase == RunPhase.STOPPING) {   // change-hyungchul-20261106-2304 : WP6 독립 검토 4 — 준비 중에 누른 "지금 중지" 를 놓치지 않는다
             _state.update { it.copy(phase = RunPhase.STOPPED, message = "사용자 중지") }
             runJob = null
@@ -129,13 +130,16 @@ class RunController(private val context: Context, private val c: AppContainer) {
             val exits = withContext(kotlinx.coroutines.Dispatchers.IO) {
                 tree.recoverTmp(tree.root)   // change-hyungchul-20261106-2304 : WP6 독립 검토 3 — 진행 기록을 쓰다 죽었으면 남은 임시 파일을 살린다(안 그러면 기록이 통째로 사라진다)
                 tree.writeAtomic(tree.root, OutputLayout.PLAN_FILE, PlanCsv.format(PlanCsv.fromJobs(req.jobs), "run=$stamp").toByteArray(Charsets.UTF_8))   // 조합 목록
-                resume.recordExits(exitRecords(clock))                          // 지난번에 앱이 꺼진 이유
+                val all = exitRecords(clock)                                    // 최근 것부터(시스템이 주는 순서)
+                resume.lastExitByUser = all.firstOrNull()?.reason in USER_EXITS  // change-hyungchul-20261109-1016 : 9단계 통합 검토 4 — 가장 최근에 꺼진 이유가 사용자·설치이면 충돌 횟수를 올리지 않는다
+                resume.recordExits(all)                                         // 지난번에 앱이 꺼진 이유
             }
             exits.forEach { c.log.w("[종료 이유] ${it.time} ${it.reason} ${it.description} (PSS ${it.pssMb} MB)") }
             val pipeline = JobPipeline(c.pipelineDeps(tree))
             val sources = req.audio.mapValues { (_, items) -> items.map(c::audioSource) }
-            val summary = ArrayList<SummaryRow>()
             val writer = ResultWriter(tree)
+            val summary = ArrayList<SummaryRow>()
+            if (!req.restart) summary += withContext(kotlinx.coroutines.Dispatchers.IO) { writer.readSummary() }   // change-hyungchul-20261109-1016 : 9단계 통합 검토 2 — 이어 하기면 앞선 실행의 요약 줄을 잃지 않는다
             val sched = JobScheduler(SchedulerDeps(
                 execute = pipeline::execute,
                 ensureAssets = { ids ->   // change-hyungchul-20261107-0000 : WP7 독립 검토 2 — 실행 중 받기도 "Wi-Fi 에서만" 설정을 지킨다
@@ -173,7 +177,7 @@ class RunController(private val context: Context, private val c: AppContainer) {
             _state.update { it.copy(phase = RunPhase.ERROR, message = "예상하지 못한 오류 — ${e.javaClass.simpleName}: ${e.message}") }
             c.log.e("실행 중단(예상하지 못한 오류)", e)
         } finally {
-            scheduler = null; runJob = null
+            if (runJob === mine) { scheduler = null; runJob = null }            // change-hyungchul-20261109-1016 : 9단계 통합 검토 8 — 끝 상태를 본 새 실행이 넣은 핸들을 지우지 않는다
             _state.update { it.copy(endedAtMs = android.os.SystemClock.elapsedRealtime()) }   // 끝난 뒤에도 경과 시간이 남게
             withContext(NonCancellable) { c.log.flush(); c.log.attach(null) }
         }
@@ -200,9 +204,10 @@ class RunController(private val context: Context, private val c: AppContainer) {
      * 출력: 실측 RTF 저장소, _summary.csv / 리턴: 없음
      */
     private suspend fun onResult(r: JobResult, req: RunRequest, summary: MutableList<SummaryRow>, writer: ResultWriter) {
+        summary.removeAll { it.key == r.job.key }                                 // change-hyungchul-20261109-1016 : 9단계 통합 검토 2 — 같은 작업의 앞선 줄은 새 결과로 바꾼다
         summary += SummaryRow(r.job.key, r.status, r.files, r.ok, r.fail, r.elapsedSec, r.audioSec)
         withContext(kotlinx.coroutines.Dispatchers.IO) { writer.writeSummary(summary) }
-        if (r.status == PlanProgress.DONE && r.fail == 0 && r.audioSec > 0.0) {     // 끝까지 깨끗하게 돈 작업만 예상 시간 계산에 쓴다
+        if (r.status == PlanProgress.DONE && r.fail == 0 && r.audioSec > 0.0 && r.job.opt.feed.delayMs == null) {   // change-hyungchul-20261109-1016 : 9단계 통합 검토 1 — 공급 속도를 고른 작업(RTF ≈ 간격)은 빼야 "최대 속도" 예상 시간이 틀어지지 않는다     // 끝까지 깨끗하게 돈 작업만 예상 시간 계산에 쓴다
             c.rtf.addMeasured(RtfKey(c.probe.deviceKey, r.job.model.engine, r.job.vad.engine.token, req.workers), r.elapsedSec / r.audioSec)
         }
     }
@@ -232,6 +237,9 @@ class RunController(private val context: Context, private val c: AppContainer) {
             ExitRecord(synchronized(clock) { clock.format(Date(info.timestamp)) }, reasonName(info.reason), info.description.orEmpty(), info.pss / 1024, info.rss / 1024)
         }
     }
+
+    /** add-hyungchul-20261109-1016 : 사용자가 끄거나 앱을 다시 설치해서 꺼진 경우의 이유 이름(충돌로 세지 않는다) */
+    private val USER_EXITS = setOf("USER_REQUESTED", "USER_STOPPED", "PACKAGE_UPDATED")
 
     /** 목적: 꺼진 이유 값을 이름으로 바꾼다(v3 PlanState.reasonName 과 같은 이름). 입력: reason - REASON_* / 출력: 없음 / 리턴: String */
     private fun reasonName(reason: Int): String = when (reason) {

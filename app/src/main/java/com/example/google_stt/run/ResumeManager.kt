@@ -89,6 +89,10 @@ class ResumeManager(
      * 출력: 기록이 메모리에 올라가고, 바뀐 것이 있으면 파일을 다시 쓴다
      * 리턴: List<String> - 읽으면서 생긴 경고(깨진 줄 등)
      */
+    /** add-hyungchul-20261109-1016 : 9단계 통합 검토 4 — 가장 최근 종료가 사용자 강제 종료·재설치였는지(true 면 충돌 횟수를 올리지 않는다). load 전에 정한다 */
+    @Volatile
+    var lastExitByUser = false
+
     @Synchronized
     fun load(plan: String = ""): List<String> {
         planName = plan
@@ -99,7 +103,7 @@ class ResumeManager(
         val alone = parsed.rows.values.count { it.note.startsWith(RUNNING) } == 1  //// change-hyungchul-20261106-2304 : WP6 독립 검토 6 — 여럿이 돌던 중이면 누가 죽였는지 알 수 없어 횟수를 올리지 않는다
         for ((key, row) in parsed.rows) {
             if (row.note.startsWith(RUNNING)) {                                    // 돌다가 앱이 죽었다
-                val n = crashes(row.note) + if (alone) 1 else 0
+                val n = crashes(row.note) + if (alone && !lastExitByUser) 1 else 0   // change-hyungchul-20261109-1016 : 9단계 통합 검토 4 — 사용자가 끈 것은 세지 않는다
                 rows[key] = row.copy(status = PlanProgress.INTERRUPTED, finished = now(), note = "$CRASH:$n")
                 log("[이어 하기] $key 는 지난 실행에서 비정상 종료했다(연속 ${n}회)")
                 changed = true
