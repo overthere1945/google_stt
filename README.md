@@ -16,7 +16,7 @@
 
 | 단계 | 선택지 |
 |---|---|
-| STT | sherpa-onnx 오프라인 12종, sherpa-onnx 스트리밍 3종, Vosk 2종, ML Kit GenAI Speech Recognition Basic — 2-1장 |
+| STT | sherpa-onnx 오프라인 13종, sherpa-onnx 스트리밍 3종, Vosk 2종, ML Kit GenAI Speech Recognition Basic 1종(합 19종) — 2-1장 |
 | 언어 | 입력 폴더의 하위 폴더 이름으로 자동(kr / en). 이름으로 모르는 폴더는 처음 한 번 묻고 기억합니다 |
 | VAD | 사용 안 함(NOVAD) / Silero / pyannote / FSMN / FireRed / TEN — 2장 |
 | 구간 처리 | **엔진별 최대 길이**(기본) / 모든 엔진 10초 통일(`SEG10`) |
