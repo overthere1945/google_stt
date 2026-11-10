@@ -1,0 +1,17 @@
+--- a/stt_common.py
++++ b/stt_common.py
+@@ -3405,6 +3405,14 @@
+             "vosk", "cohere-transcribe", "sherpa-onnx", "speechbrain", "google_streaming",
+             # add-hyungchul-20261008-1900: 새 엔진 4종(llm_asr_stt.py 의 --algo 기본값과 같습니다).
+             "ark-asr", "voxtral-realtime", "moss-transcribe-diarize", "vibevoice-asr",
++            # add-hyungchul-20261107: Android 앱 google_stt v4 의 엔진 이름 19개(앱 CSV 의 algo 열 값)입니다.
++            #   앱 결과는 폴더 <엔진>_<모델>_<조건>, CSV <엔진>_<조건>_result.csv 이라, 이 이름을 알아야
++            #   run_eval.py 가 CSV 행을 폴더(txt)와 같은 이름으로 등록합니다(모르면 같은 결과가 두 번 채점됩니다).
++            "whisper-tiny", "whisper-base", "whisper-small", "whisper-medium", "whisper-turbo",
++            "qwen3asr-0.6b", "omnilingual-300m", "nemotron3.5-320ms", "nemotron3.5-560ms",
++            "zipformer-ko", "zipformer-ko-stream", "sensevoice-small", "zipformer-en",
++            "parakeet-tdt-0.6b-v2", "moonshine-tiny-en", "moonshine-base-en",
++            "vosk-small-ko", "vosk-small-en", "google-mlkit",
+         }
+     # 값이 없으면 그대로 돌려줍니다.
+     if not algo:

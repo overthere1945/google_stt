@@ -1,13 +1,12 @@
 # google_stt — 온디바이스 STT 평가 앱 (Android)
 
-입력 폴더의 음성 파일을 16 kHz/mono/PCM16 으로 변환한 뒤, **휴대폰 안에서** STT 로 일괄 전사하고
-지연·자원을 계측하는 평가 앱입니다. 결과는 PC "STT 통합 실행기"와 같은 폴더·조건 이름 규칙으로 저장되어
-PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
+휴대폰 안에서 **엔진·모델 × VAD 조건 × 언어(kr/en)** 조합을 자동으로 모두 돌리고, 결과를 서버 실행기(`stt_all_gui_server` v8.8.0)와
+같은 폴더 구조·같은 74열 CSV 로 남기는 평가 앱입니다. 결과 폴더는 서버의 WER/CER 평가기(`run_eval.py`)로 그대로 채점할 수 있습니다.
 
-- 현재 판: **3.0.0** (2026-11-04) — 변경 내용은 [`docs/RELEASE_NOTES_v3.0.0.md`](docs/RELEASE_NOTES_v3.0.0.md), 인계는 [`docs/HANDOFF_20261104_v3.0.0.md`](docs/HANDOFF_20261104_v3.0.0.md) (이전: [`v2.6.0`](docs/RELEASE_NOTES_v2.6.0.md), [`v2.5.0`](docs/RELEASE_NOTES_v2.5.0.md), [`v2.4.1`](docs/RELEASE_NOTES_v2.4.1.md), [`v2.4.0`](docs/RELEASE_NOTES_v2.4.0.md), [`v2.3.0`](docs/RELEASE_NOTES_v2.3.0.md), [`v2.2.0`](docs/RELEASE_NOTES_v2.2.0.md), [`v2.1.1`](docs/RELEASE_NOTES_v2.1.1.md), [`v2.1.0`](docs/RELEASE_NOTES_v2.1.0.md), [`v2.0.0`](docs/RELEASE_NOTES_v2.0.0.md))
-- 대상 기기: Galaxy S25 Ultra (arm64-v8a), minSdk 31 / targetSdk 35 — APK 는 **arm64-v8a 전용**(`abiFilters`, 에뮬레이터·32비트 기기 설치 불가)
-- 평가 기준(v3.0.0, 사용자 요청 2026-11-04): 서버 `stt_all_gui_server` 의 엔진 중 **갤럭시에서 도는 것 · 무료 · 상업 이용 가능한 것만**. Google 은 **ML Kit GenAI Basic 만**, VAD 는 **Silero · pyannote · FSMN-VAD · FireRedVAD · TEN**(값은 서버와 같게).
-- 네트워크: **INTERNET 권한 없음**(온디바이스 실행 증명용). VAD·노이즈 저감 모델은 APK 에 넣고, STT 모델(sherpa-onnx)은 휴대폰 공용 폴더 `/sdcard/Documents/stt_models` 에 넣고 앱은 **'모든 파일 접근'** 권한으로 읽습니다(v2.1.1).
+- 현재 판: **4.0.0** (versionCode 12, 2026-11-09) — 변경 내용은 [`docs/RELEASE_NOTES_v4.0.0.md`](docs/RELEASE_NOTES_v4.0.0.md), 인계는 [`docs/AI_analyze/HANDOFF_20261109_v4.0.0.md`](docs/AI_analyze/HANDOFF_20261109_v4.0.0.md) (이전 판: [`v3.0.0`](docs/RELEASE_NOTES_v3.0.0.md))
+- 대상 기기: Galaxy S24 Ultra(SM-S928N, arm64-v8a). minSdk 31 / targetSdk 35 / compileSdk 37. APK 는 **arm64-v8a 전용**입니다.
+- v4.0.0 은 v3.0.0 을 다시 쓴 판입니다(화면 Compose, 포그라운드 서비스, 앱 안에서 모델 받기, 서버 74열 CSV). 전사 결과는 v3.0.0 과 같습니다(오프라인 엔진 TXT 바이트 동일 — 릴리스 노트 5장).
+- 네트워크: 추론은 모두 휴대폰 안에서 합니다. `INTERNET` 권한은 **모델을 받을 때만** 씁니다. 추론 중 앱의 송수신이 잡히면 그 행의 `note` 에 `WARN_NET_DELTA` 가 남습니다.
 
 ## 1. 처리 순서
 
@@ -17,16 +16,17 @@ PC 쪽 WER/CER 평가기에서 그대로 비교할 수 있습니다.
 
 | 단계 | 선택지 |
 |---|---|
-| STT | ML Kit GenAI Speech Recognition **Basic**(API 31+), **sherpa-onnx 오프라인**: Whisper tiny/base/small/medium/turbo, Qwen3-ASR 0.6B, Omnilingual 300M, **영어 전용(v3.0.0)**: Zipformer EN, Parakeet-TDT 0.6B v2, Moonshine tiny/base EN, **sherpa-onnx 스트리밍**: Nemotron 3.5 0.6B(지연 320 / 560 ms), **상업 조건부(v2.3.0)**: Zipformer KO(오프라인·스트리밍), SenseVoice Small, **Vosk(v2.4.0)**: small KO 0.22 / EN-US 0.15 |
-| 노이즈 저감 | 사용 안 함 / GTCRN / DPDFNet / NSNet2 / MMSE-STSA / Wiener / Spectral Subtraction |
-| 언어 | **폴더 이름으로 자동 (kr / en)**(v3.0.0 기본) / English / 한국어 |
-| VAD 엔진 | 사용 안 함 / **Silero** / **pyannote** / **FSMN** / **FireRed** / **TEN** |
-| 구간 처리 | **엔진별 최대 길이**(Google = 기존: 이어 붙여 1세션 + EPD) / **모든 엔진 10초 통일**(SEG10) |
-| Speech EPD | OFF / A안(세션 분할) / B안(긴 무음) — ML Kit 61초 앞부분 유실 결함 회피용, SEG10·sherpa 엔진에서는 쓰지 않음 |
-
-> v2.0.0 에서 **ML Kit Advanced(Pixel 10 전용)** 를, v3.0.0 에서 **Android 플랫폼 on-device STT · WebRTC VAD · Moonshine tiny KO**(상업 사용 불가 라이선스)를 제거했습니다.
+| STT | sherpa-onnx 오프라인 13종, sherpa-onnx 스트리밍 3종, Vosk 2종, ML Kit GenAI Speech Recognition Basic 1종(합 19종) — 2-1장 |
+| 언어 | 입력 폴더의 하위 폴더 이름으로 자동(kr / en). 이름으로 모르는 폴더는 처음 한 번 묻고 기억합니다 |
+| VAD | 사용 안 함(NOVAD) / Silero / pyannote / FSMN / FireRed / TEN — 2장 |
+| 구간 처리 | **엔진별 최대 길이**(기본) / 모든 엔진 10초 통일(`SEG10`) |
+| 공급 속도(스트리밍·Vosk) | **사용 안 함 = 최대 속도**(기본) / REALTIME / D50 / D30 / D20 / D10. ML Kit 은 REALTIME 고정, 오프라인 sherpa 는 해당 없음 |
+| 노이즈 저감 | **사용 안 함**(기본) / GTCRN / DPDFNet / NSNet2 / MMSE-STSA / Wiener / Spectral Subtraction |
+| Speech EPD | **사용 안 함**(기본) / 세션 나누기 / 긴 무음 넣기 — ML Kit 61초 앞부분 유실 결함 회피용 |
+| 실행 목적 | **시간 측정**(동시 1) / 정확도만(동시 1~3 — 오프라인 sherpa 와 ML Kit 은 각각 동시에 1개만 돕니다) |
 
 ## 2. VAD 엔진과 프리셋
+
 
 | 엔진 | 라이선스(상업) | 실행 방식 | 프리셋(조건 이름) |
 |---|---|---|---|
@@ -53,7 +53,10 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 - 값을 직접 고치면 자동으로 `<엔진>_CUSTOM` 으로 바뀌고, 결과 조건 이름에 값이 들어갑니다(예: `SILERO_CUSTOM_t40_sp250_si300_pad100`).
 - Picovoice Cobra 는 AccessKey·인터넷이 필요하고 무료 플랜이 없어 넣지 않았습니다.
 
-## 2-1. STT 엔진 — sherpa-onnx 오프라인 (v2.1.0)
+- v4.0.0 화면은 프리셋만 고릅니다(값을 직접 고치는 `<엔진>_CUSTOM` 은 화면에 아직 없습니다).
+
+## 2-1. STT 엔진·모델 (19종)
+
 
 | Model(화면) | 결과 엔진 이름 | 가중치 라이선스(상업) | 한 조각 상한 | 언어 설정 | 휴대폰에 넣는 크기(int8) |
 |---|---|---|---|---|---|
@@ -71,141 +74,107 @@ Silero 8종 값(threshold / minSpeech ms / minSilence ms / pad ms, 최대 길이
 
 - v3.0.0 에서 **Moonshine tiny KO 를 뺐습니다** — Moonshine Community License 는 연매출 100만 달러를 넘으면 상업 사용을 할 수 없습니다(사용자 기준 '상업 이용 가능한 것만').
 - 영어 전용 4종은 서버(`stt_all_gui_server`)의 sherpa `zipformer-en`·`parakeet-tdt-0.6b-v2`, moonshine 영어 Tiny/Base 와 **같은 가중치**입니다. 조각 상한 근거는 `docs/RELEASE_NOTES_v3.0.0.md` 2장.
+| ML Kit GenAI Basic | `google-mlkit` (모델 이름 `basic`) | Google ML Kit 약관 (allowed) | 없음(세션 — EPD 로 나눔) | `ko-KR` / `en-US` | 기기에 설치(Google 이 관리) |
 
-- 런타임: sherpa-onnx **1.13.8 정적 링크 AAR**(v2.4.1 부터, onnxruntime 1.28.2 내장 — 앱의 onnxruntime-android 1.25.1 과 따로 돈다), CPU 4 스레드.
-- 실행: 실시간 공급 없이 **최대 속도로 디코딩**한다. 모델은 배치 시작 때 1번 불러 끝에 해제한다(불러온 시간은 run_meta `stt_model_load_ms`).
-- **Nemotron(스트리밍)** 은 Feed 설정대로 100 ms 조각을 넣는다(REALTIME = 실시간). 지연 비교는 `tail_ms`·`first_result_ms` 로 한다. 결과 글자는 토큰을 이어 만든다(sherpa 스트리밍 `text` 가 한국어 띄어쓰기를 지우는 문제 회피). 값 뜻은 `STT_계측_CSV_설명서.md` 7장.
-- **상업 조건부 3종**(v2.3.0, 사용자 결정 Q5 — v3.0.0 에서 Moonshine tiny KO 를 빼서 3종): 화면 이름 끝에 `[상업 조건부]`, run_meta `stt_commercial=conditional`. Zipformer KO 스트리밍은 Nemotron 과 같은 스트리밍 경로(Feed 설정)이고, Zipformer KO 두 종은 토큰으로 띄어쓰기를 만든다. 근거는 `docs/RELEASE_NOTES_v2.3.0.md`.
-- Cohere Transcribe 2B 는 **보류**(v2.2.0, 사용자 결정 Q25): sherpa int8 판이 실제 한국어 대화 음원에서 반복·영어 섞임이 심하고 메모리 약 3.4 GB — 근거는 `docs/HANDOFF_20261011_v2.2.0.md`.
-- 구간 처리: "엔진별 최대 길이" = 위 조각 상한으로 말 구간을 묶고 자른다. "10초 통일" = 10 s. Speech EPD 는 쓰지 않는다.
-- 결과 이름: `whisper-base_sherpa-int8_<조건>/…`, `whisper-base_<조건>_result.csv` (모델마다 CSV 가 따로 생긴다).
-- 모델 위치(휴대폰): `/sdcard/Documents/stt_models/<패키지>/` — 앱은 **'모든 파일 접근'(MANAGE_EXTERNAL_STORAGE)** 으로 읽는다. 앱을 지워도 모델은 남는다(v2.1.1, 사용자 결정 Q24).
-  - v2.1.0 의 앱 전용 폴더(`Android/data/…/files/models`)는 adb 가 만든 폴더를 앱이 읽지 못해(`canRead=false`) 바꿨다. 예전 폴더는 `adb shell rm -rf /sdcard/Android/data/com.example.google_stt/files/models` 로 지운다.
+- 런타임: sherpa-onnx **1.13.8 정적 링크 AAR**(onnxruntime 1.28.2 내장), vosk-android 0.3.75, ML Kit genai-speech-recognition 1.0.0-alpha1, VAD·노이즈 저감은 onnxruntime-android 1.25.1.
+- 언어 전용 모델은 맞지 않는 언어 폴더에서 자동으로 빠집니다(설정 탭 요약에 "제외 n: 언어 전용 모델" 로 보입니다).
+- **Vosk 한국어 모델은 실행마다 결과가 달라집니다**(Kaldi 특징 추출의 난수 잡음 dither). 약 30회에 1회는 오류 없이 글자가 거의 나오지 않으며, 그 행에는 `note=DECODE_COLLAPSE_SUSPECT` 가 붙습니다. 8장 참고.
 
-## 3. 처음 설정
+## 3. 빌드와 설치
 
-1. 모델 받기(프로젝트 루트, 인터넷 되는 PC):
+1. 빌드 전에 받아 둘 것(인터넷 되는 PC, 저장소에는 넣지 않습니다)
    ```bash
-   bash tools/download_models.sh        # Silero + GTCRN + DPDFNet + VAD 추가분(pyannote/FSMN/FireRed/TEN)
-   bash tools/download_models.sh all    # 위 + NSNet2 + DPDFNet 2/4/8
+   bash tools/download_stt_models.sh aar    # app/libs/sherpa-onnx-static-link-onnxruntime-1.13.8.aar
+   bash tools/download_models.sh            # 노이즈 저감 모델(app/src/main/assets)과 TEN VAD 라이브러리(jniLibs)
    ```
-   - assets: `silero_vad_16k_op15.onnx`, `pyannote_seg3.onnx`, `fsmn_vad_quant.onnx`, `fsmn_vad_am.mvn`,
-     `fireredvad_vad.onnx`, `fireredvad_cmvn.ark`, 노이즈 저감 모델
-   - jniLibs: `arm64-v8a/libten_vad.so`, `armeabi-v7a/libten_vad.so`
-   - 해시 확인: `cd app/src/main/assets && sha256sum -c models.sha256`
-2. sherpa-onnx AAR·STT 모델 받기(빌드 전에 AAR 이 꼭 있어야 합니다):
+2. 빌드·설치
    ```bash
-   bash tools/download_stt_models.sh aar             # app/libs/sherpa-onnx-static-link-onnxruntime-1.13.8.aar (v2.4.1 — 예전 1.13.7.aar 는 지워도 된다)
+   ./gradlew assembleDebug
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
    ```
-3. Android Studio 에서 Gradle Sync → Run(실기기). (v3.0.0: WebRTC VAD 를 빼서 JitPack 저장소는 더 쓰지 않습니다.)
-4. USB 디버깅을 연결하고 STT 모델을 휴대폰 공용 폴더에 넣기(앱 설치 여부와 무관, MTP·파일 관리자로 `Documents/stt_models` 에 복사해도 된다):
-   ```bash
-   bash tools/download_stt_models.sh                 # 기본: whisper-base + qwen3asr-0.6b + omnilingual-300m + nemotron3.5-560ms (+aar)
-   bash tools/download_stt_models.sh whisper-tiny zipformer-ko vosk-small-ko   # 고른 모델만 / all = 18종 전부(약 6.6 GB)
-   bash tools/download_stt_models.sh zipformer-en parakeet-tdt-0.6b-v2 moonshine-tiny-en moonshine-base-en   # v3.0.0 영어 전용 4종
-   ```
-5. 앱에서 입력 폴더·출력 폴더 선택 → 언어·Model·Feed·노이즈 저감·VAD 엔진·프리셋·구간 처리·EPD 선택 → START.
-   - **언어 = 폴더 이름으로 자동 (kr / en)**(v3.0.0 기본): 입력 폴더로 `input_sound`(안에 `kr`·`en`)를 고르면 `en` → `kr` 차례로 돌고,
-     결과는 `<출력>/en/…`, `<출력>/kr/…` 에 서버와 같은 구조로 생긴다(4장). 입력 폴더로 `input_sound/kr` 하나를 고르면 그 폴더만 한국어로 돌고 결과 폴더를 나누지 않는다.
-     이름 규칙(서버 v8.4.0 과 같음): 한국어 `kr`·`ko`·`kor`·`korea`·`korean`·`한국어`·`*_KR` / 영어 `en`·`eng`·`english`·`영어`·`*_EN`. 모르는 폴더는 건너뛴다(로그 `[lang]`).
-   - English / 한국어 를 직접 고르면 예전처럼 고른 폴더 전체를 그 언어로 돌린다.
-   - sherpa 모델로 처음 START 하면 '모든 파일 접근 허용' 설정 화면이 열린다 → 이 앱을 켜고 돌아와 다시 START.
-6. **목록 실행(v2.5.0)** — 여러 조건을 한 번에: 아래 3-1장.
-7. 문제가 생기면 Android Studio **Logcat** 에서 `tag:GoogleStt` 로 봅니다. 화면 로그와 같은 줄(Log.i)에 더해 `[D]` 로 시작하는 디버그 줄(Log.d)이 함께 나옵니다(디버그 줄은 화면 로그창에는 나오지 않습니다).
-   - 디버그 줄만: `tag:GoogleStt message:[D]` / sherpa 만: `tag:GoogleStt message:[D][sherpa]`
-   - `[D][batch]` 배치 시작·끝·중단·warm-up, `[D][file]` 파일 시작·끝·디코딩 상세, `[D][stt]` STT 에 넣는 조각 길이·결과 요약, `[D][sherpa]` 모델 폴더 점검(있는지·읽을 수 있는지·크기)·설정 경로·불러오기 시간·조각별 디코딩 시간
+3. 빌드 구성: AGP 9.3.1(built-in Kotlin), Gradle 9.6.1, Kotlin 2.4.21, Compose BOM 2026.09.00. 컴파일 대상은 JVM 17 입니다.
 
-## 3-1. 목록 실행 (v2.5.0)
+## 4. 사용법
 
-여러 작업(언어 × 모델 × 공급 속도 × VAD 프리셋 × 구간 처리)을 줄 세워 한 번에 돌린다. 작업 1개 = START 한 번과 같은 배치.
+화면은 탭 3개입니다: **설정 · 실행 · 모델**.
 
-1. 목록 만들기 — 둘 중 편한 쪽(같은 CSV 형식):
-   - 화면: 설정을 고르고 **[목록에 추가]** → **[목록 저장]** (`/sdcard/Documents/stt_plan/plan_<시각>.csv`)
-   - PC: `docs/stt_plan_samples/plan_kr_en_app_REALTIME_VAD22.csv`(kr 13 / en 15 모델 × REALTIME × VAD 22개 = 616 작업 — v3.0.0)를 고쳐
-     휴대폰 `Documents/stt_plan/` 에 복사 → **[목록 불러오기]**
-   ```
-   lang,model,feed,vad,seg                         ← 머리줄(고정)
-   kr,whisper-base;zipformer-ko,REALTIME,NOVAD;SILERO_SAFE,MAX   ← 칸 안 ';' = 여러 값(조합 4개로 펼침)
-   ```
-   - lang = `kr` / `en`(입력 하위 폴더 이름), model = 모델 폴더 이름, feed = `REALTIME` …, vad = 고정 프리셋 이름 또는 `NOVAD`, seg = `MAX` / `SEG10`
-   - 목록에는 Google 엔진·VAD CUSTOM·노이즈 저감을 넣지 않는다(노이즈 저감은 항상 없음, EPD 없음).
-   - 엑셀로 고쳤다면 "CSV UTF-8" 로 저장. MTP 위에서 바로 저장하지 말고 PC 로 복사 → 고침 → 다시 복사.
-2. 입력 폴더는 `kr`·`en` 을 담은 폴더(예: `Documents/input_sound`)를, 출력 폴더는 새 폴더(예: `Documents/output_stt`)를 고른다.
-3. **동시 작업 수**(1·2·3, 기본 3 — v2.6.0)를 고르고 **[목록 실행]** → 점검(모델 파일·입력 하위 폴더·이어 하기) → 확인 창 → 시작.
-   - 오프라인 엔진은 동시에 1개만, 남은 칸은 스트리밍 엔진. 실행 중 화면 켜 둠·회전 잠금. 충전기 연결 권장.
-   - 시작할 때 목록 사본을 출력 폴더 `_plan.csv` 로 남긴다(v2.6.0).
-   - 다음 작업을 잡기 전에 발열이 SEVERE 이상이면 MODERATE 이하가 될 때까지(최대 20분) 기다린다.
-4. **[중지]** → "지금 바로"(지금 파일이 끝나는 대로, 그 작업은 INTERRUPTED) / "이 작업 끝나고".
-5. 이어 하기: 같은 출력 폴더로 다시 [목록 실행] 하면 `_plan_progress.csv` 의 DONE 작업은 건너뛰고 같은 날짜 폴더에 이어 쓴다.
-   끊긴 작업은 첫 파일부터 다시 돈다. 새로 시작하려면 새 출력 폴더를 고른다.
-6. **앱이 꺼졌을 때(v2.6.0)** — 앱을 다시 열면 고른 폴더가 되살아나고, 마지막 목록이 끝나지 않았으면 **이어 하기 창**이 뜬다([이어서 실행] 한 번).
-   - 지난번 꺼진 이유(메모리 부족 `LOW_MEMORY`, 네이티브 충돌 `CRASH_NATIVE` 등)를 화면 로그와 `_plan_exits.csv` 에 남긴다.
-   - 목록 실행 도중 메모리 부족으로 꺼졌으면 창이 **동시 작업을 1개 줄여 이어 하기**를 기본 버튼으로 제안한다(사용자가 확인).
-   - 실행 중 30초마다 휴대폰 남은 메모리·앱 메모리·발열·돌고 있는 작업을 `_plan_memlog.csv` 에 남긴다.
-   - 끝나지 않은 결과는 `_<결과 폴더>` 에 쓰고 DONE 이면 원래 이름으로 바꾼다 → PC 평가기는 `_` 로 시작하는 폴더를 건너뛰므로 반쪽 결과가 채점에 섞이지 않는다.
-     같은 이름의 예전 반쪽 폴더는 지우지 않고 `_stale_<이름>_<시각>` 으로 비켜 둔다.
+1. **모델 준비**(모델 탭) — 둘 중 하나
+   - 앱에서 받기: 모델을 골라 [받기]. 받은 뒤 압축을 풀고 SHA256 을 검증합니다. "Wi-Fi 에서만" 설정을 지킵니다. 끊기면 이어받습니다.
+   - PC 에서 가져오기(휴대폰이 외부망에 못 나갈 때)
+     ```bash
+     python3 tools/fetch_assets.py --only sherpa-onnx-whisper-base silero-vad   # 인자 없이 돌리면 전부(약 6.8 GB)
+     adb push stt_models/stt_assets /sdcard/Documents/
+     ```
+     그 뒤 모델 탭 [PC 에서 가져오기] 로 `Documents/stt_assets` 를 고릅니다. 같은 해시로 검증합니다.
+   - 모델은 앱 전용 저장소(`Android/data/com.example.google_stt/files/models/`)에 둡니다. 앱을 지우면 함께 지워집니다.
+2. **설정 탭** — 입력 폴더(안에 `kr`·`en` 같은 언어 폴더), 출력 폴더, 모델, VAD 를 고릅니다. "고급" 에 구간 처리·공급 속도·노이즈 저감·EPD·실행 목적이 있습니다.
+   - 요약 카드가 작업 수, 제외 내역, 받아야 할 모델, 예상 시간을 보여 줍니다. [조합 CSV 저장] 은 조합 목록을 출력 폴더에 `plan_<시각>.csv` 로 남깁니다.
+3. **[실행]** — 언어 선택(필요할 때) → 이어 하기(같은 출력 폴더에 지난 기록이 있을 때) → 시작 전 점검(권한·배터리·VAD 적재·저장공간) → 모델 받기 확인(필요할 때) 순서로 진행합니다.
+4. **실행 탭** — 진행(끝난 작업 / 전체), 현재 작업, 기기 상태(메모리·발열·배터리), 로그. [중지] 는 "지금" 과 "이 작업 끝나고" 두 가지입니다.
+   - 실행은 포그라운드 서비스로 돌아 화면을 꺼도 계속됩니다. 발열이 심하면 식을 때까지 기다렸다가 이어 갑니다.
+   - 앱이 꺼져도 같은 출력 폴더로 [실행] → [이어 하기] 를 누르면 끝난 작업은 건너뛰고 남은 것만 돕니다.
+   - **긴 실행은 벽 충전기에 연결하고 돌립니다.** PC USB 포트로는 실행 중 소모를 따라가지 못해 방전됩니다.
+5. 문제가 생기면 `adb logcat -s GoogleStt` 또는 출력 폴더의 `_app_log.txt` 를 봅니다.
+
+## 5. 결과 폴더
 
 ```
 <출력 폴더>/
-  _plan_progress.csv                       ← key,status(DONE/FAILED/INTERRUPTED),worker,started,finished,ok,fail,note
-  _plan.csv / _plan_memlog.csv / _plan_exits.csv   ← 목록 사본 / 30초 메모리 기록 / 꺼진 이유 (v2.6.0)
-  kr/20261012_REALTIME/whisper-base_sherpa-int8_SILERO_SAFE/Customer_Service/01.txt
-  kr/20261012_REALTIME/whisper-base_SILERO_SAFE_result.csv
-  en/20261012_REALTIME/…
+  kr/                                             ← 언어 폴더(입력의 하위 폴더 이름)
+    whisper-base_sherpa-int8_SILERO/Customer_Service_KR/01.txt    ← <엔진>_<모델>_<조건>/<시나리오>/<NN>.txt (전사문만)
+    whisper-base_SILERO_result.csv                ← 파일별 결과, 서버 통일 CSV v2.0 74열(utf-8-sig, CRLF)
+    whisper-base_SILERO_device.csv                ← 파일별 기기 계측(배터리·발열·메모리·단계별 시간)
+    whisper-base_SILERO_run_meta.csv              ← 작업 1개의 환경·설정·자산 해시(key,value)
+  en/ …
+  _plan.csv            이번 실행의 조합 목록          _plan_progress.csv   작업별 상태(이어 하기의 근거)
+  _plan_exits.csv      앱이 꺼진 이유 기록            _plan_memlog.csv     30초마다 메모리·발열
+  _summary.csv         작업별 요약(소요·음원 길이·RTF)  _app_log.txt         앱 로그
 ```
-- PC 평가기(`output_stt/<lang>/<date>/<엔진>_<모델>_<조건>/<시나리오>/<NN>.txt`)에는 `kr/20261012_REALTIME` 을 날짜 폴더 하나로 넣는다.
-- 동시 실행이라 result.csv 의 시간·CPU·메모리 열은 다른 작업과 섞인 값이다(run_meta `parallel_jobs=3`). 전사 글자 비교 용도.
 
-## 4. 결과 폴더 (PC GUI v7.7 평탄화 규칙 + 서버 v8.4.0 언어 폴더)
+- `<조건>` = `[NS_<노이즈>_]<VAD 프리셋 또는 NOVAD>[_SEG10][_EPD_…][_FEED_<속도>]`. `_FEED_` 는 스트리밍·Vosk 에서 공급 속도를 고른 경우에만 붙습니다.
+  예) `NOVAD`, `SILERO`, `PYANNOTE_S500_SEG10`, `SILERO_FEED_REALTIME`
+- 돌고 있는 작업의 결과 폴더는 `_<이름>` 이고 끝나면 `_` 가 떨어집니다. 실패한 파일은 `.txt` 대신 `<NN>.ERROR.txt`(첫 줄 `[ERROR] …`)가 생깁니다.
+- 상태 값은 `OK` / `NO_MATCH` / `ERROR` 셋입니다. 그 밖의 사정은 `note` 열에 남습니다. 열 설명은 [`STT_계측_CSV_설명서.md`](STT_계측_CSV_설명서.md).
 
+## 6. 서버 평가기로 채점
+
+```bash
+adb pull /sdcard/Documents/output/<출력 폴더> ./result
+python3 <서버>/stt_all_gui_server/run_eval.py --ref <정답지>/kr --hyp ./result/<출력 폴더>/kr --out ./eval_kr
 ```
-<출력 폴더>/
-  kr/                                    ← v3.0.0 '폴더 이름으로 자동' 이면 언어 폴더마다(서버 '결과 = <결과>/<언어 폴더>/' 와 같음)
-    google-mlkit_basic_<조건>/Customer_Service_KR/01.txt
-    whisper-base_sherpa-int8_<조건>/Customer_Service_KR/01.txt   ← sherpa 엔진(CSV 는 whisper-base_<조건>_result.csv)
-    google-mlkit_<조건>_result.csv        ← 파일별 계측(utf-8-sig)
-    google-mlkit_<조건>_run_meta.csv      ← 실행 1회 환경 요약
-  en/
-    parakeet-tdt-0.6b-v2_sherpa-int8_<조건>/vLog_EN/01.txt
-```
-- Lang 을 English / 한국어 로 직접 고르거나 입력 폴더가 언어 폴더 자체(`…/input_sound/kr`)면 언어 단계 없이 `<출력 폴더>/<엔진>_<모델>_<조건>/…` 다(예전과 같음).
-- TXT 는 전사문만 들어 있다(화자 분리·시간 없음 — 서버 `--plain-text` 와 같은 형식). 빈 결과는 0바이트.
 
-- `<조건>` = `[NS_<노이즈>_]<VAD 프리셋 또는 NOVAD>[_SEG10][_EPD_…]`
-  예) `NOVAD`, `SILERO_SAFE`, `NS_GTCRN_LIM12_SILERO`, `PYANNOTE_S500_SEG10`, `SILERO_EPD_SPLIT_T45_M55`
-- result.csv 는 기존 91개 열 뒤에 `vad_engine, vad_preset, vad_params, vad_commercial, seg_mode, seg_chunks, seg_splits, condition` 을 덧붙였습니다(앞 열 순서 그대로). 열 설명은 `STT_계측_CSV_설명서.md`.
+- 서버 `stt_common.split_algo_option` 의 엔진 이름 목록에 앱 엔진 이름 19개가 들어 있어야 CSV 행과 TXT 가 같은 이름으로 등록됩니다(2026-11-07 반영, `docs/AI_analyze/patches/`).
+  **앱에 엔진을 더하면 서버 목록에도 같은 이름을 더해야 합니다.** 빠지면 같은 결과가 두 번 채점됩니다.
 
-## 5. 소스 구성
+## 7. 소스 구성
+
+`app/src/main/java/com/example/google_stt/` — 의존 방향은 `ui → run/data → engine → domain` 입니다.
 
 | 위치 | 역할 |
 |---|---|
-| `MainActivity.kt` | 화면 초기화, 폴더 선택, 권한, START 입력 검증, 조건 이름 조합, 로그·진행률 |
-| `batch/BatchRunner.kt` | 배치 실행 본문(디코딩 → 노이즈 저감 → VAD → 구간 처리 → EPD → STT → 저장), preflight, CSV 공통 열 |
-| `stt/` | `SttModels`(경로·공급 속도·결과형), `SttConstants`, `SttUtil`, `PcmFeeder`, `MlKitTranscriber`, `GoogleSttSession`(세션 수·할당량 재시도·조각 합치기·warm-up), `SherpaModels`(sherpa 모델 목록), `SherpaOfflineTranscriber`(sherpa 불러오기·디코딩) |
-| `vad/` | `VadModels`(엔진·항목·프리셋), `VadPipeline`(공통 계약·이어 붙이기·팩토리), `FrameSegmenter`(Silero 방식 구간 규칙), `KaldiFbank`, `SegmentPacker`(10초 조각), 엔진별 `*VadDetector` |
-| `ui/` | `VadUi`, `EpdUi`, `NoiseUi`, `UiUtils`, `Selections`, `PlanUi`(목록 실행 화면, v2.5.0) |
-| `plan/` | `PlanModels`(목록 CSV·검증·진행 기록 — 순수 Kotlin), `PlanRunner`(동시 실행·이어 하기·발열 대기·메모리 기록·결과 폴더 이름 바꾸기) (v2.5.0~), `PlanState`(폴더·동시 작업 수 기억, 꺼진 이유 읽기) (v2.6.0) |
-| `io/` | `AudioInput`(입력 폴더 탐색, 폴더 이름으로 언어 짐작 — v3.0.0), `ResultStore`(결과 저장) |
-| `SileroVadProcessor.kt` | Silero ONNX 실행기(VadDetector 구현), `VadConfig`, `VadSegment`, `VadResult` |
-| `SpeechEpd.kt`, `SttTelemetry.kt`, `AudioDecoder.kt`, `denoise/` | 기존 그대로(계측 열 추가만) |
+| `domain/` | 순수 Kotlin(android import 없음): 모델·자산 카탈로그, 언어 판정, 조건 이름, 조합 생성, 74열 CSV 정의, VAD 구간 규칙·조각 묶기, 예상 시간 |
+| `engine/` | sherpa-onnx·Vosk·ML Kit 어댑터, VAD 5종, 오디오 디코딩, 노이즈 저감 |
+| `data/` | SAF 출력 트리·결과 쓰기, 자산 받기·가져오기·검증, 설정(DataStore), 기기 계측 |
+| `run/` | 실행 서비스(포그라운드), 스케줄러, 작업 파이프라인, 이어 하기, 발열 대기, 메모리 기록 |
+| `ui/` | Compose 화면: 설정·실행·모델 탭, 대화창 5종 |
+| `AppContainer.kt`, `SttApp.kt` | 객체 수동 주입 |
 
-## 6. 알려진 제한
+시험: `./gradlew testDebugUnitTest`(단위 132개), 기기 연결 후 `./gradlew installDebug installDebugAndroidTest` → `adb shell am instrument -w com.example.google_stt.test/androidx.test.runner.AndroidJUnitRunner`(계측 37개).
 
-- ML Kit 은 공식 문서상 **실시간 속도 공급만 지원**합니다. WER/CER 확정 실행은 REALTIME 으로 하세요.
-- `com.google.android.tts`(SODA)는 약 **35세션**에서 응답을 멈춥니다. 10초 통일은 파일당 여러 세션을 써서 한도에 빨리 닿습니다.
-- pyannote / FSMN / FireRed 는 공식 PyTorch/C++ 구현을 Kotlin 으로 옮긴 것입니다. PC 결과와 프레임 단위로 다를 수 있으니 같은 음원으로 비교해 확인하세요.
-- 2단계 엔진은 Vosk(v2.4.0)까지 넣었습니다(보류: Cohere 2B). 결정 사항은 `docs/HANDOFF_20261011_v2.5.0.md`.
-- Vosk 는 이 작업 환경에서 모델을 받을 수 없어(alphacephei.com 접속 차단) 실음성 실행을 확인하지 못했습니다. 컴파일은 vosk-api 0.3.75 공식 소스로 확인했습니다.
-- sherpa 엔진의 실기기 속도·메모리·두 onnxruntime(앱 1.25.1 + sherpa 정적) 공존은 아직 실기기에서 확인하지 않았습니다.
-- APK 는 arm64-v8a 만 넣습니다(`app/build.gradle.kts` 의 `ndk.abiFilters`). 에뮬레이터용으로 x86_64 를 더할 수는 있지만(정적이라 충돌 없음), TEN VAD `.so` 는 x86_64 판이 없습니다.
-- sherpa 정적 AAR 은 x86 에서만 `libonnxruntime.so`(ORT 1.27.1)를 따로 넣어 앱의 onnxruntime-android 1.25.1 과 경로가 겹칩니다. 그래서 `packaging.jniLibs.excludes` 에 `lib/x86/libonnxruntime.so` 를 넣었습니다. **`abiFilters` 만으로는 풀리지 않습니다** — AGP 는 모든 ABI 를 먼저 합치면서 중복을 검사하고, `abiFilters` 는 APK 를 묶을 때만 적용하기 때문입니다.
-- 목록 실행: 결과 파일을 쓸 때마다 날짜 폴더의 목록을 다시 읽어(SAF findFile) 날짜 폴더에 결과가 많아질수록 저장이 조금씩 느려진다(전사 결과에는 영향 없음).
-- 목록 실행: "지금 바로 중지" 는 지금 파일이 끝나야 멈춘다(REALTIME 스트리밍은 그 파일 길이만큼).
-- 목록 실행: 결과 CSV(`<엔진>_<조건>_result.csv`·`_run_meta.csv`)는 `_` 접두어 없이 날짜 폴더에 쓴다 — 끝나지 않은 작업의 CSV 도 보인다. 평가는 TXT 모드로 한다.
-- 이어 하기 창은 프로세스가 새로 시작될 때만 뜬다. 같은 프로세스에서 뒤로 가기로 멈춘 뒤 다시 열면 창 없이 [목록 실행] 으로 이어 간다.
-- USB(MTP)로 PC 에서 결과 폴더를 보면 앱이 막 쓴 파일이 0바이트로 보일 수 있습니다(휴대폰 미디어 색인 미갱신). `adb pull` 이나 USB 재연결로 확인하세요.
+## 8. 알려진 제한
 
-## 7. 라이선스 메모
+- **Vosk 한국어**: 결과가 실행마다 다릅니다(dither). 앱 실행 경로 61회 중 2회는 오류 없이 43~109자(평소 600~650자)로 끝났습니다. 그런 행은 `note=DECODE_COLLAPSE_SUSPECT` 로 표시되지만, 500자 수준의 부분 저하는 표시되지 않습니다. 정확도 비교에는 여러 번 돌린 값을 쓰기를 권합니다.
+- ML Kit: 공식 문서상 실시간 속도 공급만 지원합니다. `com.google.android.tts`(SODA)는 약 35세션에서 응답을 멈춥니다. 시간 초과 뒤 재시도한 파일은 CSV 에 재시도 표시가 없고 시간 값에 대기 시간이 들어갑니다. 영어 모델은 기기에 받아져 있어야 합니다.
+- "지금 중지" 는 디코딩·노이즈 저감·VAD 한 파일 처리 중, 그리고 큰 오프라인 모델의 한 조각 처리 중에는 그 단계가 끝난 뒤에 멈춥니다.
+- 동시 2~3 으로 돌다 앱이 죽으면 어느 작업이 원인인지 알 수 없어, 이어 할 때 같은 작업이 다시 돕니다.
+- 화면을 돌리면 떠 있던 대화창이 닫힙니다. 조합 CSV 는 저장만 되고 불러오기는 없습니다. VAD·노이즈 저감·EPD 의 세부 값은 화면에서 바꿀 수 없습니다.
+- 예상 시간은 실측이 쌓인 엔진만 계산합니다(없는 작업은 "실측이 없는 작업 n개는 빠짐").
+- pyannote / FSMN / FireRed 는 공식 구현을 Kotlin 으로 옮긴 것입니다. 서버와 프레임 단위로 다를 수 있습니다(Silero 는 서버와 VAD 뒤 길이가 일치함을 확인했습니다).
+- 24시간 연속 실행 시험(LT-01, 165작업)은 28.4시간에 완주했으나, 26시간째에 Vosk 라이브러리(Kaldi) 네이티브 충돌로 앱이 한 번 꺼졌습니다. [이어 하기]로 복구되어 끝까지 돌았습니다. 앱이 죽을 때 `_app_log.txt` 의 마지막 몇 분이 사라질 수 있습니다.
+- whisper.cpp 엔진, sherpa-onnx 2.x, ML Kit alpha2 는 이번 판에 없습니다.
+
+## 9. 라이선스 메모
+
 
 앱 코드에서 쓰는 외부 모델·라이브러리의 라이선스는 각 원본을 따릅니다(Silero MIT,
 pyannote segmentation-3.0 MIT(HF 동의), FunASR 모델 Apache-2.0 + 출처·모델명 표기, FireRedVAD Apache-2.0,

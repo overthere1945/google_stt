@@ -1,6 +1,7 @@
+<!-- change-hyungchul-20261107-0007 : [T8-1] material 라이브러리의 테마 대신 플랫폼 테마를 쓴다(화면 색은 Compose 의 SttTheme 가 정한다 — 의존성 정리 T8-3 준비) -->
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Base.Theme.Google_stt" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Base.Theme.Google_stt" parent="android:Theme.Material.Light.NoActionBar">
         <!-- Customize your light theme here. -->
         <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
     </style>
