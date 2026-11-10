@@ -93,5 +93,5 @@
 
 ## 8. 다음 판 후보
 
-- 4.0.x: 6장의 3~7번, `--dither=0` 적용 여부 결정, `_app_log.txt` 즉시 쓰기(충돌 때 마지막 로그 유실 방지).
+- 4.0.x: 6장의 3~7번, `_app_log.txt` 즉시 쓰기(충돌 때 마지막 로그 유실 방지). `--dither=0`(Vosk 한국어 결정성)은 서버 Vosk 와 함께 결정한다.
 - 4.1.0: whisper.cpp 엔진. sherpa-onnx 2.x·ML Kit alpha2 는 회귀 시험 뒤 별도 Minor.
