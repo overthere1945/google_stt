@@ -4,7 +4,8 @@
 # - 장시간 실행(LT-01: 24시간 이상 연속)의 결과 폴더를 읽어 합격 기준을 판정한다.
 #     1) 작업이 모두 끝났는가(_plan_progress.csv — DONE / FAILED / SKIPPED / INTERRUPTED 수)
 #     2) 연속으로 돈 시간이 기준(기본 24시간) 이상인가(_plan_memlog.csv 의 첫 줄 ~ 마지막 줄)
-#     3) 실행 중 앱이 꺼진 적이 없는가(_plan_exits.csv 에 실행 시작 뒤의 줄이 없어야 한다)
+#     3) 실행 중 앱이 꺼진 적이 없는가(_plan_exits.csv 에 실행 시작 뒤의 줄이 없고, 진행 기록에 RUNNING 표시가 남은 작업이 없어야 한다 —
+#        앱이 죽은 뒤 다시 켜기 전에는 종료 이유가 아직 기록되지 않는다)
 #     4) 기록이 끊긴 구간이 없는가(메모리 기록은 30초마다 — 5분 넘게 비면 앱이 멈춰 있었다는 뜻)
 #     5) 메모리 부족 표시가 없는가. 앱 PSS 는 실행을 4등분해 구간별 바닥 값(낮은 쪽 10%)을 보여 준다 — 계속 커지는지는 사람이 본다
 #        (구간마다 도는 모델이 달라 자동 판정에 넣지 않는다)
@@ -88,8 +89,11 @@ def judge(root, need_hours, start_text):
 
     # 3) 실행 중 앱 종료
     during = [r for r in exits if (parse_time(r.get("time", "")) or datetime.datetime.min) > start]
-    line3 = not during
-    print("3) 실행 중 앱 종료: %d건 → %s" % (len(during), "통과" if line3 else "실패"))
+    stale = [r for r in progress if (r.get("note") or "").startswith("RUNNING:")]   # 앱이 끝 상태를 못 적고 죽으면 RUNNING 표시가 남는다
+    line3 = not during and not stale
+    print("3) 실행 중 앱 종료: 종료 기록 %d건, 끝 상태 없이 남은 작업 %d개 → %s" % (len(during), len(stale), "통과" if line3 else "실패"))
+    for r in stale:
+        print("     %s  %s  (앱이 이 작업 도중 죽었다 — 종료 이유는 앱을 다시 켠 뒤 _plan_exits.csv 에 적힌다)" % (r["key"], r.get("note", "")))
     for r in during:
         print("     %s  %s  %s" % (r.get("time"), r.get("reason"), (r.get("description") or "")[:60]))
     ok = ok and line3
