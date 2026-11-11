@@ -74,5 +74,6 @@ adb logcat -s GoogleStt                      # 앱 로그
 ## 문서 규칙
 - 판 번호 Major.Minor.Patch. 릴리스 노트는 MD + docx(`docs/RELEASE_NOTES_v<판>.md/.docx`).
 - 작업을 마치거나 넘길 때 `docs/AI_analyze/HANDOFF_<YYYYMMDD>_<판>.md`(한 일·남은 일·결정·열린 문제·다음 명령·기준 커밋)를 쓰고 같이 커밋.
+- 마일스톤(M0~M4)마다 HANDOFF 를 쓰고 커밋한다. claude.ai 프로젝트 반영은 사용자가 프로젝트 채팅에서 요청한다(D32).
 - README.md 는 v4.0.0 완료 때 갱신(10단계).
 - 컨텍스트가 차서 압축하기 전에, 이전 대화를 `docs/AI_analyze/<날짜>_<시간>_<N>차압축_google_stt.md` 로 자세히 정리해 둔다.
